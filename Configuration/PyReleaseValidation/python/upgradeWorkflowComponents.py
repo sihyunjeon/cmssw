@@ -1633,6 +1633,47 @@ upgradeWFs['OTInefficiency10PC'].suffix = '_OTInefficiency10PC'
 upgradeWFs['OTInefficiency10PC'].offset = 0.114
 upgradeWFs['OTInefficiency10PC'].percent = 'Ten'
 
+class UpgradeWorkflow_ITSignalShape(UpgradeWorkflow):
+    def setup_(self, step, stepName, stepDict, k, properties):
+        if 'Digi' in step:
+            stepDict[stepName][k] = merge([{'--customise': 'SimTracker/SiPhase2Digitizer/customizeForITSignalShape.customizeSiPhase2ITSignalShape'+self.nanoseconds+'Nanoseconds'}, stepDict[step][k]])
+    def condition(self, fragment, stepList, key, hasHarvest):
+        return '2026' in key
+# define several of them
+upgradeWFs['ITSignalShape'] = UpgradeWorkflow_ITSignalShape(
+    steps =  [
+        'Digi',
+        'DigiTrigger',
+    ],
+    PU =  [
+        'Digi',
+        'DigiTrigger',
+    ],
+    suffix = '_ITSignalShape',
+    offset = 0.140,
+)
+upgradeWFs['ITSignalShape'].nanoseconds = '12p5'
+
+upgradeWFs['ITSignalShape12p5ns'] = deepcopy(upgradeWFs['ITSignalShape'])
+upgradeWFs['ITSignalShape12p5ns'].suffix = '_ITSignalShape12p5ns'
+upgradeWFs['ITSignalShape12p5ns'].offset = 0.141
+upgradeWFs['ITSignalShape12p5ns'].nanoseconds = '12p5'
+
+upgradeWFs['ITSignalShape37p5ns'] = deepcopy(upgradeWFs['ITSignalShape'])
+upgradeWFs['ITSignalShape37p5ns'].suffix = '_ITSignalShape37p5ns'
+upgradeWFs['ITSignalShape37p5ns'].offset = 0.142
+upgradeWFs['ITSignalShape37p5ns'].nanoseconds = '37p5'
+
+upgradeWFs['ITSignalShape62p5ns'] = deepcopy(upgradeWFs['ITSignalShape'])
+upgradeWFs['ITSignalShape62p5ns'].suffix = '_ITSignalShape62p5ns'
+upgradeWFs['ITSignalShape62p5ns'].offset = 0.143
+upgradeWFs['ITSignalShape62p5ns'].nanoseconds = '62p5'
+
+upgradeWFs['ITSignalShape87p5ns'] = deepcopy(upgradeWFs['ITSignalShape'])
+upgradeWFs['ITSignalShape87p5ns'].suffix = '_ITSignalShape87p5ns'
+upgradeWFs['ITSignalShape87p5ns'].offset = 0.144
+upgradeWFs['ITSignalShape87p5ns'].nanoseconds = '87p5'
+
 # Specifying explicitly the --filein is not nice but that was the
 # easiest way to "skip" the output of step2 (=premixing stage1) for
 # filein (as it goes to pileup_input). It works (a bit accidentally
