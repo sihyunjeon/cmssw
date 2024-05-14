@@ -349,8 +349,6 @@ void Phase2PixelQCoreNtuple::beginJob() {
 // Functions that gets called by framework every event
 void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup& es) {
 
-  cout << "In Phase2PixelQCoreNtuple::analyze" << endl;
-
   //Retrieve tracker topology from geometry
   const TrackerTopology* const tTopo = &es.getData(tTopoToken_);
 
@@ -369,8 +367,6 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
   edm::Handle<edm::DetSetVector<ROCBitStream> > aBitStreamVector;
   e.getByToken(bitstream_token_, aBitStreamVector);
 
-  std::cout << "RETRIEVED DETSETVECTOR QCORE : " << std::endl;
-
   edm::DetSetVector<QCore>::const_iterator iterDet;
   for ( iterDet = aQCoreVector->begin();
         iterDet != aQCoreVector->end();
@@ -380,12 +376,11 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
 
     edm::DetSet<QCore> theQCores = (*aQCoreVector)[ tkId ];
 
-    std::cout << "QCORE DETID NEW : " << tkId.rawId() << std::endl;
+    //std::cout << "QCORE DETID NEW : " << tkId.rawId() << std::endl;
 
     for ( auto iterQCore = theQCores.begin();
           iterQCore != theQCores.end();
           ++iterQCore ) {
-      std::cout << "QCORE : " << iterQCore->get_row() << " " << iterQCore->get_col() << " " << iterQCore->get_row() << std::endl;
     }
   }
 
@@ -398,12 +393,12 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
 
     edm::DetSet<ROCBitStream> theBitStreams = (*aBitStreamVector)[ tkId ];
 
-    std::cout << "BITSTREAM DETID : " << tkId.rawId() << std::endl;
+    //std::cout << "BITSTREAM DETID : " << tkId.rawId() << std::endl;
 
     for ( auto iterBitStream = theBitStreams.begin();
           iterBitStream != theBitStreams.end();
           ++iterBitStream ) {
-      std::cout << "BITSTREAM : " << iterBitStream->get_rocid() << " size = " << iterBitStream->get_bitstream().size() << std::endl;
+      //std::cout << "BITSTREAM : " << iterBitStream->get_rocid() << " size = " << iterBitStream->get_bitstream().size() << std::endl;
     }
   }
 
@@ -551,7 +546,6 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
       throw cms::Exception("ProductNotValid") << "TrackCollection product not valid";
     } else {
       std::cout << "TrackCollection product not valid" << endl;
-      ;
     }
 
   } else if (!hTTAC.isValid()) {
@@ -575,9 +569,6 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
       trkPhi_ = track->phi();
 
       int iT = 0;
-#ifdef EDM_ML_DEBUG
-      std::cout << " num of hits for track " << rT << " = " << track->recHitsSize() << std::endl;
-#endif
 
       std::vector<TrajectoryMeasurement> tmeasColl = refTraj->measurements();
       for (auto const& tmeasIt : tmeasColl) {
@@ -743,9 +734,6 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
 
     // -- Get digis of this cluster
     const std::vector<SiPixelCluster::Pixel>& pixvector = Cluster->pixels();
-#ifdef EDM_ML_DEBUG
-    std::cout << "  Found " << pixvector.size() << " pixels for this cluster " << std::endl;
-#endif
     for (unsigned int i = 0; i < pixvector.size(); ++i) {
       if (recHit_.fDgN > DGPERCLMAX - 1)
         break;
@@ -753,9 +741,6 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
 
       recHit_.fDgRow[recHit_.fDgN] = holdpix.x;
       recHit_.fDgCol[recHit_.fDgN] = holdpix.y;
-#ifdef EDM_ML_DEBUG
-      std::cout << "holdpix " << holdpix.x << " " << holdpix.y << std::endl;
-#endif
       recHit_.fDgDetId[recHit_.fDgN] = detid_db;
       recHit_.fDgAdc[recHit_.fDgN] = -99.;
       recHit_.fDgCharge[recHit_.fDgN] = holdpix.adc / 1000.;
@@ -763,9 +748,6 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
     }
   }  // if ( Cluster.isNonnull() )
 
-#ifdef EDM_ML_DEBUG
-  std::cout << "num_simhit = " << num_simhit << std::endl;
-#endif
   if (num_simhit > 0) {
     recHit_.pdgid = closest_simhit->particleType();
     recHit_.process = closest_simhit->processType();
@@ -794,16 +776,7 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
     // beta: angle with respect to local y axis in local (y,z) plane
     // float cotbeta = sim_ydir/sim_zdir;
 
-#ifdef EDM_ML_DEBUG
-    std::cout << "num_simhit x, y = " << 0.5 * (sim_x1 + sim_x2) << " " << 0.5 * (sim_y1 + sim_y2) << std::endl;
-#endif
   }
-#ifdef EDM_ML_DEBUG
-  std::cout << "Found RecHit in " << subid
-            << " global x/y/z : " << PixGeom->surface().toGlobal(pixeliter->localPosition()).x() << " "
-            << PixGeom->surface().toGlobal(pixeliter->localPosition()).y() << " "
-            << PixGeom->surface().toGlobal(pixeliter->localPosition()).z() << std::endl;
-#endif
 }
 
 // Function for filling in on track rechits
@@ -833,7 +806,6 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
 
   recHit_.probQ = pixHit->probabilityQ();
   recHit_.probXY = pixHit->probabilityXY();
-  //std::cout << "printing pixHit_.xxloc " << recHit_.xxloc << std::endl;
 
   GlobalPoint GP = PixGeom->surface().toGlobal(recHit->localPosition());
   recHit_.gx = GP.x();
@@ -881,9 +853,6 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
 
     // -- Get digis of this cluster
     const std::vector<SiPixelCluster::Pixel>& pixvector = Cluster->pixels();
-#ifdef EDM_ML_DEBUG
-    std::cout << "  Found " << pixvector.size() << " pixels for this cluster " << std::endl;
-#endif
     for (unsigned int i = 0; i < pixvector.size(); ++i) {
       if (recHit_.fDgN > DGPERCLMAX - 1)
         break;
@@ -891,9 +860,6 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
 
       recHit_.fDgRow[recHit_.fDgN] = holdpix.x;
       recHit_.fDgCol[recHit_.fDgN] = holdpix.y;
-#ifdef EDM_ML_DEBUG
-      std::cout << "holdpix " << holdpix.x << " " << holdpix.y << std::endl;
-#endif
       recHit_.fDgDetId[recHit_.fDgN] = detid_db;
       recHit_.fDgAdc[recHit_.fDgN] = -99.;
       recHit_.fDgCharge[recHit_.fDgN] = holdpix.adc / 1000.;
@@ -929,9 +895,6 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
     // beta: angle with respect to local y axis in local (y,z) plane
     // float cotbeta = sim_ydir/sim_zdir;
 
-#ifdef EDM_ML_DEBUG
-    std::cout << "num_simhit x, y = " << 0.5 * (sim_x1 + sim_x2) << " " << 0.5 * (sim_y1 + sim_y2) << std::endl;
-#endif
   }
 }
 
@@ -1018,10 +981,6 @@ std::pair<float, float> Phase2PixelQCoreNtuple::computeAnglesFromDetPosition(con
 }
 
 void Phase2PixelQCoreNtuple::processHits(const std::vector<std::pair<int, int> >& hitList) {
-
-  //for(const auto& hit:hitList) {
-  //  cout << "row, col : "<<hit.first<<" "<<hit.second<<endl;
-  //}
 
 }
 

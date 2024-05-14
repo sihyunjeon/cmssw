@@ -31,17 +31,25 @@ std::pair<int,int> ReadoutChip::get_QCore_pos(Hit hit) {
 //Takes in a hit and returns the 4x4 QCore that hit is a part of
 QCore ReadoutChip::get_QCore_from_hit(Hit pixel) {
 
-    std::vector<int> adcs(16,0);
+    std::vector<int> adcs(16,0), hits(16,0);
     std::pair<int,int> pos = get_QCore_pos(pixel);
 
     for (const auto& hit:hitList) {
         if (get_QCore_pos(hit) == pos) {
                 int i = (4 * (hit.row() % 4) + (hit.col() % 4) + 8) % 16;
                 adcs[i] = hit.adc();
+                hits[i] = 1;
         }
     }
 
-    QCore qcore(0, pos.second, pos.first, false, false, adcs);
+                std::cout<<"> hit : ";
+                for (size_t j=0; j<hits.size(); j++) std::cout<< hits[j] << " ";
+                std::cout<<std::endl;
+                std::cout<<"> adc : ";
+                for (size_t j=0; j<adcs.size(); j++) std::cout<< adcs[j] << " ";
+                std::cout<<std::endl;
+
+    QCore qcore(0, pos.second, pos.first, false, false, adcs, hits);
     return qcore;
 
 }
@@ -51,21 +59,18 @@ std::vector<QCore> ReadoutChip::rem_duplicates(std::vector<QCore> qcores) {
 
     std::vector<QCore> list = {};
 
-    while (qcores.size() > 0) {
-
-        for (size_t i = 1; i < qcores.size(); i++) {
-
-            if (qcores[i].get_col() == qcores[0].get_col() 
-                && qcores[i].get_row() == qcores[0].get_row()) {
-
-                    qcores.erase(qcores.begin() + i);
-
+    size_t i = 0;
+    while (i < qcores.size()) {
+        for (size_t j = i + 1; j < qcores.size();) {
+            if (qcores[j].get_col() == qcores[i].get_col() && qcores[j].get_row() == qcores[i].get_row()) {
+                qcores.erase(qcores.begin() + j);
+            }
+            else {
+                ++j;
             }
         }
-
-        list.push_back(qcores[0]);
-        qcores.erase(qcores.begin());
-
+        list.push_back(qcores[i]);
+        ++i;
     }
 
     return list;
@@ -76,7 +81,6 @@ std::vector<QCore> ReadoutChip::rem_duplicates(std::vector<QCore> qcores) {
 std::vector<QCore> ReadoutChip::organize_QCores(std::vector<QCore> qcores) {
 
     std::vector<QCore> organized_list = {};
-
     while (qcores.size() > 0) {
         int min = 0;
 
@@ -102,32 +106,22 @@ std::vector<QCore> ReadoutChip::organize_QCores(std::vector<QCore> qcores) {
 //Takes in an oranized list of qcores and sets the islast and isneighbor properties of those qcores
 std::vector<QCore> link_QCores(std::vector<QCore> qcores) {
 
-    std::cout << "In link_QCores size " << qcores.size() << std::endl;
-
 	for (size_t i = 1; i < qcores.size(); i++) {
-
 		if (qcores[i].get_row() == qcores[i - 1].get_row()) {
-
 			qcores[i].setIsNeighbour(true);
-
 		}
 	}
 
+    //.size() is unsigned so if size is zero size()-1 is a huge number
+    //hence this needs to be protected
 	if (qcores.size()>0) {
 
-        //size is unsigned so if size is zero size()-1 is a huge number...
-        //Hence this needs to be procted
 	    for (size_t i = 0; i < qcores.size() - 1; i++) {
-	    
             if (qcores[i].get_col() != qcores[i + 1].get_col()) {
-
                 qcores[i].setIsLast(true);
-
             }
         }
-
         qcores[qcores.size() - 1].setIsLast(true);
-
     }
 
 	return qcores;
@@ -137,7 +131,6 @@ std::vector<QCore> link_QCores(std::vector<QCore> qcores) {
 //Takes in list of hits and organizes them into the 4x4 QCores that contains them
 std::vector<QCore> ReadoutChip::get_organized_QCores() {
 
-    std::cout << "In get_organized_QCores" <<std::endl;
     std::vector<QCore> qcores = {};
 
     for (const auto& hit:hitList) {
@@ -154,7 +147,6 @@ std::vector<bool> ReadoutChip::get_chip_code() {
 
     if (hitList.size() > 0) {        
         std::vector<QCore> qcores = get_organized_QCores();
-
 		bool is_new_col = true;
 
         for (auto& qcore:qcores) {

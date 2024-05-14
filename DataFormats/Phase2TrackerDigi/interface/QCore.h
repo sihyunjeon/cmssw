@@ -6,6 +6,7 @@ class QCore{
 
     private:
         std::vector<int> adcs;
+        std::vector<int> hits;
         bool islast_;
         bool isneighbour_;
         int rocid_;
@@ -19,7 +20,8 @@ class QCore{
                 int qcrow_in,
                 bool isneighbour_in,
                 bool islast_in,
-                std::vector<int> adcs_in
+                std::vector<int> adcs_in,
+                std::vector<int> hits_in
         );
 
         QCore() {
@@ -58,6 +60,7 @@ class QCore{
         }
   
         std::vector<bool> getHitmap();
+        std::vector<int> getADCs();
         std::vector<bool> encodeQCore(bool is_new_col);
   
         const bool operator<(const QCore& other) {
