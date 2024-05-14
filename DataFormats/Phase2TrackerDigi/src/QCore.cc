@@ -10,7 +10,8 @@ QCore::QCore(
         int qcrow_in, 
         bool isneighbour_in, 
         bool islast_in, 
-        std::vector<int> adcs_in) {
+        std::vector<int> adcs_in,
+        std::vector<int> hits_in) {
 
             rocid_ = rocid;
             ccol = ccol_in;
@@ -18,6 +19,7 @@ QCore::QCore(
             isneighbour_ = isneighbour_in;
             islast_ = islast_in;
             adcs = adcs_in;
+            hits = hits_in;
 
 }
 
@@ -25,7 +27,6 @@ QCore::QCore(
 std::vector<bool> QCore::toRocCoordinates(std::vector<bool>& hitmap) {
 
 	std::vector<bool> ROC_hitmap(16, 0);
-	//ROC_hitmap.reserve(hitmap.size());
 
 	for(size_t i = 0; i < hitmap.size(); i++) {
 
@@ -55,19 +56,27 @@ std::vector<bool> QCore::toRocCoordinates(std::vector<bool>& hitmap) {
 
 //Returns the hitmap for the QCore in the 4x4 sensor coordinates
 std::vector<bool> QCore::getHitmap() {
-    	//assert(adcs.size()==16);
     
 	std::vector<bool> hitmap = {};
 
-    	//hitmap.reserve(16);
-    for (auto adc : adcs) {
-        hitmap.push_back(adc > 0);
+    for (auto hit : hits) {
+        hitmap.push_back(hit > 0);
     }
-	//assert(hitmap.size()==16);
 
     return toRocCoordinates(hitmap);
-
 }
+
+std::vector<int> QCore::getADCs() {
+
+    std::vector<int> adcmap = {};
+
+    for (auto adc : adcs) {
+        adcmap.push_back(adc);
+    }
+
+    return adcmap;
+}
+
 
 //Converts an integer into binary, and formats it with the given length
 std::vector<bool> QCore::intToBinary(int num, int length) {
@@ -176,10 +185,8 @@ std::vector<bool> QCore::encodeQCore(bool is_new_col) {
 	code.insert(code.end(), hitmap_code.begin(), hitmap_code.end());
 
 	for(auto adc : adcs) {
-		if(adc != 0) {
-			std::vector<bool> adc_code = intToBinary(adc, 4);
-			code.insert(code.end(), adc_code.begin(), adc_code.end());
-		}
+		std::vector<bool> adc_code = intToBinary(adc, 4);
+		code.insert(code.end(), adc_code.begin(), adc_code.end());
 	}
 
 	return code;	
