@@ -1,4 +1,8 @@
 <library file="plugins/*.cc" name="testEventFilterPhase2TrackerRawToDigiPlugins">
+<<<<<<< HEAD
+=======
+  <use name="clhep"/>
+>>>>>>> shjeon/feature/CMSSW_13_3_3_qcore_producer
   <use name="DataFormats/Common"/>
   <use name="FWCore/Framework"/>
   <use name="FWCore/MessageLogger"/>
@@ -6,5 +10,21 @@
   <use name="FWCore/PluginManager"/>
   <use name="rootcore"/>
   <use name="EventFilter/Phase2TrackerRawToDigi"/>
+<<<<<<< HEAD
+=======
+  <use name="FWCore/ServiceRegistry"/>
+  <use name="CommonTools/UtilAlgos"/>
+  <use name="DataFormats/TrackReco"/>
+  <use name="SimTracker/TrackerHitAssociation"/>
+  <use name="Geometry/Records"/>
+  <use name="Geometry/TrackerGeometryBuilder"/>
+  <use name="TrackingTools/TransientTrack"/>
+  <use name="TrackingTools/TransientTrackingRecHit"/>
+  <use name="TrackingTools/TrajectoryState"/>
+  <use name="TrackingTools/TrackAssociator"/>
+  <use name="TrackingTools/Records"/>
+  <use name="TrackingTools/TrackFitters"/>
+  <use name="RecoTracker/TransientTrackingRecHit"/>
+>>>>>>> shjeon/feature/CMSSW_13_3_3_qcore_producer
   <flags EDM_PLUGIN="1"/>
 </library>
