@@ -1,14 +1,14 @@
-#ifndef HIT_H
-#define HIT_H
+#ifndef DataFormats_Phase2TrackerDigi_DigiHitRecord_H
+#define DataFormats_Phase2TrackerDigi_DigiHitRecord_H
 
-class Hit {
+class DigiHitRecord {
 private:
   int row_;
   int col_;
   int adc_;
 
 public:
-  Hit(int row_num, int col_num, int adc_num);
+  DigiHitRecord(int row_num, int col_num, int adc_num);
 
   void set_row(int row) { row_ = row; }
   void set_col(int col) { col_ = col; }
@@ -18,4 +18,4 @@ public:
   int adc() const { return adc_; }
 };
 
-#endif  // HIT_H
+#endif  // DataFormats_Phase2TrackerDigi_DigiHitRecord_H

@@ -22,7 +22,7 @@
 #include "DataFormats/Math/interface/Point3D.h"
 #include "DataFormats/Common/interface/DetSetVector.h"
 #include "DataFormats/DetId/interface/DetId.h"
-#include "DataFormats/Phase2TrackerDigi/interface/Hit.h"
+#include "DataFormats/Phase2TrackerDigi/interface/DigiHitRecord.h"
 #include "DataFormats/Phase2TrackerDigi/interface/QCore.h"
 #include "DataFormats/Phase2TrackerDigi/interface/ReadoutChip.h"
 #include "DataFormats/Phase2TrackerDigi/interface/ROCBitStream.h"
@@ -60,7 +60,7 @@ PixelQCoreProducer::PixelQCoreProducer(const edm::ParameterSet& iConfig)
 
 PixelQCoreProducer::~PixelQCoreProducer() {}
 
-Hit updateHitCoordinatesForLargePixels(Hit& hit) {
+DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
   /*
         In-place modification of Hit coordinates to take into account large pixels
         Hits corresponding to large pixels are remapped so they lie on the boundary of the chip
@@ -110,7 +110,7 @@ Hit updateHitCoordinatesForLargePixels(Hit& hit) {
   return hit;
 }
 
-std::vector<Hit> adjustEdges(std::vector<Hit> hitList) {
+std::vector<DigiHitRecord> adjustEdges(std::vector<DigiHitRecord> hitList) {
   /*
         In-place modification of Hit coordinates to take into account large pixels
     */
@@ -118,9 +118,9 @@ std::vector<Hit> adjustEdges(std::vector<Hit> hitList) {
   return hitList;
 }
 
-std::vector<ReadoutChip> splitByChip(std::vector<Hit> hitList) {
+std::vector<ReadoutChip> splitByChip(std::vector<DigiHitRecord> hitList) {
   // Split the hit list by read out chip
-  std::vector<std::vector<Hit>> hits_per_chip(4);
+  std::vector<std::vector<DigiHitRecord>> hits_per_chip(4);
   for (auto hit : hitList) {
     int chip_index = (hit.col() < 216) ? 0 : 1;
     if (hit.row() >= 672) {
@@ -138,8 +138,8 @@ std::vector<ReadoutChip> splitByChip(std::vector<Hit> hitList) {
   return chips;
 }
 
-std::vector<ReadoutChip> processHits(std::vector<Hit> hitList) {
-  std::vector<Hit> newHitList;
+std::vector<ReadoutChip> processHits(std::vector<DigiHitRecord> hitList) {
+  std::vector<DigiHitRecord> newHitList;
   newHitList = adjustEdges(hitList);
 
   std::vector<ReadoutChip> chips = splitByChip(newHitList);
@@ -170,7 +170,7 @@ void PixelQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
   for (iterDet = pixelDigiHandle->begin(); iterDet != pixelDigiHandle->end(); iterDet++) {
     DetId tkId = iterDet->id;
     edm::DetSet<PixelDigi> theDigis = (*pixelDigiHandle)[tkId];
-    std::vector<Hit> hitlist;
+    std::vector<DigiHitRecord> hitlist;
     std::vector<int> id;
 
     if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
@@ -188,7 +188,7 @@ void PixelQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
     }
 
     for (auto iterDigi = theDigis.begin(); iterDigi != theDigis.end(); ++iterDigi) {
-      hitlist.emplace_back(Hit(iterDigi->row(), iterDigi->column(), iterDigi->adc()));
+      hitlist.emplace_back(DigiHitRecord(iterDigi->row(), iterDigi->column(), iterDigi->adc()));
     }
 
     std::vector<ReadoutChip> chips = processHits(hitlist);

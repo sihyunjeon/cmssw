@@ -1,5 +1,5 @@
-#ifndef ROCBITSTREAM_H
-#define ROCBITSTREAM_H
+#ifndef DataFormats_Phase2TrackerDigi_ROCBitStream_H
+#define DataFormats_Phase2TrackerDigi_ROCBitStream_H
 #include <vector>
 
 class ROCBitStream {
@@ -21,4 +21,4 @@ private:
   int rocid_;
   std::vector<bool> bitstream_;
 };
-#endif  // ROCBITSTREAM_H
+#endif  // DataFormats_Phase2TrackerDigi_ROCBitStream_H

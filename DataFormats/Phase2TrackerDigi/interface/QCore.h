@@ -1,5 +1,5 @@
-#ifndef QCORE_H
-#define QCORE_H
+#ifndef DataFormats_Phase2TrackerDigi_QCore_H
+#define DataFormats_Phase2TrackerDigi_QCore_H
 #include <vector>
 
 class QCore {
@@ -57,4 +57,4 @@ private:
   std::vector<bool> getHitmapCode(std::vector<bool> hitmap);
 };
 
-#endif  // QCORE_H
+#endif  // DataFormats_Phase2TrackerDigi_QCore_H

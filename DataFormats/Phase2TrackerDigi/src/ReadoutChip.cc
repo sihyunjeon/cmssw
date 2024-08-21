@@ -4,9 +4,9 @@
 #include <iostream>
 #include "DataFormats/Phase2TrackerDigi/interface/QCore.h"
 #include "DataFormats/Phase2TrackerDigi/interface/ReadoutChip.h"
-#include "DataFormats/Phase2TrackerDigi/interface/Hit.h"
+#include "DataFormats/Phase2TrackerDigi/interface/DigiHitRecord.h"
 
-ReadoutChip::ReadoutChip(int rocnum, std::vector<Hit> hl) {
+ReadoutChip::ReadoutChip(int rocnum, std::vector<DigiHitRecord> hl) {
   hitList = hl;
   rocnum_ = rocnum;
 }
@@ -14,14 +14,14 @@ ReadoutChip::ReadoutChip(int rocnum, std::vector<Hit> hl) {
 unsigned int ReadoutChip::size() { return hitList.size(); }
 
 //Returns the position (row,col) of the 4x4 QCores that contains a hit
-std::pair<int, int> ReadoutChip::get_QCore_pos(Hit hit) {
+std::pair<int, int> ReadoutChip::get_QCore_pos(DigiHitRecord hit) {
   int row = hit.row() / 4;
   int col = hit.col() / 4;
   return {row, col};
 }
 
 //Takes a hit and returns the 4x4 QCore that contains it
-QCore ReadoutChip::get_QCore_from_hit(Hit pixel) {
+QCore ReadoutChip::get_QCore_from_hit(DigiHitRecord pixel) {
   std::vector<int> adcs(16, 0), hits(16, 0);
   std::pair<int, int> pos = get_QCore_pos(pixel);
 
