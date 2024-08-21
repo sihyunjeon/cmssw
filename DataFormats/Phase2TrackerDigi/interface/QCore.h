@@ -2,59 +2,59 @@
 #define QCORE_H
 #include <vector>
 
-class QCore{
+class QCore {
+private:
+  std::vector<int> adcs;
+  std::vector<int> hits;
+  bool islast_;
+  bool isneighbour_;
+  int rocid_;
+  int ccol;
+  int qcrow;
 
-    private:
-        std::vector<int> adcs;
-        std::vector<int> hits;
-        bool islast_;
-        bool isneighbour_;
-        int rocid_;
-        int ccol;
-        int qcrow;
+public:
+  QCore(int rocid,
+        int ccol_in,
+        int qcrow_in,
+        bool isneighbour_in,
+        bool islast_in,
+        std::vector<int> adcs_in,
+        std::vector<int> hits_in);
 
-    public:
-        QCore(
-            int rocid,
-            int ccol_in,
-            int qcrow_in,
-            bool isneighbour_in,
-            bool islast_in,
-            std::vector<int> adcs_in,
-            std::vector<int> hits_in
-        );
+  QCore() {
+    rocid_ = -1;
+    islast_ = false;
+    isneighbour_ = false;
+    ccol = -1;
+    qcrow = -1;
+  }
 
-        QCore() {
-            rocid_ = -1;
-            islast_ = false;
-            isneighbour_ = false;
-            ccol = -1;
-            qcrow = -1;
-        }
+  void setIsLast(bool islast) { islast_ = islast; }
+  bool islast() const { return islast_; }
 
-        void setIsLast(bool islast) { islast_ = islast; }
-        bool islast() const { return islast_; }
+  void setIsNeighbour(bool isneighbour) { isneighbour_ = isneighbour; }
 
-        void setIsNeighbour(bool isneighbour) { isneighbour_ = isneighbour; }
+  int rocid() const { return rocid_; }
+  int get_col() const { return ccol; }
+  int get_row() const { return qcrow; }
 
-        int rocid() const { return rocid_; }
-        int get_col() const { return ccol; }
-        int get_row() const { return qcrow; }
-  
-        std::vector<bool> getHitmap();
-        std::vector<int> getADCs();
-        std::vector<bool> encodeQCore(bool is_new_col);
-  
-        const bool operator<(const QCore& other) {
-            if (ccol==other.ccol) { return (ccol < other.ccol); }
-            else { return (qcrow < other.qcrow); }
-        }
+  std::vector<bool> getHitmap();
+  std::vector<int> getADCs();
+  std::vector<bool> encodeQCore(bool is_new_col);
 
-    private:
-        std::vector<bool> toRocCoordinates(std::vector<bool>& hitmap);
-        std::vector<bool> intToBinary(int num, int length);
-        bool containsHit(std::vector<bool>& hitmap);
-        std::vector<bool> getHitmapCode(std::vector<bool> hitmap);
+  const bool operator<(const QCore& other) {
+    if (ccol == other.ccol) {
+      return (ccol < other.ccol);
+    } else {
+      return (qcrow < other.qcrow);
+    }
+  }
+
+private:
+  std::vector<bool> toRocCoordinates(std::vector<bool>& hitmap);
+  std::vector<bool> intToBinary(int num, int length);
+  bool containsHit(std::vector<bool>& hitmap);
+  std::vector<bool> getHitmapCode(std::vector<bool> hitmap);
 };
 
-#endif // QCORE_H
+#endif  // QCORE_H

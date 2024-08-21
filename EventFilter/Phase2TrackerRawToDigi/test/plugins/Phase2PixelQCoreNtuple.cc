@@ -120,7 +120,7 @@ protected:
                    const GeomDet* PixGeom,
                    const TrajectoryStateOnSurface tsos);
 
-  void processHits(const std::vector<std::pair<int, int> >& hitList);
+  void processHits(const std::vector<std::pair<int, int>>& hitList);
 
   std::pair<float, float> computeAnglesFromDetPosition(const SiPixelCluster& cl,
                                                        const PixelTopology& top,
@@ -129,11 +129,11 @@ protected:
 private:
   edm::ParameterSet const conf_;
   edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> tTopoToken_;
-  edm::ESGetToken<TrackerGeometry,TrackerDigiGeometryRecord> geomToken_;
+  edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> geomToken_;
   TrackerHitAssociator::Config trackerHitAssociatorConfig_;
   edm::EDGetTokenT<edmNew::DetSetVector<SiPixelRecHit>> pixelRecHits_token_;
-  edm::EDGetTokenT<edm::DetSetVector<QCore> > qcore_token_;
-  edm::EDGetTokenT<edm::DetSetVector<ROCBitStream> > bitstream_token_;
+  edm::EDGetTokenT<edm::DetSetVector<QCore>> qcore_token_;
+  edm::EDGetTokenT<edm::DetSetVector<ROCBitStream>> bitstream_token_;
   edm::EDGetTokenT<edm::DetSetVector<PixelDigi>> pixelDigi_token_;
   edm::EDGetTokenT<edm::View<reco::Track>> recoTracks_token_;
   edm::EDGetTokenT<TrajTrackAssociationCollection> tta_token_;
@@ -208,20 +208,19 @@ private:
 };
 
 Phase2PixelQCoreNtuple::Phase2PixelQCoreNtuple(edm::ParameterSet const& conf)
-  :   tTopoToken_(esConsumes()),
+    : tTopoToken_(esConsumes()),
       geomToken_(esConsumes()),
       trackerHitAssociatorConfig_(conf, consumesCollector()),
       pixelRecHits_token_(consumes<edmNew::DetSetVector<SiPixelRecHit>>(edm::InputTag("siPixelRecHits"))),
-      qcore_token_(consumes<edm::DetSetVector<QCore> >(edm::InputTag("PixelQCore"))),
-      bitstream_token_(consumes<edm::DetSetVector<ROCBitStream> >(edm::InputTag("PixelQCore"))),
+      qcore_token_(consumes<edm::DetSetVector<QCore>>(edm::InputTag("PixelQCore"))),
+      bitstream_token_(consumes<edm::DetSetVector<ROCBitStream>>(edm::InputTag("PixelQCore"))),
       pixelDigi_token_(consumes<edm::DetSetVector<PixelDigi>>(conf.getParameter<edm::InputTag>("siPixelDigi"))),
       recoTracks_token_(consumes<edm::View<reco::Track>>(conf.getParameter<edm::InputTag>("trackProducer"))),
       tta_token_(consumes<TrajTrackAssociationCollection>(conf.getParameter<InputTag>("trajectoryInput"))),
       verbose_(conf.getUntrackedParameter<bool>("verbose", false)),
       picky_(conf.getUntrackedParameter<bool>("picky", false)),
       pixeltree_(0),
-      pixeltreeOnTrack_(0)
-{}
+      pixeltreeOnTrack_(0) {}
 
 Phase2PixelQCoreNtuple::~Phase2PixelQCoreNtuple() {}
 
@@ -348,7 +347,6 @@ void Phase2PixelQCoreNtuple::beginJob() {
 
 // Functions that gets called by framework every event
 void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup& es) {
-
   //Retrieve tracker topology from geometry
   const TrackerTopology* const tTopo = &es.getData(tTopoToken_);
 
@@ -361,43 +359,33 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
   edm::Handle<SiPixelRecHitCollection> recHitColl;
   e.getByToken(pixelRecHits_token_, recHitColl);
 
-  edm::Handle<edm::DetSetVector<QCore> > aQCoreVector;
+  edm::Handle<edm::DetSetVector<QCore>> aQCoreVector;
   e.getByToken(qcore_token_, aQCoreVector);
 
-  edm::Handle<edm::DetSetVector<ROCBitStream> > aBitStreamVector;
+  edm::Handle<edm::DetSetVector<ROCBitStream>> aBitStreamVector;
   e.getByToken(bitstream_token_, aBitStreamVector);
 
   edm::DetSetVector<QCore>::const_iterator iterDet;
-  for ( iterDet = aQCoreVector->begin();
-        iterDet != aQCoreVector->end();
-        iterDet++ ) {
-
+  for (iterDet = aQCoreVector->begin(); iterDet != aQCoreVector->end(); iterDet++) {
     DetId tkId = iterDet->id;
 
-    edm::DetSet<QCore> theQCores = (*aQCoreVector)[ tkId ];
+    edm::DetSet<QCore> theQCores = (*aQCoreVector)[tkId];
 
     //std::cout << "QCORE DETID NEW : " << tkId.rawId() << std::endl;
 
-    for ( auto iterQCore = theQCores.begin();
-          iterQCore != theQCores.end();
-          ++iterQCore ) {
+    for (auto iterQCore = theQCores.begin(); iterQCore != theQCores.end(); ++iterQCore) {
     }
   }
 
   edm::DetSetVector<ROCBitStream>::const_iterator iterDetBitStream;
-  for ( iterDetBitStream = aBitStreamVector->begin();
-        iterDetBitStream != aBitStreamVector->end();
-        iterDetBitStream++ ) {
-
+  for (iterDetBitStream = aBitStreamVector->begin(); iterDetBitStream != aBitStreamVector->end(); iterDetBitStream++) {
     DetId tkId = iterDetBitStream->id;
 
-    edm::DetSet<ROCBitStream> theBitStreams = (*aBitStreamVector)[ tkId ];
+    edm::DetSet<ROCBitStream> theBitStreams = (*aBitStreamVector)[tkId];
 
     //std::cout << "BITSTREAM DETID : " << tkId.rawId() << std::endl;
 
-    for ( auto iterBitStream = theBitStreams.begin();
-          iterBitStream != theBitStreams.end();
-          ++iterBitStream ) {
+    for (auto iterBitStream = theBitStreams.begin(); iterBitStream != theBitStreams.end(); ++iterBitStream) {
       //std::cout << "BITSTREAM : " << iterBitStream->get_rocid() << " size = " << iterBitStream->get_bitstream().size() << std::endl;
     }
   }
@@ -405,7 +393,7 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
   // for finding matched simhit
   TrackerHitAssociator associate(e, trackerHitAssociatorConfig_);
 
-  edm::Handle<edm::DetSetVector<PixelDigi> > pixelDigiHandle;
+  edm::Handle<edm::DetSetVector<PixelDigi>> pixelDigiHandle;
   e.getByToken(pixelDigi_token_, pixelDigiHandle);
 
   /*
@@ -668,18 +656,18 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
 // Function for filling in all the rechits
 // I know it is lazy to pass everything, but I'm doing it anyway. -EB
 void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
-                                    const int subid,
-                                    const int layer_num,
-                                    const int ladder_num,
-                                    const int module_num,
-                                    const int disk_num,
-                                    const int blade_num,
-                                    const int panel_num,
-                                    const int side_num,
-                                    SiPixelRecHitCollection::DetSet::const_iterator pixeliter,
-                                    const int num_simhit,
-                                    const PSimHit* closest_simhit,
-                                    const GeomDet* PixGeom) {
+                                         const int subid,
+                                         const int layer_num,
+                                         const int ladder_num,
+                                         const int module_num,
+                                         const int disk_num,
+                                         const int blade_num,
+                                         const int panel_num,
+                                         const int side_num,
+                                         SiPixelRecHitCollection::DetSet::const_iterator pixeliter,
+                                         const int num_simhit,
+                                         const PSimHit* closest_simhit,
+                                         const GeomDet* PixGeom) {
   LocalPoint lp = pixeliter->localPosition();
   LocalError le = pixeliter->localPositionError();
 
@@ -775,26 +763,25 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
     // float cotalpha = sim_xdir/sim_zdir;
     // beta: angle with respect to local y axis in local (y,z) plane
     // float cotbeta = sim_ydir/sim_zdir;
-
   }
 }
 
 // Function for filling in on track rechits
 void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
-                                    const int subid,
-                                    const int layer_num,
-                                    const int ladder_num,
-                                    const int module_num,
-                                    const int disk_num,
-                                    const int blade_num,
-                                    const int panel_num,
-                                    const int side_num,
-                                    const TrackingRecHit* recHit,
-                                    const SiPixelRecHit* pixHit,
-                                    const int num_simhit,
-                                    const PSimHit* closest_simhit,
-                                    const GeomDet* PixGeom,
-                                    const TrajectoryStateOnSurface tsos) {
+                                         const int subid,
+                                         const int layer_num,
+                                         const int ladder_num,
+                                         const int module_num,
+                                         const int disk_num,
+                                         const int blade_num,
+                                         const int panel_num,
+                                         const int side_num,
+                                         const TrackingRecHit* recHit,
+                                         const SiPixelRecHit* pixHit,
+                                         const int num_simhit,
+                                         const PSimHit* closest_simhit,
+                                         const GeomDet* PixGeom,
+                                         const TrajectoryStateOnSurface tsos) {
   LocalPoint lp = recHit->localPosition();
   LocalError le = recHit->localPositionError();
 
@@ -894,7 +881,6 @@ void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
     // float cotalpha = sim_xdir/sim_zdir;
     // beta: angle with respect to local y axis in local (y,z) plane
     // float cotbeta = sim_ydir/sim_zdir;
-
   }
 }
 
@@ -955,8 +941,8 @@ void Phase2PixelQCoreNtuple::RecHit::init() {
   fDgN = 0;
 }
 std::pair<float, float> Phase2PixelQCoreNtuple::computeAnglesFromDetPosition(const SiPixelCluster& cl,
-                                                                        const PixelTopology& theTopol,
-                                                                        const GeomDetUnit& theDet) const {
+                                                                             const PixelTopology& theTopol,
+                                                                             const GeomDetUnit& theDet) const {
   // get cluster center of gravity (of charge)
   float xcenter = cl.x();
   float ycenter = cl.y();
@@ -980,11 +966,7 @@ std::pair<float, float> Phase2PixelQCoreNtuple::computeAnglesFromDetPosition(con
   return std::make_pair(cotalpha_, cotbeta_);
 }
 
-void Phase2PixelQCoreNtuple::processHits(const std::vector<std::pair<int, int> >& hitList) {
-
-}
-
+void Phase2PixelQCoreNtuple::processHits(const std::vector<std::pair<int, int>>& hitList) {}
 
 //define this as a plug-in
 DEFINE_FWK_MODULE(Phase2PixelQCoreNtuple);
-
