@@ -34,31 +34,40 @@
 
 class PixelQCoreProducer : public edm::stream::EDProducer<> {
 public:
-  explicit PixelQCoreProducer(const edm::ParameterSet&);
-  ~PixelQCoreProducer();
+  PixelQCoreProducer(const edm::ParameterSet&);
+  ~PixelQCoreProducer() override = default;
 
 private:
   virtual void beginJob(const edm::EventSetup&);
   virtual void produce(edm::Event&, const edm::EventSetup&);
   virtual void endJob();
 
-  edm::InputTag src_;
-  edm::EDGetTokenT<edm::DetSetVector<PixelDigi>> pixelDigi_token_;
-  edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> const tTopoToken_;
+  const edm::InputTag src_;
+  const edm::EDGetTokenT<edm::DetSetVector<PixelDigi>> pixelDigi_token_;
+  const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> tTopoToken_;
   typedef math::XYZPointD Point;
   typedef std::vector<Point> PointCollection;
 };
 
 PixelQCoreProducer::PixelQCoreProducer(const edm::ParameterSet& iConfig)
-    : tTopoToken_(esConsumes<TrackerTopology, TrackerTopologyRcd>()) {
-  src_ = iConfig.getParameter<edm::InputTag>("src");
-  pixelDigi_token_ = consumes<edm::DetSetVector<PixelDigi>>(iConfig.getParameter<edm::InputTag>("siPixelDigi"));
+    : src_(iConfig.getParameter<edm::InputTag>("src")),
+      pixelDigi_token_(consumes<edm::DetSetVector<PixelDigi>>(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
+      tTopoToken_(esConsumes<TrackerTopology, TrackerTopologyRcd>()) {
 
   produces<edm::DetSetVector<QCore>>();
   produces<edm::DetSetVector<ROCBitStream>>();
 }
 
-PixelQCoreProducer::~PixelQCoreProducer() {}
+namespace{
+  // Dimension for 2 chips module = 672 X 434 = 672 X (216 + 1 + 216 + 1)
+  // Dimension for 4 chips module = 1354 X 434 = (672 + 5 + 672 + 5) X (216 + 1 + 216 + 1)
+  // Spacing 1 in column and 5 in row is introduced for each chip in between
+  // if neighboring chip exists
+  const int kQCoresInChipRow = (672);
+  const int kQCoresInChipColumn = (216);
+  const int kQCoresInChipRowGap = (5);
+  const int kQCoresInChipColumnGap = (10);
+}
 
 DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
   /*
@@ -76,32 +85,27 @@ DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
   int updated_row = 0;
   int updated_col = 0;
 
-  // Dimension for 2 chips module = 672 X 434 = 672 X (216 + 1 + 216 + 1)
-  // Dimension for 4 chips module = 1354 X 434 = (672 + 5 + 672 + 5) X (216 + 1 + 216 + 1)
-  // Spacing 1 in column and 5 in row is introduced for each chip in between
-  // if neighboring chip exists
-
   // Remapping of the row coordinate
-  if (row < 672) {
+  if (row < kQCoresInChipRow) {
     updated_row = row;
-  } else if (row <= 676) {
-    updated_row = 671;
+  } else if (row < (kQCoresInChipRow + kQCoresInChipRowGap)) {
+    updated_row = kQCoresInChipRow-1;
   }  // This will be ignored for 2 chips module
-  else if (row <= 681) {
-    updated_row = 672;
+  else if (row < (kQCoresInChipRow + 2*kQCoresInChipRowGap)) {
+    updated_row = kQCoresInChipRow;
   } else {
-    updated_row = hit.row() - 10;
+    updated_row = (hit.row() - 2*kQCoresInChipRowGap);
   }
 
   // Remapping of the column coordinate
-  if (col < 216) {
+  if (col < kQCoresInChipColumn) {
     updated_col = col;
-  } else if (col <= 216) {
-    updated_col = 215;
-  } else if (col <= 217) {
-    updated_col = 216;
+  } else if (col < kQCoresInChipColumn + kQCoresInChipColumnGap) {
+    updated_col = kQCoresInChipColumn - kQCoresInChipColumnGap;
+  } else if (col < (kQCoresInChipColumn + 2*kQCoresInChipColumn)) {
+    updated_col = kQCoresInChipColumn;
   } else {
-    updated_col = hit.col() - 2;
+    updated_col = (hit.col() - 2*kQCoresInChipColumnGap);
   }
 
   hit.set_row(updated_row);
@@ -122,8 +126,8 @@ std::vector<ReadoutChip> splitByChip(std::vector<DigiHitRecord> hitList) {
   // Split the hit list by read out chip
   std::vector<std::vector<DigiHitRecord>> hits_per_chip(4);
   for (auto hit : hitList) {
-    int chip_index = (hit.col() < 216) ? 0 : 1;
-    if (hit.row() >= 672) {
+    int chip_index = (hit.col() < kQCoresInChipColumn) ? 0 : 1;
+    if (hit.row() >= kQCoresInChipRow) {
       chip_index += 2;
     }
     hits_per_chip[chip_index].push_back(hit);
