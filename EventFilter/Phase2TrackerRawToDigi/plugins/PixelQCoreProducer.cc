@@ -190,10 +190,8 @@ void PixelQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
         DetSet<ROCBitStream> DetSetBitStream(tkId);
 
         for(size_t i = 0; i < chips.size(); i++) {
-
             ReadoutChip chip = chips[i];
             std::vector<QCore> qcores = chip.get_organized_QCores();
-      
             for (auto& qcore:qcores) {
                 DetSetQCores.push_back(qcore);
             }
@@ -205,16 +203,14 @@ void PixelQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
         aBitStreamVector->insert(DetSetBitStream);
         aQCoreVector->insert(DetSetQCores);
     }
-    
+
     iEvent.put( std::move(aQCoreVector) );
     iEvent.put( std::move(aBitStreamVector) );
 }
 
-void
-PixelQCoreProducer::beginJob(edm::EventSetup const&){}
+void PixelQCoreProducer::beginJob(edm::EventSetup const&){}
 
-void
-PixelQCoreProducer::endJob(){}
+void PixelQCoreProducer::endJob(){}
 
 DEFINE_FWK_MODULE(PixelQCoreProducer);
 

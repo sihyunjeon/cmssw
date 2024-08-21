@@ -1,6 +1,5 @@
 import FWCore.ParameterSet.Config as cms
 
-
 from Configuration.Eras.Era_Phase2C17I13M9_cff import Phase2C17I13M9
 process = cms.Process('USER',Phase2C17I13M9)
 
@@ -25,12 +24,12 @@ process.load('Configuration.StandardSequences.EndOfProcess_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(1)
+    input = cms.untracked.int32(3)
 )
 
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
-        "file:/eos/cms/store/relval/CMSSW_13_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_131X_mcRun4_realistic_v2_PDMVRELVALS146-v6/2580000/0147ae96-1577-4b6f-9ef7-e605461931e6.root"
+"file:/eos/cms/store/relval/CMSSW_13_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_131X_mcRun4_realistic_v2_PDMVRELVALS146-v7/2580000/1320a7f8-658e-48b4-80cd-ace713889f8c.root"
     )
 )
 
@@ -50,44 +49,70 @@ process.configurationMetadata = cms.untracked.PSet(
 process.load("Validation.RecoVertex.mcverticesanalyzer_cfi")
 process.mcverticesanalyzer.pileupSummaryCollection = cms.InputTag("addPileupInfo","","HLT")
 
-process.PixelQCore = cms.EDProducer('PixelQCoreProducer', src=cms.InputTag('generalTracks'), siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel"))
-
+process.PixelQCore = cms.EDProducer('PixelQCoreProducer', src = cms.InputTag("generalTracks"), siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel"))
 
 # # # -- Trajectory producer
 process.load("RecoTracker.TrackProducer.TrackRefitters_cff")
-process.TrackRefitter.src = 'generalTracks'
+process.TrackRefitter.src = "generalTracks"
 process.TrackRefitter.NavigationSchool = ""
+
+process.ReadLocalMeasurement = cms.EDAnalyzer("Phase2PixelQCoreNtuple",
+                                              trackProducer = cms.InputTag("generalTracks"),
+                                              trajectoryInput = cms.InputTag('TrackRefitter::USER'),
+                                              #verbose = cms.untracked.bool(True),
+                                              #picky = cms.untracked.bool(False),
+                                              ### for using track hit association
+                                              associatePixel = cms.bool(True),
+                                              associateStrip = cms.bool(False),
+                                              associateRecoTracks = cms.bool(False),
+                                              ROUList = cms.vstring('TrackerHitsPixelBarrelLowTof',
+                                                                    'TrackerHitsPixelBarrelHighTof',
+                                                                    'TrackerHitsPixelEndcapLowTof',
+                                                                    'TrackerHitsPixelEndcapHighTof'),
+                                              ttrhBuilder = cms.string("WithTrackAngle"),
+                                              usePhase2Tracker = cms.bool(True),
+                                              pixelSimLinkSrc = cms.InputTag("simSiPixelDigis", "Pixel"),
+                                              siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel"),
+                                              IntTag = cms.InputTag("TrackTrackPoints","integer"),
+                                              phase2TrackerSimLinkSrc = cms.InputTag("simSiPixelDigis", "Tracker")
+                                          )
+
 
 # Additional output definition
 
 # Other statements
 process.mix.digitizers = cms.PSet(process.theDigitizersValid)
-
 # This pset is specific for producing simulated events for the designers of the PROC (InnerTracker)
-# They need pixel RecHits where the charge is stored with high-granularity and large dinamic range
+# They need pixel RecHits where the charge is stored with high-granularity and large dynamic range
 
 from Configuration.AlCa.GlobalTag import GlobalTag
 process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic_T30', '')
 
 # Path and EndPath definitions
 process.digitisation_step = cms.Path(process.pdigi_valid)
-#process.L1simulation_step = cms.Path(process.SimL1Emulator)
-#process.L1TrackTrigger_step = cms.Path(process.L1TrackTrigger)
+process.L1simulation_step = cms.Path(process.SimL1Emulator)
+process.L1TrackTrigger_step = cms.Path(process.L1TrackTrigger)
 process.digi2raw_step = cms.Path(process.DigiToRaw)
 process.raw2digi_step = cms.Path(process.RawToDigi)
-#process.L1Reco_step = cms.Path(process.L1Reco)
-#process.reconstruction_step = cms.Path(process.reconstruction)
-#process.user_step = cms.Path(process.TrackRefitter * process.PixelQCore)
-process.user_step = cms.Path(process.PixelQCore)
+process.L1Reco_step = cms.Path(process.L1Reco)
+process.reconstruction_step = cms.Path(process.reconstruction)
+#process.user_step = cms.Path(process.TrackRefitter * process.PixelQCore * process.ReadLocalMeasurement * process.mcverticesanalyzer)
+process.user_step = cms.Path(process.TrackRefitter * process.PixelQCore * process.ReadLocalMeasurement)
 process.endjob_step = cms.EndPath(process.endOfProcess)
-#process.FEVTDEBUGHLToutput_step = cms.EndPath(process.FEVTDEBUGHLToutput)
 
 # Schedule definition
-#process.schedule = cms.Schedule(process.digitisation_step, process.endjob_step)
-#process.schedule = cms.Schedule(process.digitisation_step,process.L1simulation_step,process.L1TrackTrigger_step,process.digi2raw_step)
-#process.schedule = cms.Schedule(process.digitisation_step, process.digi2raw_step, process.raw2digi_step)
-process.schedule.extend([process.user_step, process.endjob_step])
+process.schedule = cms.Schedule(process.digitisation_step,process.L1simulation_step,process.L1TrackTrigger_step,process.digi2raw_step)
+process.schedule.extend([process.raw2digi_step,process.L1Reco_step,process.reconstruction_step,process.user_step,process.endjob_step])
 
+# Have logErrorHarvester wait for the same EDProducers to finish as those providing data for the OutputModule
+from FWCore.Modules.logErrorHarvester_cff import customiseLogErrorHarvesterUsingOutputCommands
+process = customiseLogErrorHarvesterUsingOutputCommands(process)
+# Add early deletion of temporary data products to reduce peak memory need
+from Configuration.StandardSequences.earlyDeleteSettings_cff import customiseEarlyDelete
+process = customiseEarlyDelete(process)
+
+# End adding early deletion
 process.TFileService = cms.Service('TFileService',
-    fileName = cms.string("output.root")
+    fileName = cms.string("pixelbitstream.root")
 )
+

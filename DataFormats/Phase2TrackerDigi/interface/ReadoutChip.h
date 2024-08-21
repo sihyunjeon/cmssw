@@ -3,8 +3,8 @@
 #include <vector>
 #include <utility>
 #include <string>
-#include "DataFormats/Phase2TrackerDigi/QCore.h"
-#include "DataFormats/Phase2TrackerDigi/Hit.h"
+#include "DataFormats/Phase2TrackerDigi/interface/QCore.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Hit.h"
 
 class ReadoutChip {
     std::vector<Hit> hitList;

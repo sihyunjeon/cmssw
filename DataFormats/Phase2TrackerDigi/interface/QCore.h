@@ -39,7 +39,7 @@ class QCore{
 
         int rocid() const { return rocid_; }
         int get_col() const { return ccol; }
-        int get_row() const { return qrow; }
+        int get_row() const { return qcrow; }
   
         std::vector<bool> getHitmap();
         std::vector<int> getADCs();
