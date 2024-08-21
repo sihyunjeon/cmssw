@@ -50,23 +50,8 @@ process.configurationMetadata = cms.untracked.PSet(
 process.load("Validation.RecoVertex.mcverticesanalyzer_cfi")
 process.mcverticesanalyzer.pileupSummaryCollection = cms.InputTag("addPileupInfo","","HLT")
 
-process.PixelQCore = cms.EDProducer('PixelQCoreProducer'
-                                    ,src    =cms.InputTag('generalTracks')
-                                    ,siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel")
-                            )
+process.PixelQCore = cms.EDProducer('PixelQCoreProducer', src=cms.InputTag('generalTracks'), siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel"))
 
-
-# Output definition
-
-#process.FEVTDEBUGHLToutput = cms.OutputModule("PoolOutputModule",
-#    dataset = cms.untracked.PSet(
-#        dataTier = cms.untracked.string('GEN-SIM-RECO'),
-#        filterName = cms.untracked.string('')
-#    ),
-#    fileName = cms.untracked.string('step2_DIGI_L1_L1TrackTrigger_DIGI2RAW_HLT_RAW2DIGI_L1Reco_RECO.root'),
-#    outputCommands = process.FEVTDEBUGHLTEventContent.outputCommands,
-#    splitLevel = cms.untracked.int32(0)
-#)
 
 # # # -- Trajectory producer
 process.load("RecoTracker.TrackProducer.TrackRefitters_cff")
@@ -101,34 +86,8 @@ process.endjob_step = cms.EndPath(process.endOfProcess)
 #process.schedule = cms.Schedule(process.digitisation_step, process.endjob_step)
 #process.schedule = cms.Schedule(process.digitisation_step,process.L1simulation_step,process.L1TrackTrigger_step,process.digi2raw_step)
 #process.schedule = cms.Schedule(process.digitisation_step, process.digi2raw_step, process.raw2digi_step)
-#process.schedule.extend(process.PixelQCore)
 process.schedule.extend([process.user_step, process.endjob_step])
-#process.schedule.extend(process.HLTSchedule)
-#process.schedule.extend([process.raw2digi_step,process.L1Reco_step,process.reconstruction_step,process.user_step,process.endjob_step])
-#process.p = cms.Path(process.PixelQCore)
-#from PhysicsTools.PatAlgos.tools.helpers import associatePatAlgosToolsTask
-#associatePatAlgosToolsTask(process)
 
-# customisation of the process.
-
-# Automatic addition of the customisation function from HLTrigger.Configuration.customizeHLTforMC
-#from HLTrigger.Configuration.customizeHLTforMC import customizeHLTforMC
-
-#call to customisation function customizeHLTforMC imported from HLTrigger.Configuration.customizeHLTforMC
-#process = customizeHLTforMC(process)
-
-# End of customisation functions
-
-# Customisation from command line
-
-#Have logErrorHarvester wait for the same EDProducers to finish as those providing data for the OutputModule
-#from FWCore.Modules.logErrorHarvester_cff import customiseLogErrorHarvesterUsingOutputCommands
-#process = customiseLogErrorHarvesterUsingOutputCommands(process)
-
-# Add early deletion of temporary data products to reduce peak memory need
-#from Configuration.StandardSequences.earlyDeleteSettings_cff import customiseEarlyDelete
-#process = customiseEarlyDelete(process)
-# End adding early deletion
 process.TFileService = cms.Service('TFileService',
-    fileName = cms.string("pixelbitstream.root")
+    fileName = cms.string("output.root")
 )
