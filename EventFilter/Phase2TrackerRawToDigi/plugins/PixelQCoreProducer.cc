@@ -53,12 +53,11 @@ PixelQCoreProducer::PixelQCoreProducer(const edm::ParameterSet& iConfig)
     : src_(iConfig.getParameter<edm::InputTag>("src")),
       pixelDigi_token_(consumes<edm::DetSetVector<PixelDigi>>(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
       tTopoToken_(esConsumes<TrackerTopology, TrackerTopologyRcd>()) {
-
   produces<edm::DetSetVector<QCore>>();
   produces<edm::DetSetVector<ROCBitStream>>();
 }
 
-namespace{
+namespace {
   // Dimension for 2 chips module = 672 X 434 = 672 X (216 + 1 + 216 + 1)
   // Dimension for 4 chips module = 1354 X 434 = (672 + 5 + 672 + 5) X (216 + 1 + 216 + 1)
   // Spacing 1 in column and 5 in row is introduced for each chip in between
@@ -67,7 +66,7 @@ namespace{
   const int kQCoresInChipColumn = (216);
   const int kQCoresInChipRowGap = (5);
   const int kQCoresInChipColumnGap = (10);
-}
+}  // namespace
 
 DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
   /*
@@ -89,12 +88,12 @@ DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
   if (row < kQCoresInChipRow) {
     updated_row = row;
   } else if (row < (kQCoresInChipRow + kQCoresInChipRowGap)) {
-    updated_row = kQCoresInChipRow-1;
+    updated_row = kQCoresInChipRow - 1;
   }  // This will be ignored for 2 chips module
-  else if (row < (kQCoresInChipRow + 2*kQCoresInChipRowGap)) {
+  else if (row < (kQCoresInChipRow + 2 * kQCoresInChipRowGap)) {
     updated_row = kQCoresInChipRow;
   } else {
-    updated_row = (hit.row() - 2*kQCoresInChipRowGap);
+    updated_row = (hit.row() - 2 * kQCoresInChipRowGap);
   }
 
   // Remapping of the column coordinate
@@ -102,10 +101,10 @@ DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
     updated_col = col;
   } else if (col < kQCoresInChipColumn + kQCoresInChipColumnGap) {
     updated_col = kQCoresInChipColumn - kQCoresInChipColumnGap;
-  } else if (col < (kQCoresInChipColumn + 2*kQCoresInChipColumn)) {
+  } else if (col < (kQCoresInChipColumn + 2 * kQCoresInChipColumn)) {
     updated_col = kQCoresInChipColumn;
   } else {
-    updated_col = (hit.col() - 2*kQCoresInChipColumnGap);
+    updated_col = (hit.col() - 2 * kQCoresInChipColumnGap);
   }
 
   hit.set_row(updated_row);
