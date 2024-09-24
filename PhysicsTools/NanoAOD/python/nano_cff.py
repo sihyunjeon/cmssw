@@ -18,6 +18,7 @@ from PhysicsTools.NanoAOD.ttbarCategorization_cff import *
 from PhysicsTools.NanoAOD.genparticles_cff import *
 from PhysicsTools.NanoAOD.particlelevel_cff import *
 from PhysicsTools.NanoAOD.genWeightsTable_cfi import *
+from PhysicsTools.NanoAOD.tauSpinnerTable_cfi import *
 from PhysicsTools.NanoAOD.genVertex_cff import *
 from PhysicsTools.NanoAOD.vertices_cff import *
 from PhysicsTools.NanoAOD.met_cff import *
@@ -96,7 +97,7 @@ nanoTableTaskFS = cms.Task(
     genParticleTask, particleLevelTask, jetMCTask, muonMCTask, electronMCTask, lowPtElectronMCTask, photonMCTask,
     tauMCTask, boostedTauMCTask,
     metMCTable, ttbarCatMCProducersTask, globalTablesMCTask, ttbarCategoryTableTask,
-    genWeightsTableTask, genVertexTablesTask, genParticleTablesTask, genProtonTablesTask, particleLevelTablesTask
+    genWeightsTableTask, genVertexTablesTask, genParticleTablesTask, genProtonTablesTask, particleLevelTablesTask, tauSpinnerTableTask
 )
 
 nanoSequenceFS = cms.Sequence(nanoSequenceCommon + cms.Sequence(nanoTableTaskFS))
@@ -105,7 +106,7 @@ nanoSequenceFS = cms.Sequence(nanoSequenceCommon + cms.Sequence(nanoTableTaskFS)
 nanoSequenceMC = nanoSequenceFS.copy()
 nanoSequenceMC.insert(nanoSequenceFS.index(nanoSequenceCommon)+1,nanoSequenceOnlyFullSim)
 
-# modifier which adds new tauIDs (currently only deepTauId2017v2p1 is being added)
+# modifier which adds new tauIDs
 import RecoTauTag.RecoTau.tools.runTauIdMVA as tauIdConfig
 def nanoAOD_addTauIds(process, idsToRun=[]):
     if idsToRun: #no-empty list of tauIDs to run
