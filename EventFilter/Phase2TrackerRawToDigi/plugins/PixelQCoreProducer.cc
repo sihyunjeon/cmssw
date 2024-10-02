@@ -146,13 +146,6 @@ std::vector<ReadoutChip> processHits(std::vector<DigiHitRecord> hitList) {
   newHitList = adjustEdges(hitList);
 
   std::vector<ReadoutChip> chips = splitByChip(newHitList);
-  std::vector<bool> code;
-
-  for (size_t i = 0; i < chips.size(); i++) {
-    ReadoutChip chip = chips[i];
-    code = chip.get_chip_code();
-  }
-
   return chips;
 }
 

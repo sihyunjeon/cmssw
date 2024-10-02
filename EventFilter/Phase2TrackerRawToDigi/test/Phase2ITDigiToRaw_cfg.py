@@ -10,7 +10,7 @@ process.load('FWCore.MessageService.MessageLogger_cfi')
 process.load('Configuration.EventContent.EventContent_cff')
 process.load('SimGeneral.MixingModule.mixNoPU_cfi')
 #process.load('SimGeneral.MixingModule.mix_POISSON_average_cfi')
-process.load('Configuration.Geometry.GeometryExtended2026D91Reco_cff')
+process.load('Configuration.Geometry.GeometryExtended2026D98Reco_cff')
 process.load('Configuration.StandardSequences.MagneticField_cff')
 process.load('Configuration.StandardSequences.Digi_cff')
 process.load('Configuration.StandardSequences.SimL1Emulator_cff')
@@ -29,7 +29,8 @@ process.maxEvents = cms.untracked.PSet(
 
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
-"file:/eos/cms/store/relval/CMSSW_13_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_131X_mcRun4_realistic_v2_PDMVRELVALS146-v7/2580000/1320a7f8-658e-48b4-80cd-ace713889f8c.root"
+    "root://eoscms.cern.ch//store/group/phase2tracker/IT/samples/RelValTTbar_14TeV__CMSSW_13_1_0_pre3-PU_131X_mcRun4_realistic_v2_PDMVRELVALS146-v7__GEN-SIM-DIGI-RAW.root"
+#"file:/eos/cms/store/relval/CMSSW_13_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_131X_mcRun4_realistic_v2_PDMVRELVALS146-v7/2580000/1320a7f8-658e-48b4-80cd-ace713889f8c.root"
     )
 )
 
@@ -86,23 +87,25 @@ process.mix.digitizers = cms.PSet(process.theDigitizersValid)
 # They need pixel RecHits where the charge is stored with high-granularity and large dynamic range
 
 from Configuration.AlCa.GlobalTag import GlobalTag
-process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic_T30', '')
+process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic_T33', '')
 
 # Path and EndPath definitions
 process.digitisation_step = cms.Path(process.pdigi_valid)
-process.L1simulation_step = cms.Path(process.SimL1Emulator)
-process.L1TrackTrigger_step = cms.Path(process.L1TrackTrigger)
-process.digi2raw_step = cms.Path(process.DigiToRaw)
-process.raw2digi_step = cms.Path(process.RawToDigi)
-process.L1Reco_step = cms.Path(process.L1Reco)
-process.reconstruction_step = cms.Path(process.reconstruction)
+#process.L1simulation_step = cms.Path(process.SimL1Emulator)
+#process.L1TrackTrigger_step = cms.Path(process.L1TrackTrigger)
+#process.digi2raw_step = cms.Path(process.DigiToRaw)
+#process.raw2digi_step = cms.Path(process.RawToDigi)
+#process.L1Reco_step = cms.Path(process.L1Reco)
+#process.reconstruction_step = cms.Path(process.reconstruction)
 #process.user_step = cms.Path(process.TrackRefitter * process.PixelQCore * process.ReadLocalMeasurement * process.mcverticesanalyzer)
-process.user_step = cms.Path(process.TrackRefitter * process.PixelQCore * process.ReadLocalMeasurement)
+process.user_step = cms.Path(process.PixelQCore)
+#process.user_step = cms.Path(process.TrackRefitter * process.PixelQCore * process.ReadLocalMeasurement)
 process.endjob_step = cms.EndPath(process.endOfProcess)
 
 # Schedule definition
-process.schedule = cms.Schedule(process.digitisation_step,process.L1simulation_step,process.L1TrackTrigger_step,process.digi2raw_step)
-process.schedule.extend([process.raw2digi_step,process.L1Reco_step,process.reconstruction_step,process.user_step,process.endjob_step])
+#process.schedule = cms.Schedule(process.digitisation_step,process.L1simulation_step,process.L1TrackTrigger_step,process.digi2raw_step)
+#process.schedule.extend([process.raw2digi_step,process.L1Reco_step,process.reconstruction_step,process.user_step,process.endjob_step])
+process.schedule = cms.Schedule(process.digitisation_step, process.user_step)
 
 # Have logErrorHarvester wait for the same EDProducers to finish as those providing data for the OutputModule
 from FWCore.Modules.logErrorHarvester_cff import customiseLogErrorHarvesterUsingOutputCommands
