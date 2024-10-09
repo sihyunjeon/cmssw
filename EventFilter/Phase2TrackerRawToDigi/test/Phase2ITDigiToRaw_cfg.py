@@ -29,8 +29,7 @@ process.maxEvents = cms.untracked.PSet(
 
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
-    "root://eoscms.cern.ch//store/group/phase2tracker/IT/samples/RelValTTbar_14TeV__CMSSW_13_1_0_pre3-PU_131X_mcRun4_realistic_v2_PDMVRELVALS146-v7__GEN-SIM-DIGI-RAW.root"
-#"file:/eos/cms/store/relval/CMSSW_13_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_131X_mcRun4_realistic_v2_PDMVRELVALS146-v7/2580000/1320a7f8-658e-48b4-80cd-ace713889f8c.root"
+        "root://eoscms.cern.ch//store/group/phase2tracker/IT/samples/D98/0b2b0b0b-f312-48a8-9d46-ccbadc69bbfd.root"
     )
 )
 
