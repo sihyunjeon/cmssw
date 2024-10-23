@@ -12,7 +12,6 @@ public:
   ROCBitStream() { rocid_ = -1; }
 
   int get_rocid() const { return rocid_; }
-
   const std::vector<bool>& get_bitstream() const { return bitstream_; }
 
   const bool operator<(const ROCBitStream& other) { return rocid_ < other.rocid_; }

@@ -1,7 +1,6 @@
 // -*- C++ -*-
 //
 
-#include <memory>
 #include <utility>
 #include <unordered_map>
 
@@ -30,6 +29,8 @@
 #include "DataFormats/FEDRawData/interface/FEDHeader.h"
 #include "DataFormats/FEDRawData/interface/FEDTrailer.h"
 
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITDTCCollection.h"
+
 class Phase2TrackerDTCAssociator : public edm::one::EDProducer<> {
 public:
   explicit Phase2TrackerDTCAssociator(const edm::ParameterSet&);
@@ -43,7 +44,7 @@ private:
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   const edm::EDGetTokenT<edm::DetSetVector<ROCBitStream>> ROCBitStreamToken_;
 
-  void DigiToRaw(FEDRawData& rawData, std::vector<bool> digiData);
+  void AddHexToDataPtr(unsigned char *data_ptr, int word_index, const std::vector<bool>& moduleBitStream);
 
 };
 
@@ -56,65 +57,84 @@ Phase2TrackerDTCAssociator::Phase2TrackerDTCAssociator(const edm::ParameterSet& 
 Phase2TrackerDTCAssociator::~Phase2TrackerDTCAssociator() {}
 
 void Phase2TrackerDTCAssociator::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+
+  // FIXME constant magic numbers, define it somewhere else
+  unsigned int NSLinksPerDTC = 16;
+  unsigned int NDTCs = 4*9;
+  unsigned int NSLinks = NDTCs * NSLinksPerDTC;
+  unsigned int MINITFEDID = 0;
+  unsigned int MAXITFEDID = MINITFEDID + NSLinks - 1;
+
   using namespace edm;
   using namespace std;
 
-  const auto& cablingMap = iSetup.getData(cablingMapToken_);
+  unsigned int EventID = iEvent.id().event();
+  Phase2ITDTCCollection dtcColl(EventID);
 
+  const auto& cablingMap = iSetup.getData(cablingMapToken_);
   auto fedRawDataCollection = std::make_unique<FEDRawDataCollection>();
 
   for (const auto& detSet : iEvent.get(ROCBitStreamToken_)){
-    DetId detId = detSet.detId();
-    edm::DetSet<ROCBitStream> rocBitStreams;
+      DetId detId = detSet.detId();
+      auto DTCELinkId = cablingMap.detIdToDTCELinkId(detId);
+      int dtc_id = (*DTCELinkId.first).second.dtc_id();
+      auto dtc = dtcColl.getDTC(dtc_id);
 
-    // elink_ids are dummy for now
-    auto elink_ids = cablingMap.detIdToDTCELinkId(detId);
-    std::cout<<(*elink_ids.first).second.elink_id()<<std::endl;
+      std::vector<bool> moduleBitStream;
+    
+      for (const auto& roc : detSet) {  
+          std::vector<bool> bitstream = roc.get_bitstream();
+          unsigned int bitstream_size = bitstream.size();   
 
-    for (const auto& roc : detSet) {
-      std::vector<bool> roc_id = roc.get_bitstream();
-    }
+          // TODO make proper chip header 
+          std::vector<bool> DUMMY(16, false);
+          moduleBitStream.insert(moduleBitStream.end(), DUMMY.begin(), DUMMY.end());
+
+          // adding how long the bit stream is
+          unsigned int num_16bit_chunks = (bitstream_size + 15) / 16;
+          std::vector<bool> length_bits(16, false);
+          for (int i = 0; i < 16; ++i) {
+              length_bits[15 - i] = (num_16bit_chunks >> i) & 1;
+          }
+          moduleBitStream.insert(moduleBitStream.end(), length_bits.begin(), length_bits.end());
+
+          unsigned int padding = 16 - (bitstream_size % 16);
+          if (bitstream_size % 16 != 0) {
+              bitstream.insert(bitstream.end(), padding, false);
+          }
+          // Adding the bitstream itself
+          moduleBitStream.insert(moduleBitStream.end(), bitstream.begin(), bitstream.end());
+      }
+
+      //for (unsigned int slinkId = 0; slinkId < 16; slinkId++) {
+      for (unsigned int slinkId = 0; slinkId < 1; slinkId++) { // dumping into one s-link for now
+          FEDRawData& slinkRawData = dtc.getSLink(slinkId);
+          unsigned char *data_ptr = slinkRawData.data();
+    
+          slinkRawData.resize((moduleBitStream.size() + 15) / 16 * 8);
+          for (size_t word_index = 0; word_index < moduleBitStream.size() / 16; ++word_index) {
+              AddHexToDataPtr(data_ptr, word_index, moduleBitStream);
+          }
+      }
   }
 
-  //cmssw/EventFilter/EcalDigiToRaw/src/EcalDigiToRaw.cc
-  /*
-  BlockFormatter::Params params;
-  int counter = iEvent.id().event();
-  params.counter_ = counter;
-  params.orbit_number_ = iEvent.orbitNumber();
-  params.bx_ = iEvent.bunchCrossing();
-  params.lv1_ = counter % (0x1 << 24);
-  params.runnumber_ = iEvent.id().run();
-
-  // EventFilter/DTRawToDigi/plugins/DTDigiToRawModule.cc
-  // probably need to handle the iteration using FEDNumbering ?
-  int FEDIDMIN=0, FEDIDMAX=399;
-  for (unsigned int fedId=0; fedId<=FEDIDMAX; fedId++){
-    FEDRawData& rawData = fedRawDataCollection->FEDData(FEDID);
-
-  }
-
-  for (const auto& detSet : iEvent.get(ROCBitStreamToken_)){
-    FEDRawData& rawData = fedRawDataCollection->FEDData(FEDID);
-
-    DetId detId = detSet.detId();
-    edm::DetSet<ROCBitStream> rocBitStreams;
-
-    // elink_ids are dummy for now
-    auto elink_ids = cablingMap.detIdToDTCELinkId(detId);
-    std::cout<<(*elink_ids.first).second.elink_id()<<std::endl;
-
-    for (const auto& roc : detSet) {
-      std::vector<bool> roc_id = roc.get_bitstream();
-      DigiToRaw(rawData, roc_id);
-    }
-  }
-  */
   iEvent.put(std::move(fedRawDataCollection));
 }
 
-void Phase2TrackerDTCAssociator::DigiToRaw(FEDRawData& rawData, std::vector<bool> digiData){
+void Phase2TrackerDTCAssociator::AddHexToDataPtr(unsigned char *data_ptr, int word_index, const std::vector<bool>& moduleBitStream) 
+{
+    uint16_t hex_word = 0;
 
+    for (int i = 0; i < 16; ++i) {
+        if (moduleBitStream[word_index * 16 + i]) {
+            hex_word |= (1 << (15 - i));
+        }
+    }
+
+    data_ptr[word_index * 4 + 0] = (hex_word >> 12) & 0xF;
+    data_ptr[word_index * 4 + 1] = (hex_word >> 8) & 0xF;
+    data_ptr[word_index * 4 + 2] = (hex_word >> 4) & 0xF;
+    data_ptr[word_index * 4 + 3] = hex_word & 0xF;
 }
 
 void Phase2TrackerDTCAssociator::beginJob() {}
