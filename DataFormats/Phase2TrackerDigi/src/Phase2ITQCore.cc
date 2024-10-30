@@ -1,16 +1,16 @@
-#include "DataFormats/Phase2TrackerDigi/interface/QCore.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
 #include <cmath>
 #include <vector>
 #include <iostream>
 
 //4x4 region of hits in sensor coordinates
-QCore::QCore(int rocid,
-             int ccol_in,
-             int qcrow_in,
-             bool isneighbour_in,
-             bool islast_in,
-             std::vector<int> adcs_in,
-             std::vector<int> hits_in) {
+Phase2ITQCore::Phase2ITQCore(int rocid,
+                             int ccol_in,
+                             int qcrow_in,
+                             bool isneighbour_in,
+                             bool islast_in,
+                             std::vector<int> adcs_in,
+                             std::vector<int> hits_in) {
   rocid_ = rocid;
   ccol = ccol_in;
   qcrow = qcrow_in;
@@ -21,7 +21,7 @@ QCore::QCore(int rocid,
 }
 
 //Takes a hitmap in sensor coordinates in 4x4 and converts it to readout chip coordinates with 2x8
-std::vector<bool> QCore::toRocCoordinates(std::vector<bool>& hitmap) {
+std::vector<bool> Phase2ITQCore::toRocCoordinates(std::vector<bool>& hitmap) {
   std::vector<bool> ROC_hitmap(16, 0);
 
   for (size_t i = 0; i < hitmap.size(); i++) {
@@ -45,8 +45,8 @@ std::vector<bool> QCore::toRocCoordinates(std::vector<bool>& hitmap) {
   return ROC_hitmap;
 }
 
-//Returns the hitmap for the QCore in 4x4 sensor coordinates
-std::vector<bool> QCore::getHitmap() {
+//Returns the hitmap for the Phase2ITQCore in 4x4 sensor coordinates
+std::vector<bool> Phase2ITQCore::getHitmap() {
   std::vector<bool> hitmap = {};
 
   for (auto hit : hits) {
@@ -56,7 +56,7 @@ std::vector<bool> QCore::getHitmap() {
   return (toRocCoordinates(hitmap));
 }
 
-std::vector<int> QCore::getADCs() {
+std::vector<int> Phase2ITQCore::getADCs() {
   std::vector<int> adcmap = {};
 
   for (auto adc : adcs) {
@@ -67,7 +67,7 @@ std::vector<int> QCore::getADCs() {
 }
 
 //Converts an integer into a binary, and formats it with the given length
-std::vector<bool> QCore::intToBinary(int num, int length) {
+std::vector<bool> Phase2ITQCore::intToBinary(int num, int length) {
   int n = num;
   std::vector<bool> bi_num(length, 0);
 
@@ -84,7 +84,7 @@ std::vector<bool> QCore::intToBinary(int num, int length) {
 }
 
 //Takes a hitmap and returns true if it contains any hits
-bool QCore::containsHit(std::vector<bool>& hitmap) {
+bool Phase2ITQCore::containsHit(std::vector<bool>& hitmap) {
   bool foundHit = false;
   for (size_t i = 0; i < hitmap.size(); i++) {
     if (hitmap[i]) {
@@ -97,7 +97,7 @@ bool QCore::containsHit(std::vector<bool>& hitmap) {
 }
 
 //Returns the Huffman encoded hitmap, created iteratively within this function
-std::vector<bool> QCore::getHitmapCode(std::vector<bool> hitmap) {
+std::vector<bool> Phase2ITQCore::getHitmapCode(std::vector<bool> hitmap) {
   std::vector<bool> code = {};
   // If hitmap is a single bit, there is no need to further split the bits
   if (hitmap.size() == 1) {
@@ -138,8 +138,8 @@ std::vector<bool> QCore::getHitmapCode(std::vector<bool> hitmap) {
   return code;
 }
 
-//Returns the bit code associated with the QCore
-std::vector<bool> QCore::encodeQCore(bool is_new_col) {
+//Returns the bit code associated with the Phase2ITQCore
+std::vector<bool> Phase2ITQCore::encodeQCore(bool is_new_col) {
   std::vector<bool> code = {};
 
   if (is_new_col) {

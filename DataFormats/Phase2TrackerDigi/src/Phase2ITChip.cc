@@ -2,26 +2,26 @@
 #include <utility>
 #include <string>
 #include <iostream>
-#include "DataFormats/Phase2TrackerDigi/interface/QCore.h"
-#include "DataFormats/Phase2TrackerDigi/interface/ReadoutChip.h"
-#include "DataFormats/Phase2TrackerDigi/interface/DigiHitRecord.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChip.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITDigiHit.h"
 
-ReadoutChip::ReadoutChip(int rocnum, std::vector<DigiHitRecord> hl) {
+Phase2ITChip::Phase2ITChip(int rocnum, std::vector<Phase2ITDigiHit> hl) {
   hitList = hl;
   rocnum_ = rocnum;
 }
 
-unsigned int ReadoutChip::size() { return hitList.size(); }
+unsigned int Phase2ITChip::size() { return hitList.size(); }
 
 //Returns the position (row,col) of the 4x4 QCores that contains a hit
-std::pair<int, int> ReadoutChip::get_QCore_pos(DigiHitRecord hit) {
+std::pair<int, int> Phase2ITChip::get_QCore_pos(Phase2ITDigiHit hit) {
   int row = hit.row() / 4;
   int col = hit.col() / 4;
   return {row, col};
 }
 
 //Takes a hit and returns the 4x4 QCore that contains it
-QCore ReadoutChip::get_QCore_from_hit(DigiHitRecord pixel) {
+Phase2ITQCore Phase2ITChip::get_QCore_from_hit(Phase2ITDigiHit pixel) {
   std::vector<int> adcs(16, 0), hits(16, 0);
   std::pair<int, int> pos = get_QCore_pos(pixel);
 
@@ -33,13 +33,13 @@ QCore ReadoutChip::get_QCore_from_hit(DigiHitRecord pixel) {
     }
   }
 
-  QCore qcore(0, pos.second, pos.first, false, false, adcs, hits);
+  Phase2ITQCore qcore(0, pos.second, pos.first, false, false, adcs, hits);
   return qcore;
 }
 
-//Removes duplicated QCores
-std::vector<QCore> ReadoutChip::rem_duplicates(std::vector<QCore> qcores) {
-  std::vector<QCore> list = {};
+//Removes duplicated Phase2ITQCores
+std::vector<Phase2ITQCore> Phase2ITChip::rem_duplicates(std::vector<Phase2ITQCore> qcores) {
+  std::vector<Phase2ITQCore> list = {};
 
   size_t i = 0;
   while (i < qcores.size()) {
@@ -58,8 +58,8 @@ std::vector<QCore> ReadoutChip::rem_duplicates(std::vector<QCore> qcores) {
 }
 
 //Returns a list of the qcores with hits arranged by increasing column and then row numbers
-std::vector<QCore> ReadoutChip::organize_QCores(std::vector<QCore> qcores) {
-  std::vector<QCore> organized_list = {};
+std::vector<Phase2ITQCore> Phase2ITChip::organize_QCores(std::vector<Phase2ITQCore> qcores) {
+  std::vector<Phase2ITQCore> organized_list = {};
   while (qcores.size() > 0) {
     int min = 0;
 
@@ -78,8 +78,8 @@ std::vector<QCore> ReadoutChip::organize_QCores(std::vector<QCore> qcores) {
   return organized_list;
 }
 
-//Takes in an oranized list of QCores and sets the islast and isneighbor properties of those qcores
-std::vector<QCore> link_QCores(std::vector<QCore> qcores) {
+//Takes in an oranized list of Phase2ITQCores and sets the islast and isneighbor properties of those qcores
+std::vector<Phase2ITQCore> link_QCores(std::vector<Phase2ITQCore> qcores) {
   for (size_t i = 1; i < qcores.size(); i++) {
     if (qcores[i].get_row() == qcores[i - 1].get_row()) {
       qcores[i].setIsNeighbour(true);
@@ -100,8 +100,8 @@ std::vector<QCore> link_QCores(std::vector<QCore> qcores) {
 }
 
 //Takes in a list of hits and organizes them into the 4x4 QCores that contains them
-std::vector<QCore> ReadoutChip::get_organized_QCores() {
-  std::vector<QCore> qcores = {};
+std::vector<Phase2ITQCore> Phase2ITChip::get_organized_QCores() {
+  std::vector<Phase2ITQCore> qcores = {};
 
   for (const auto& hit : hitList) {
     qcores.push_back(get_QCore_from_hit(hit));
@@ -111,11 +111,11 @@ std::vector<QCore> ReadoutChip::get_organized_QCores() {
 }
 
 //Returns the encoding of the readout chip
-std::vector<bool> ReadoutChip::get_chip_code() {
+std::vector<bool> Phase2ITChip::get_chip_code() {
   std::vector<bool> code = {};
 
   if (hitList.size() > 0) {
-    std::vector<QCore> qcores = get_organized_QCores();
+    std::vector<Phase2ITQCore> qcores = get_organized_QCores();
     bool is_new_col = true;
 
     for (auto& qcore : qcores) {

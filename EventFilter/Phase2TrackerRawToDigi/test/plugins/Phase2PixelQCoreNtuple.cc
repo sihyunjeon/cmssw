@@ -11,8 +11,8 @@
 #include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 #include "DataFormats/SiPixelDetId/interface/PixelSubdetector.h"
 #include "DataFormats/SiPixelCluster/interface/SiPixelCluster.h"
-#include "DataFormats/Phase2TrackerDigi/interface/QCore.h"
-#include "DataFormats/Phase2TrackerDigi/interface/ROCBitStream.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 
 #include "DataFormats/TrackReco/interface/Track.h"
 
@@ -132,8 +132,8 @@ private:
   edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> geomToken_;
   TrackerHitAssociator::Config trackerHitAssociatorConfig_;
   edm::EDGetTokenT<edmNew::DetSetVector<SiPixelRecHit>> pixelRecHits_token_;
-  edm::EDGetTokenT<edm::DetSetVector<QCore>> qcore_token_;
-  edm::EDGetTokenT<edm::DetSetVector<ROCBitStream>> bitstream_token_;
+  edm::EDGetTokenT<edm::DetSetVector<Phase2ITQCore>> qcore_token_;
+  edm::EDGetTokenT<edm::DetSetVector<Phase2ITChipBitStream>> bitstream_token_;
   edm::EDGetTokenT<edm::DetSetVector<PixelDigi>> pixelDigi_token_;
   edm::EDGetTokenT<edm::View<reco::Track>> recoTracks_token_;
   edm::EDGetTokenT<TrajTrackAssociationCollection> tta_token_;
@@ -212,8 +212,8 @@ Phase2PixelQCoreNtuple::Phase2PixelQCoreNtuple(edm::ParameterSet const& conf)
       geomToken_(esConsumes()),
       trackerHitAssociatorConfig_(conf, consumesCollector()),
       pixelRecHits_token_(consumes<edmNew::DetSetVector<SiPixelRecHit>>(edm::InputTag("siPixelRecHits"))),
-      qcore_token_(consumes<edm::DetSetVector<QCore>>(edm::InputTag("PixelQCore"))),
-      bitstream_token_(consumes<edm::DetSetVector<ROCBitStream>>(edm::InputTag("PixelQCore"))),
+      qcore_token_(consumes<edm::DetSetVector<Phase2ITQCore>>(edm::InputTag("Phase2ITQCore"))),
+      bitstream_token_(consumes<edm::DetSetVector<Phase2ITChipBitStream>>(edm::InputTag("Phase2ITQCore"))),
       pixelDigi_token_(consumes<edm::DetSetVector<PixelDigi>>(conf.getParameter<edm::InputTag>("siPixelDigi"))),
       recoTracks_token_(consumes<edm::View<reco::Track>>(conf.getParameter<edm::InputTag>("trackProducer"))),
       tta_token_(consumes<TrajTrackAssociationCollection>(conf.getParameter<InputTag>("trajectoryInput"))),
@@ -359,17 +359,17 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
   edm::Handle<SiPixelRecHitCollection> recHitColl;
   e.getByToken(pixelRecHits_token_, recHitColl);
 
-  edm::Handle<edm::DetSetVector<QCore>> aQCoreVector;
+  edm::Handle<edm::DetSetVector<Phase2ITQCore>> aQCoreVector;
   e.getByToken(qcore_token_, aQCoreVector);
 
-  edm::Handle<edm::DetSetVector<ROCBitStream>> aBitStreamVector;
+  edm::Handle<edm::DetSetVector<Phase2ITChipBitStream>> aBitStreamVector;
   e.getByToken(bitstream_token_, aBitStreamVector);
 
-  edm::DetSetVector<QCore>::const_iterator iterDet;
+  edm::DetSetVector<Phase2ITQCore>::const_iterator iterDet;
   for (iterDet = aQCoreVector->begin(); iterDet != aQCoreVector->end(); iterDet++) {
     DetId tkId = iterDet->id;
 
-    edm::DetSet<QCore> theQCores = (*aQCoreVector)[tkId];
+    edm::DetSet<Phase2ITQCore> theQCores = (*aQCoreVector)[tkId];
 
     //std::cout << "QCORE DETID NEW : " << tkId.rawId() << std::endl;
 
@@ -377,11 +377,11 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
     }
   }
 
-  edm::DetSetVector<ROCBitStream>::const_iterator iterDetBitStream;
+  edm::DetSetVector<Phase2ITChipBitStream>::const_iterator iterDetBitStream;
   for (iterDetBitStream = aBitStreamVector->begin(); iterDetBitStream != aBitStreamVector->end(); iterDetBitStream++) {
     DetId tkId = iterDetBitStream->id;
 
-    edm::DetSet<ROCBitStream> theBitStreams = (*aBitStreamVector)[tkId];
+    edm::DetSet<Phase2ITChipBitStream> theBitStreams = (*aBitStreamVector)[tkId];
 
     //std::cout << "BITSTREAM DETID : " << tkId.rawId() << std::endl;
 
@@ -480,7 +480,7 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
               closest_simhit = &m;
             }
           }  // end of simhit loop
-        }    // end matched emtpy
+        }  // end matched emtpy
         unsigned int subid = detId.subdetId();
         int detid_db = detId.rawId();
         int layer_num = -99, ladder_num = -99, module_num = -99, disk_num = -99, blade_num = -99, panel_num = -99,
@@ -517,8 +517,8 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
           pixeltree_->Fill();
         }
       }  // end of rechit loop
-    }    // end of detid loop
-  }      // end of loop test on recHitColl size
+    }  // end of detid loop
+  }  // end of loop test on recHitColl size
 
   // Now loop over recotracks
   edm::Handle<View<reco::Track>> trackCollection;
@@ -605,7 +605,7 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
                 closest_simhit = &m;
               }
             }  // end of simhit loop
-          }    // end matched emtpy
+          }  // end matched emtpy
 
           int num_simhit = matched.size();
 
@@ -647,10 +647,10 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
                         tsos);
             pixeltreeOnTrack_->Fill();
           }  // if ( (subid==1)||(subid==2) )
-        }    // if cast is possible to SiPixelHit
-      }      //end of loop on tracking rechits
-    }        // end of loop on recotracks
-  }          // else track collection is valid
+        }  // if cast is possible to SiPixelHit
+      }  //end of loop on tracking rechits
+    }  // end of loop on recotracks
+  }  // else track collection is valid
 }  // end analyze function
 
 // Function for filling in all the rechits
@@ -962,7 +962,6 @@ std::pair<float, float> Phase2PixelQCoreNtuple::computeAnglesFromDetPosition(con
   // calculate angles
   float cotalpha_ = gvx * gvz;
   float cotbeta_ = gvy * gvz;
-
   return std::make_pair(cotalpha_, cotbeta_);
 }
 
