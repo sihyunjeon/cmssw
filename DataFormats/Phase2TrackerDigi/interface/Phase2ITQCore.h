@@ -40,7 +40,7 @@ public:
 
   std::vector<bool> getHitmap();
   std::vector<int> getADCs();
-  std::vector<bool> encodePhase2ITQCore(bool is_new_col);
+  std::vector<bool> encodeQCore(bool is_new_col);
 
   const bool operator<(const Phase2ITQCore& other) {
     if (ccol == other.ccol) {

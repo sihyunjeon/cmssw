@@ -58,7 +58,7 @@ std::vector<Phase2ITQCore> Phase2ITChip::rem_duplicates(std::vector<Phase2ITQCor
 }
 
 //Returns a list of the qcores with hits arranged by increasing column and then row numbers
-std::vector<Phase2ITQCore> Phase2ITChip::organize_Phase2ITQCores(std::vector<Phase2ITQCore> qcores) {
+std::vector<Phase2ITQCore> Phase2ITChip::organize_QCores(std::vector<Phase2ITQCore> qcores) {
   std::vector<Phase2ITQCore> organized_list = {};
   while (qcores.size() > 0) {
     int min = 0;
@@ -79,7 +79,7 @@ std::vector<Phase2ITQCore> Phase2ITChip::organize_Phase2ITQCores(std::vector<Pha
 }
 
 //Takes in an oranized list of Phase2ITQCores and sets the islast and isneighbor properties of those qcores
-std::vector<Phase2ITQCore> link_Phase2ITQCores(std::vector<Phase2ITQCore> qcores) {
+std::vector<Phase2ITQCore> link_QCores(std::vector<Phase2ITQCore> qcores) {
   for (size_t i = 1; i < qcores.size(); i++) {
     if (qcores[i].get_row() == qcores[i - 1].get_row()) {
       qcores[i].setIsNeighbour(true);
@@ -99,15 +99,15 @@ std::vector<Phase2ITQCore> link_Phase2ITQCores(std::vector<Phase2ITQCore> qcores
   return qcores;
 }
 
-//Takes in a list of hits and organizes them into the 4x4 Phase2ITQCores that contains them
-std::vector<Phase2ITQCore> Phase2ITChip::get_organized_Phase2ITQCores() {
+//Takes in a list of hits and organizes them into the 4x4 QCores that contains them
+std::vector<Phase2ITQCore> Phase2ITChip::get_organized_QCores() {
   std::vector<Phase2ITQCore> qcores = {};
 
   for (const auto& hit : hitList) {
     qcores.push_back(get_Phase2ITQCore_from_hit(hit));
   }
 
-  return (link_Phase2ITQCores(organize_Phase2ITQCores(rem_duplicates(qcores))));
+  return (link_QCores(organize_QCores(rem_duplicates(qcores))));
 }
 
 //Returns the encoding of the readout chip
@@ -115,11 +115,11 @@ std::vector<bool> Phase2ITChip::get_chip_code() {
   std::vector<bool> code = {};
 
   if (hitList.size() > 0) {
-    std::vector<Phase2ITQCore> qcores = get_organized_Phase2ITQCores();
+    std::vector<Phase2ITQCore> qcores = get_organized_QCores();
     bool is_new_col = true;
 
     for (auto& qcore : qcores) {
-      std::vector<bool> qcore_code = qcore.encodePhase2ITQCore(is_new_col);
+      std::vector<bool> qcore_code = qcore.encodeQCore(is_new_col);
       code.insert(code.end(), qcore_code.begin(), qcore_code.end());
 
       is_new_col = qcore.islast();

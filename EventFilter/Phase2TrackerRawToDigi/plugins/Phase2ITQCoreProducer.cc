@@ -201,7 +201,7 @@ void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
 
     for (size_t i = 0; i < chips.size(); i++) {
       Phase2ITChip chip = chips[i];
-      std::vector<Phase2ITQCore> qcores = chip.get_organized_Phase2ITQCores();
+      std::vector<Phase2ITQCore> qcores = chip.get_organized_QCores();
       for (auto& qcore : qcores) {
         DetSetPhase2ITQCores.push_back(qcore);
       }

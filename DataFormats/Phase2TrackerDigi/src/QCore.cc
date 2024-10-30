@@ -139,7 +139,7 @@ std::vector<bool> Phase2ITQCore::getHitmapCode(std::vector<bool> hitmap) {
 }
 
 //Returns the bit code associated with the Phase2ITQCore
-std::vector<bool> Phase2ITQCore::encodePhase2ITQCore(bool is_new_col) {
+std::vector<bool> Phase2ITQCore::encodeQCore(bool is_new_col) {
   std::vector<bool> code = {};
 
   if (is_new_col) {

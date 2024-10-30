@@ -16,7 +16,7 @@ public:
   unsigned int size();
   int rocnum() const { return rocnum_; }
 
-  std::vector<Phase2ITQCore> get_organized_Phase2ITQCores();
+  std::vector<Phase2ITQCore> get_organized_QCores();
   std::vector<bool> get_chip_code();
 
 private:
@@ -24,7 +24,7 @@ private:
 
   Phase2ITQCore get_Phase2ITQCore_from_hit(Phase2ITDigiHit pixel);
   std::vector<Phase2ITQCore> rem_duplicates(std::vector<Phase2ITQCore> qcores);
-  std::vector<Phase2ITQCore> organize_Phase2ITQCores(std::vector<Phase2ITQCore> qcores);
+  std::vector<Phase2ITQCore> organize_QCores(std::vector<Phase2ITQCore> qcores);
 };
 
 #endif  // DataFormats_Phase2TrackerDigi_Phase2ITChip_H
