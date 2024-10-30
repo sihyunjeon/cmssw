@@ -1,5 +1,5 @@
 /*
-   class Phase2PixelPhase2ITQCoreNtuple
+   class Phase2PixelQCoreNtuple
 */
 // DataFormats
 #include "DataFormats/Common/interface/DetSetVector.h"
@@ -81,10 +81,10 @@ using namespace std;
 using namespace edm;
 using namespace reco;
 
-class Phase2PixelPhase2ITQCoreNtuple : public edm::one::EDAnalyzer<> {
+class Phase2PixelQCoreNtuple : public edm::one::EDAnalyzer<> {
 public:
-  explicit Phase2PixelPhase2ITQCoreNtuple(const edm::ParameterSet& conf);
-  virtual ~Phase2PixelPhase2ITQCoreNtuple();
+  explicit Phase2PixelQCoreNtuple(const edm::ParameterSet& conf);
+  virtual ~Phase2PixelQCoreNtuple();
   virtual void beginJob();
   virtual void endJob();
   virtual void analyze(const edm::Event& e, const edm::EventSetup& es);
@@ -207,13 +207,13 @@ private:
   TTree* pixeltreeOnTrack_;
 };
 
-Phase2PixelPhase2ITQCoreNtuple::Phase2PixelPhase2ITQCoreNtuple(edm::ParameterSet const& conf)
+Phase2PixelQCoreNtuple::Phase2PixelQCoreNtuple(edm::ParameterSet const& conf)
     : tTopoToken_(esConsumes()),
       geomToken_(esConsumes()),
       trackerHitAssociatorConfig_(conf, consumesCollector()),
       pixelRecHits_token_(consumes<edmNew::DetSetVector<SiPixelRecHit>>(edm::InputTag("siPixelRecHits"))),
-      qcore_token_(consumes<edm::DetSetVector<Phase2ITQCore>>(edm::InputTag("PixelPhase2ITQCore"))),
-      bitstream_token_(consumes<edm::DetSetVector<Phase2ITChipBitStream>>(edm::InputTag("PixelPhase2ITQCore"))),
+      qcore_token_(consumes<edm::DetSetVector<Phase2ITQCore>>(edm::InputTag("Phase2ITQCore"))),
+      bitstream_token_(consumes<edm::DetSetVector<Phase2ITChipBitStream>>(edm::InputTag("Phase2ITQCore"))),
       pixelDigi_token_(consumes<edm::DetSetVector<PixelDigi>>(conf.getParameter<edm::InputTag>("siPixelDigi"))),
       recoTracks_token_(consumes<edm::View<reco::Track>>(conf.getParameter<edm::InputTag>("trackProducer"))),
       tta_token_(consumes<TrajTrackAssociationCollection>(conf.getParameter<InputTag>("trajectoryInput"))),
@@ -222,11 +222,11 @@ Phase2PixelPhase2ITQCoreNtuple::Phase2PixelPhase2ITQCoreNtuple(edm::ParameterSet
       pixeltree_(0),
       pixeltreeOnTrack_(0) {}
 
-Phase2PixelPhase2ITQCoreNtuple::~Phase2PixelPhase2ITQCoreNtuple() {}
+Phase2PixelQCoreNtuple::~Phase2PixelQCoreNtuple() {}
 
-void Phase2PixelPhase2ITQCoreNtuple::endJob() {}
+void Phase2PixelQCoreNtuple::endJob() {}
 
-void Phase2PixelPhase2ITQCoreNtuple::beginJob() {
+void Phase2PixelQCoreNtuple::beginJob() {
   pixeltree_ = tFileService->make<TTree>("PixelNtuple", "Pixel hit analyzer ntuple");
   pixeltreeOnTrack_ = tFileService->make<TTree>("PixelNtupleOnTrack", "On-Track Pixel hit analyzer ntuple");
 
@@ -346,7 +346,7 @@ void Phase2PixelPhase2ITQCoreNtuple::beginJob() {
 }
 
 // Functions that gets called by framework every event
-void Phase2PixelPhase2ITQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup& es) {
+void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup& es) {
   //Retrieve tracker topology from geometry
   const TrackerTopology* const tTopo = &es.getData(tTopoToken_);
 
@@ -359,21 +359,21 @@ void Phase2PixelPhase2ITQCoreNtuple::analyze(const edm::Event& e, const edm::Eve
   edm::Handle<SiPixelRecHitCollection> recHitColl;
   e.getByToken(pixelRecHits_token_, recHitColl);
 
-  edm::Handle<edm::DetSetVector<Phase2ITQCore>> aPhase2ITQCoreVector;
-  e.getByToken(qcore_token_, aPhase2ITQCoreVector);
+  edm::Handle<edm::DetSetVector<Phase2ITQCore>> aQCoreVector;
+  e.getByToken(qcore_token_, aQCoreVector);
 
   edm::Handle<edm::DetSetVector<Phase2ITChipBitStream>> aBitStreamVector;
   e.getByToken(bitstream_token_, aBitStreamVector);
 
   edm::DetSetVector<Phase2ITQCore>::const_iterator iterDet;
-  for (iterDet = aPhase2ITQCoreVector->begin(); iterDet != aPhase2ITQCoreVector->end(); iterDet++) {
+  for (iterDet = aQCoreVector->begin(); iterDet != aQCoreVector->end(); iterDet++) {
     DetId tkId = iterDet->id;
 
-    edm::DetSet<Phase2ITQCore> thePhase2ITQCores = (*aPhase2ITQCoreVector)[tkId];
+    edm::DetSet<Phase2ITQCore> theQCores = (*aQCoreVector)[tkId];
 
     //std::cout << "QCORE DETID NEW : " << tkId.rawId() << std::endl;
 
-    for (auto iterPhase2ITQCore = thePhase2ITQCores.begin(); iterPhase2ITQCore != thePhase2ITQCores.end(); ++iterPhase2ITQCore) {
+    for (auto iterQCore = theQCores.begin(); iterQCore != theQCores.end(); ++iterQCore) {
     }
   }
 
@@ -655,7 +655,7 @@ void Phase2PixelPhase2ITQCoreNtuple::analyze(const edm::Event& e, const edm::Eve
 
 // Function for filling in all the rechits
 // I know it is lazy to pass everything, but I'm doing it anyway. -EB
-void Phase2PixelPhase2ITQCoreNtuple::fillPRecHit(const int detid_db,
+void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
                                          const int subid,
                                          const int layer_num,
                                          const int ladder_num,
@@ -767,7 +767,7 @@ void Phase2PixelPhase2ITQCoreNtuple::fillPRecHit(const int detid_db,
 }
 
 // Function for filling in on track rechits
-void Phase2PixelPhase2ITQCoreNtuple::fillPRecHit(const int detid_db,
+void Phase2PixelQCoreNtuple::fillPRecHit(const int detid_db,
                                          const int subid,
                                          const int layer_num,
                                          const int ladder_num,
@@ -884,18 +884,18 @@ void Phase2PixelPhase2ITQCoreNtuple::fillPRecHit(const int detid_db,
   }
 }
 
-void Phase2PixelPhase2ITQCoreNtuple::fillEvt(const edm::Event& E) {
+void Phase2PixelQCoreNtuple::fillEvt(const edm::Event& E) {
   evt_.run = E.id().run();
   evt_.evtnum = E.id().event();
 }
 
-void Phase2PixelPhase2ITQCoreNtuple::evt::init() {
+void Phase2PixelQCoreNtuple::evt::init() {
   int dummy_int = 9999;
   run = dummy_int;
   evtnum = dummy_int;
 }
 
-void Phase2PixelPhase2ITQCoreNtuple::RecHit::init() {
+void Phase2PixelQCoreNtuple::RecHit::init() {
   float dummy_float = 9999.0;
 
   pdgid = 0;
@@ -940,7 +940,7 @@ void Phase2PixelPhase2ITQCoreNtuple::RecHit::init() {
   }
   fDgN = 0;
 }
-std::pair<float, float> Phase2PixelPhase2ITQCoreNtuple::computeAnglesFromDetPosition(const SiPixelCluster& cl,
+std::pair<float, float> Phase2PixelQCoreNtuple::computeAnglesFromDetPosition(const SiPixelCluster& cl,
                                                                              const PixelTopology& theTopol,
                                                                              const GeomDetUnit& theDet) const {
   // get cluster center of gravity (of charge)
@@ -962,11 +962,10 @@ std::pair<float, float> Phase2PixelPhase2ITQCoreNtuple::computeAnglesFromDetPosi
   // calculate angles
   float cotalpha_ = gvx * gvz;
   float cotbeta_ = gvy * gvz;
-
   return std::make_pair(cotalpha_, cotbeta_);
 }
 
-void Phase2PixelPhase2ITQCoreNtuple::processHits(const std::vector<std::pair<int, int>>& hitList) {}
+void Phase2PixelQCoreNtuple::processHits(const std::vector<std::pair<int, int>>& hitList) {}
 
 //define this as a plug-in
-DEFINE_FWK_MODULE(Phase2PixelPhase2ITQCoreNtuple);
+DEFINE_FWK_MODULE(Phase2PixelQCoreNtuple);
