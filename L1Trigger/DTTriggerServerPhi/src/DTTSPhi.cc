@@ -222,7 +222,6 @@ void DTTSPhi::runTSPhi() {
 
   for (int is = DTConfigTSPhi::NSTEPF; is < DTConfigTSPhi::NSTEPL + 1; is++) {
     // loop on DTTSSs
-    i_tsmd = 0;
     ntsm[is - DTConfigTSPhi::NSTEPF][0] = 0;  // counter to make sector collector run if at least a tsm
     ntsm[is - DTConfigTSPhi::NSTEPF][1] = 0;
     std::vector<DTTSS *>::iterator p;
@@ -375,9 +374,9 @@ void DTTSPhi::runTSPhi() {
                  ntsm[is - 1 - DTConfigTSPhi::NSTEPF][i_tsmd] >
                      0) {  // it means that the last BX with sort 2 was not the
                            // previous one
-        existSecondPrevBx =
-            ((is - 1 - DTConfigTSPhi::NSTEPF >= 0) && (ntsm[is - 1 - DTConfigTSPhi::NSTEPF][i_tsmd] > 1) &&
-             (secondPrevBx->tracoTr()->code() > 0));
+        existSecondPrevBx = secondPrevBx && ((is - 1 - DTConfigTSPhi::NSTEPF >= 0) &&
+                                             (ntsm[is - 1 - DTConfigTSPhi::NSTEPF][i_tsmd] > 1) &&
+                                             (secondPrevBx->tracoTr()->code() > 0));
         if (existSecondPrevBx) {
           _cache.push_back(DTChambPhSegm(ChamberId(), is - 1, secondPrevBx->tracoTr(), 2));
 
