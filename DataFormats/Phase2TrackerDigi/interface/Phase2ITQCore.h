@@ -3,14 +3,15 @@
 #include <vector>
 
 class Phase2ITQCore {
+  // Collects hits and creates a quarter core (16 pixel positions)
 private:
-  std::vector<int> adcs;
-  std::vector<int> hits;
-  bool islast_;
-  bool isneighbour_;
-  int rocid_;
-  int ccol;
-  int qcrow;
+  std::vector<int> adcs; // Full array of adc values in a quarter core
+  std::vector<int> hits; // Full array of hit occurrences
+  bool islast_; // RD53 chip encoding bits
+  bool isneighbour_; // RD53 chip encoding bits
+  int rocid_; // Chip index number
+  int ccol; // QCore position column
+  int qcrow; // QCore position row
 
 public:
   Phase2ITQCore(int rocid,

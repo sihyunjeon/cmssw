@@ -3,6 +3,7 @@
 #include <vector>
 
 class Phase2ITChipBitStream {
+  // Encoded bit stream output from chips
 public:
   Phase2ITChipBitStream(int rocid, const std::vector<bool>& bitstream) {
     rocid_ = rocid;
@@ -18,7 +19,7 @@ public:
   const bool operator<(const Phase2ITChipBitStream& other) { return rocid_ < other.rocid_; }
 
 private:
-  int rocid_;
-  std::vector<bool> bitstream_;
+  int rocid_; // Chip index
+  std::vector<bool> bitstream_; // Chip bit stream output
 };
 #endif  // DataFormats_Phase2TrackerDigi_Phase2ITChipBitStream_H

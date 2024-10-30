@@ -7,6 +7,7 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITDigiHit.h"
 
 class Phase2ITChip {
+  // Quarter cores collected into a chip (only active quarter cores with hits gets collected)
   std::vector<Phase2ITDigiHit> hitList;
   int rocnum_;
 
