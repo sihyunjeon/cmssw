@@ -1,8 +1,8 @@
-#ifndef DataFormats_Phase2TrackerDigi_QCore_H
-#define DataFormats_Phase2TrackerDigi_QCore_H
+#ifndef DataFormats_Phase2TrackerDigi_Phase2ITQCore_H
+#define DataFormats_Phase2TrackerDigi_Phase2ITQCore_H
 #include <vector>
 
-class QCore {
+class Phase2ITQCore {
 private:
   std::vector<int> adcs;
   std::vector<int> hits;
@@ -13,7 +13,7 @@ private:
   int qcrow;
 
 public:
-  QCore(int rocid,
+  Phase2ITQCore(int rocid,
         int ccol_in,
         int qcrow_in,
         bool isneighbour_in,
@@ -21,7 +21,7 @@ public:
         std::vector<int> adcs_in,
         std::vector<int> hits_in);
 
-  QCore() {
+  Phase2ITQCore() {
     rocid_ = -1;
     islast_ = false;
     isneighbour_ = false;
@@ -40,9 +40,9 @@ public:
 
   std::vector<bool> getHitmap();
   std::vector<int> getADCs();
-  std::vector<bool> encodeQCore(bool is_new_col);
+  std::vector<bool> encodePhase2ITQCore(bool is_new_col);
 
-  const bool operator<(const QCore& other) {
+  const bool operator<(const Phase2ITQCore& other) {
     if (ccol == other.ccol) {
       return (ccol < other.ccol);
     } else {
@@ -57,4 +57,4 @@ private:
   std::vector<bool> getHitmapCode(std::vector<bool> hitmap);
 };
 
-#endif  // DataFormats_Phase2TrackerDigi_QCore_H
+#endif  // DataFormats_Phase2TrackerDigi_Phase2ITQCore_H

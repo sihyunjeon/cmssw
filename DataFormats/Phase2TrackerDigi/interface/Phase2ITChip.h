@@ -1,0 +1,30 @@
+#ifndef DataFormats_Phase2TrackerDigi_Phase2ITChip_H
+#define DataFormats_Phase2TrackerDigi_Phase2ITChip_H
+#include <vector>
+#include <utility>
+#include <string>
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITDigiHit.h"
+
+class Phase2ITChip {
+  std::vector<Phase2ITDigiHit> hitList;
+  int rocnum_;
+
+public:
+  Phase2ITChip(int rocnum, std::vector<Phase2ITDigiHit> hl);
+
+  unsigned int size();
+  int rocnum() const { return rocnum_; }
+
+  std::vector<Phase2ITQCore> get_organized_Phase2ITQCores();
+  std::vector<bool> get_chip_code();
+
+private:
+  std::pair<int, int> get_Phase2ITQCore_pos(Phase2ITDigiHit hit);
+
+  Phase2ITQCore get_Phase2ITQCore_from_hit(Phase2ITDigiHit pixel);
+  std::vector<Phase2ITQCore> rem_duplicates(std::vector<Phase2ITQCore> qcores);
+  std::vector<Phase2ITQCore> organize_Phase2ITQCores(std::vector<Phase2ITQCore> qcores);
+};
+
+#endif  // DataFormats_Phase2TrackerDigi_Phase2ITChip_H

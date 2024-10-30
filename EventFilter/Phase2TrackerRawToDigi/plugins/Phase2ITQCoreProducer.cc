@@ -1,7 +1,7 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2TrackerRawToDigi
-// Class:      PixelQCoreProducer
-// Description: Make QCore objects for digis
+// Class:      Phase2ITQCoreProducer
+// Description: Make Phase2ITQCore objects for digis
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 // Original Author:  Rohan Misra
 // Created:  Thu, 30 Sep 2021 02:04:06 GMT
@@ -22,20 +22,20 @@
 #include "DataFormats/Math/interface/Point3D.h"
 #include "DataFormats/Common/interface/DetSetVector.h"
 #include "DataFormats/DetId/interface/DetId.h"
-#include "DataFormats/Phase2TrackerDigi/interface/DigiHitRecord.h"
-#include "DataFormats/Phase2TrackerDigi/interface/QCore.h"
-#include "DataFormats/Phase2TrackerDigi/interface/ReadoutChip.h"
-#include "DataFormats/Phase2TrackerDigi/interface/ROCBitStream.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITDigiHit.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChip.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 #include "DataFormats/SiPixelCluster/interface/SiPixelCluster.h"
 #include "DataFormats/SiPixelDetId/interface/PixelSubdetector.h"
 #include "DataFormats/SiPixelDigi/interface/PixelDigi.h"
 #include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
 
-class PixelQCoreProducer : public edm::stream::EDProducer<> {
+class Phase2ITQCoreProducer : public edm::stream::EDProducer<> {
 public:
-  PixelQCoreProducer(const edm::ParameterSet&);
-  ~PixelQCoreProducer() override = default;
+  Phase2ITQCoreProducer(const edm::ParameterSet&);
+  ~Phase2ITQCoreProducer() override = default;
 
 private:
   virtual void beginJob(const edm::EventSetup&);
@@ -49,12 +49,12 @@ private:
   typedef std::vector<Point> PointCollection;
 };
 
-PixelQCoreProducer::PixelQCoreProducer(const edm::ParameterSet& iConfig)
+Phase2ITQCoreProducer::Phase2ITQCoreProducer(const edm::ParameterSet& iConfig)
     : src_(iConfig.getParameter<edm::InputTag>("src")),
       pixelDigi_token_(consumes<edm::DetSetVector<PixelDigi>>(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
       tTopoToken_(esConsumes<TrackerTopology, TrackerTopologyRcd>()) {
-  produces<edm::DetSetVector<QCore>>();
-  produces<edm::DetSetVector<ROCBitStream>>();
+  produces<edm::DetSetVector<Phase2ITQCore>>();
+  produces<edm::DetSetVector<Phase2ITChipBitStream>>();
 }
 
 namespace {
@@ -62,13 +62,13 @@ namespace {
   // Dimension for 4 chips module = 1354 X 434 = (672 + 5 + 672 + 5) X (216 + 1 + 216 + 1)
   // Spacing 1 in column and 5 in row is introduced for each chip in between
   // if neighboring chip exists
-  const int kQCoresInChipRow = (672);
-  const int kQCoresInChipColumn = (216);
-  const int kQCoresInChipRowGap = (5);
-  const int kQCoresInChipColumnGap = (10);
+  const int kPhase2ITQCoresInChipRow = (672);
+  const int kPhase2ITQCoresInChipColumn = (216);
+  const int kPhase2ITQCoresInChipRowGap = (5);
+  const int kPhase2ITQCoresInChipColumnGap = (10);
 }  // namespace
 
-DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
+Phase2ITDigiHit updateHitCoordinatesForLargePixels(Phase2ITDigiHit& hit) {
   /*
         In-place modification of Hit coordinates to take into account large pixels
         Hits corresponding to large pixels are remapped so they lie on the boundary of the chip
@@ -85,26 +85,26 @@ DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
   int updated_col = 0;
 
   // Remapping of the row coordinate
-  if (row < kQCoresInChipRow) {
+  if (row < kPhase2ITQCoresInChipRow) {
     updated_row = row;
-  } else if (row < (kQCoresInChipRow + kQCoresInChipRowGap)) {
-    updated_row = kQCoresInChipRow - 1;
+  } else if (row < (kPhase2ITQCoresInChipRow + kPhase2ITQCoresInChipRowGap)) {
+    updated_row = kPhase2ITQCoresInChipRow - 1;
   }  // This will be ignored for 2 chips module
-  else if (row < (kQCoresInChipRow + 2 * kQCoresInChipRowGap)) {
-    updated_row = kQCoresInChipRow;
+  else if (row < (kPhase2ITQCoresInChipRow + 2 * kPhase2ITQCoresInChipRowGap)) {
+    updated_row = kPhase2ITQCoresInChipRow;
   } else {
-    updated_row = (hit.row() - 2 * kQCoresInChipRowGap);
+    updated_row = (hit.row() - 2 * kPhase2ITQCoresInChipRowGap);
   }
 
   // Remapping of the column coordinate
-  if (col < kQCoresInChipColumn) {
+  if (col < kPhase2ITQCoresInChipColumn) {
     updated_col = col;
-  } else if (col < kQCoresInChipColumn + kQCoresInChipColumnGap) {
-    updated_col = kQCoresInChipColumn - kQCoresInChipColumnGap;
-  } else if (col < (kQCoresInChipColumn + 2 * kQCoresInChipColumn)) {
-    updated_col = kQCoresInChipColumn;
+  } else if (col < kPhase2ITQCoresInChipColumn + kPhase2ITQCoresInChipColumnGap) {
+    updated_col = kPhase2ITQCoresInChipColumn - kPhase2ITQCoresInChipColumnGap;
+  } else if (col < (kPhase2ITQCoresInChipColumn + 2 * kPhase2ITQCoresInChipColumn)) {
+    updated_col = kPhase2ITQCoresInChipColumn;
   } else {
-    updated_col = (hit.col() - 2 * kQCoresInChipColumnGap);
+    updated_col = (hit.col() - 2 * kPhase2ITQCoresInChipColumnGap);
   }
 
   hit.set_row(updated_row);
@@ -113,7 +113,7 @@ DigiHitRecord updateHitCoordinatesForLargePixels(DigiHitRecord& hit) {
   return hit;
 }
 
-std::vector<DigiHitRecord> adjustEdges(std::vector<DigiHitRecord> hitList) {
+std::vector<Phase2ITDigiHit> adjustEdges(std::vector<Phase2ITDigiHit> hitList) {
   /*
         In-place modification of Hit coordinates to take into account large pixels
     */
@@ -121,35 +121,35 @@ std::vector<DigiHitRecord> adjustEdges(std::vector<DigiHitRecord> hitList) {
   return hitList;
 }
 
-std::vector<ReadoutChip> splitByChip(std::vector<DigiHitRecord> hitList) {
+std::vector<Phase2ITChip> splitByChip(std::vector<Phase2ITDigiHit> hitList) {
   // Split the hit list by read out chip
-  std::vector<std::vector<DigiHitRecord>> hits_per_chip(4);
+  std::vector<std::vector<Phase2ITDigiHit>> hits_per_chip(4);
   for (auto hit : hitList) {
-    int chip_index = (hit.col() < kQCoresInChipColumn) ? 0 : 1;
-    if (hit.row() >= kQCoresInChipRow) {
+    int chip_index = (hit.col() < kPhase2ITQCoresInChipColumn) ? 0 : 1;
+    if (hit.row() >= kPhase2ITQCoresInChipRow) {
       chip_index += 2;
     }
     hits_per_chip[chip_index].push_back(hit);
   }
 
-  // Generate ReadoutChip objects from the hit lists
-  std::vector<ReadoutChip> chips;
+  // Generate Phase2ITChip objects from the hit lists
+  std::vector<Phase2ITChip> chips;
   for (int chip_index = 0; chip_index < 4; chip_index++) {
-    chips.push_back(ReadoutChip(chip_index, hits_per_chip[chip_index]));
+    chips.push_back(Phase2ITChip(chip_index, hits_per_chip[chip_index]));
   }
 
   return chips;
 }
 
-std::vector<ReadoutChip> processHits(std::vector<DigiHitRecord> hitList) {
-  std::vector<DigiHitRecord> newHitList;
+std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList) {
+  std::vector<Phase2ITDigiHit> newHitList;
   newHitList = adjustEdges(hitList);
 
-  std::vector<ReadoutChip> chips = splitByChip(newHitList);
+  std::vector<Phase2ITChip> chips = splitByChip(newHitList);
   std::vector<bool> code;
 
   for (size_t i = 0; i < chips.size(); i++) {
-    ReadoutChip chip = chips[i];
+    Phase2ITChip chip = chips[i];
     code = chip.get_chip_code();
   }
 
@@ -157,12 +157,12 @@ std::vector<ReadoutChip> processHits(std::vector<DigiHitRecord> hitList) {
 }
 
 // ------------ method called to produce the data  ------------
-void PixelQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   using namespace edm;
   using namespace std;
 
-  unique_ptr<edm::DetSetVector<QCore>> aQCoreVector = make_unique<edm::DetSetVector<QCore>>();
-  unique_ptr<edm::DetSetVector<ROCBitStream>> aBitStreamVector = make_unique<edm::DetSetVector<ROCBitStream>>();
+  unique_ptr<edm::DetSetVector<Phase2ITQCore>> aQCoreVector = make_unique<edm::DetSetVector<Phase2ITQCore>>();
+  unique_ptr<edm::DetSetVector<Phase2ITChipBitStream>> aBitStreamVector = make_unique<edm::DetSetVector<Phase2ITChipBitStream>>();
 
   auto const& tTopo = iSetup.getData(tTopoToken_);
 
@@ -173,7 +173,7 @@ void PixelQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
   for (iterDet = pixelDigiHandle->begin(); iterDet != pixelDigiHandle->end(); iterDet++) {
     DetId tkId = iterDet->id;
     edm::DetSet<PixelDigi> theDigis = (*pixelDigiHandle)[tkId];
-    std::vector<DigiHitRecord> hitlist;
+    std::vector<Phase2ITDigiHit> hitlist;
     std::vector<int> id;
 
     if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
@@ -191,35 +191,35 @@ void PixelQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
     }
 
     for (auto iterDigi = theDigis.begin(); iterDigi != theDigis.end(); ++iterDigi) {
-      hitlist.emplace_back(DigiHitRecord(iterDigi->row(), iterDigi->column(), iterDigi->adc()));
+      hitlist.emplace_back(Phase2ITDigiHit(iterDigi->row(), iterDigi->column(), iterDigi->adc()));
     }
 
-    std::vector<ReadoutChip> chips = processHits(hitlist);
+    std::vector<Phase2ITChip> chips = processHits(hitlist);
 
-    DetSet<QCore> DetSetQCores(tkId);
-    DetSet<ROCBitStream> DetSetBitStream(tkId);
+    DetSet<Phase2ITQCore> DetSetPhase2ITQCores(tkId);
+    DetSet<Phase2ITChipBitStream> DetSetBitStream(tkId);
 
     for (size_t i = 0; i < chips.size(); i++) {
-      ReadoutChip chip = chips[i];
-      std::vector<QCore> qcores = chip.get_organized_QCores();
+      Phase2ITChip chip = chips[i];
+      std::vector<Phase2ITQCore> qcores = chip.get_organized_Phase2ITQCores();
       for (auto& qcore : qcores) {
-        DetSetQCores.push_back(qcore);
+        DetSetPhase2ITQCores.push_back(qcore);
       }
 
-      ROCBitStream aROCBitStream(i, chip.get_chip_code());
-      DetSetBitStream.push_back(aROCBitStream);
+      Phase2ITChipBitStream aChipBitStream(i, chip.get_chip_code());
+      DetSetBitStream.push_back(aChipBitStream);
     }
 
     aBitStreamVector->insert(DetSetBitStream);
-    aQCoreVector->insert(DetSetQCores);
+    aQCoreVector->insert(DetSetPhase2ITQCores);
   }
 
   iEvent.put(std::move(aQCoreVector));
   iEvent.put(std::move(aBitStreamVector));
 }
 
-void PixelQCoreProducer::beginJob(edm::EventSetup const&) {}
+void Phase2ITQCoreProducer::beginJob(edm::EventSetup const&) {}
 
-void PixelQCoreProducer::endJob() {}
+void Phase2ITQCoreProducer::endJob() {}
 
-DEFINE_FWK_MODULE(PixelQCoreProducer);
+DEFINE_FWK_MODULE(Phase2ITQCoreProducer);

@@ -49,14 +49,14 @@ process.configurationMetadata = cms.untracked.PSet(
 process.load("Validation.RecoVertex.mcverticesanalyzer_cfi")
 process.mcverticesanalyzer.pileupSummaryCollection = cms.InputTag("addPileupInfo","","HLT")
 
-process.PixelQCore = cms.EDProducer('PixelQCoreProducer', src = cms.InputTag("generalTracks"), siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel"))
+process.PixelPhase2ITQCore = cms.EDProducer('PixelPhase2ITQCoreProducer', src = cms.InputTag("generalTracks"), siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel"))
 
 # # # -- Trajectory producer
 process.load("RecoTracker.TrackProducer.TrackRefitters_cff")
 process.TrackRefitter.src = "generalTracks"
 process.TrackRefitter.NavigationSchool = ""
 
-process.ReadLocalMeasurement = cms.EDAnalyzer("Phase2PixelQCoreNtuple",
+process.ReadLocalMeasurement = cms.EDAnalyzer("Phase2PixelPhase2ITQCoreNtuple",
                                               trackProducer = cms.InputTag("generalTracks"),
                                               trajectoryInput = cms.InputTag('TrackRefitter::USER'),
                                               #verbose = cms.untracked.bool(True),
@@ -96,8 +96,8 @@ process.digi2raw_step = cms.Path(process.DigiToRaw)
 process.raw2digi_step = cms.Path(process.RawToDigi)
 process.L1Reco_step = cms.Path(process.L1Reco)
 process.reconstruction_step = cms.Path(process.reconstruction)
-#process.user_step = cms.Path(process.TrackRefitter * process.PixelQCore * process.ReadLocalMeasurement * process.mcverticesanalyzer)
-process.user_step = cms.Path(process.TrackRefitter * process.PixelQCore * process.ReadLocalMeasurement)
+#process.user_step = cms.Path(process.TrackRefitter * process.PixelPhase2ITQCore * process.ReadLocalMeasurement * process.mcverticesanalyzer)
+process.user_step = cms.Path(process.TrackRefitter * process.PixelPhase2ITQCore * process.ReadLocalMeasurement)
 process.endjob_step = cms.EndPath(process.endOfProcess)
 
 # Schedule definition
