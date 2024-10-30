@@ -62,10 +62,10 @@ namespace {
   // Dimension for 4 chips module = 1354 X 434 = (672 + 5 + 672 + 5) X (216 + 1 + 216 + 1)
   // Spacing 1 in column and 5 in row is introduced for each chip in between
   // if neighboring chip exists
-  const int kPhase2ITQCoresInChipRow = (672);
-  const int kPhase2ITQCoresInChipColumn = (216);
-  const int kPhase2ITQCoresInChipRowGap = (5);
-  const int kPhase2ITQCoresInChipColumnGap = (10);
+  const int kQCoresInChipRow = (672);
+  const int kQCoresInChipColumn = (216);
+  const int kQCoresInChipRowGap = (5);
+  const int kQCoresInChipColumnGap = (10);
 }  // namespace
 
 Phase2ITDigiHit updateHitCoordinatesForLargePixels(Phase2ITDigiHit& hit) {
@@ -85,26 +85,26 @@ Phase2ITDigiHit updateHitCoordinatesForLargePixels(Phase2ITDigiHit& hit) {
   int updated_col = 0;
 
   // Remapping of the row coordinate
-  if (row < kPhase2ITQCoresInChipRow) {
+  if (row < kQCoresInChipRow) {
     updated_row = row;
-  } else if (row < (kPhase2ITQCoresInChipRow + kPhase2ITQCoresInChipRowGap)) {
-    updated_row = kPhase2ITQCoresInChipRow - 1;
+  } else if (row < (kQCoresInChipRow + kQCoresInChipRowGap)) {
+    updated_row = kQCoresInChipRow - 1;
   }  // This will be ignored for 2 chips module
-  else if (row < (kPhase2ITQCoresInChipRow + 2 * kPhase2ITQCoresInChipRowGap)) {
-    updated_row = kPhase2ITQCoresInChipRow;
+  else if (row < (kQCoresInChipRow + 2 * kQCoresInChipRowGap)) {
+    updated_row = kQCoresInChipRow;
   } else {
-    updated_row = (hit.row() - 2 * kPhase2ITQCoresInChipRowGap);
+    updated_row = (hit.row() - 2 * kQCoresInChipRowGap);
   }
 
   // Remapping of the column coordinate
-  if (col < kPhase2ITQCoresInChipColumn) {
+  if (col < kQCoresInChipColumn) {
     updated_col = col;
-  } else if (col < kPhase2ITQCoresInChipColumn + kPhase2ITQCoresInChipColumnGap) {
-    updated_col = kPhase2ITQCoresInChipColumn - kPhase2ITQCoresInChipColumnGap;
-  } else if (col < (kPhase2ITQCoresInChipColumn + 2 * kPhase2ITQCoresInChipColumn)) {
-    updated_col = kPhase2ITQCoresInChipColumn;
+  } else if (col < kQCoresInChipColumn + kQCoresInChipColumnGap) {
+    updated_col = kQCoresInChipColumn - kQCoresInChipColumnGap;
+  } else if (col < (kQCoresInChipColumn + 2 * kQCoresInChipColumn)) {
+    updated_col = kQCoresInChipColumn;
   } else {
-    updated_col = (hit.col() - 2 * kPhase2ITQCoresInChipColumnGap);
+    updated_col = (hit.col() - 2 * kQCoresInChipColumnGap);
   }
 
   hit.set_row(updated_row);
@@ -125,8 +125,8 @@ std::vector<Phase2ITChip> splitByChip(std::vector<Phase2ITDigiHit> hitList) {
   // Split the hit list by read out chip
   std::vector<std::vector<Phase2ITDigiHit>> hits_per_chip(4);
   for (auto hit : hitList) {
-    int chip_index = (hit.col() < kPhase2ITQCoresInChipColumn) ? 0 : 1;
-    if (hit.row() >= kPhase2ITQCoresInChipRow) {
+    int chip_index = (hit.col() < kQCoresInChipColumn) ? 0 : 1;
+    if (hit.row() >= kQCoresInChipRow) {
       chip_index += 2;
     }
     hits_per_chip[chip_index].push_back(hit);
@@ -196,14 +196,14 @@ void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
 
     std::vector<Phase2ITChip> chips = processHits(hitlist);
 
-    DetSet<Phase2ITQCore> DetSetPhase2ITQCores(tkId);
+    DetSet<Phase2ITQCore> DetSetQCores(tkId);
     DetSet<Phase2ITChipBitStream> DetSetBitStream(tkId);
 
     for (size_t i = 0; i < chips.size(); i++) {
       Phase2ITChip chip = chips[i];
       std::vector<Phase2ITQCore> qcores = chip.get_organized_QCores();
       for (auto& qcore : qcores) {
-        DetSetPhase2ITQCores.push_back(qcore);
+        DetSetQCores.push_back(qcore);
       }
 
       Phase2ITChipBitStream aChipBitStream(i, chip.get_chip_code());
@@ -211,7 +211,7 @@ void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
     }
 
     aBitStreamVector->insert(DetSetBitStream);
-    aQCoreVector->insert(DetSetPhase2ITQCores);
+    aQCoreVector->insert(DetSetQCores);
   }
 
   iEvent.put(std::move(aQCoreVector));

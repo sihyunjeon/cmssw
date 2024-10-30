@@ -20,9 +20,9 @@ public:
   std::vector<bool> get_chip_code();
 
 private:
-  std::pair<int, int> get_Phase2ITQCore_pos(Phase2ITDigiHit hit);
+  std::pair<int, int> get_QCore_pos(Phase2ITDigiHit hit);
 
-  Phase2ITQCore get_Phase2ITQCore_from_hit(Phase2ITDigiHit pixel);
+  Phase2ITQCore get_QCore_from_hit(Phase2ITDigiHit pixel);
   std::vector<Phase2ITQCore> rem_duplicates(std::vector<Phase2ITQCore> qcores);
   std::vector<Phase2ITQCore> organize_QCores(std::vector<Phase2ITQCore> qcores);
 };

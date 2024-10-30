@@ -13,20 +13,20 @@ Phase2ITChip::Phase2ITChip(int rocnum, std::vector<Phase2ITDigiHit> hl) {
 
 unsigned int Phase2ITChip::size() { return hitList.size(); }
 
-//Returns the position (row,col) of the 4x4 Phase2ITQCores that contains a hit
-std::pair<int, int> Phase2ITChip::get_Phase2ITQCore_pos(Phase2ITDigiHit hit) {
+//Returns the position (row,col) of the 4x4 QCores that contains a hit
+std::pair<int, int> Phase2ITChip::get_QCore_pos(Phase2ITDigiHit hit) {
   int row = hit.row() / 4;
   int col = hit.col() / 4;
   return {row, col};
 }
 
-//Takes a hit and returns the 4x4 Phase2ITQCore that contains it
-Phase2ITQCore Phase2ITChip::get_Phase2ITQCore_from_hit(Phase2ITDigiHit pixel) {
+//Takes a hit and returns the 4x4 QCore that contains it
+Phase2ITQCore Phase2ITChip::get_QCore_from_hit(Phase2ITDigiHit pixel) {
   std::vector<int> adcs(16, 0), hits(16, 0);
-  std::pair<int, int> pos = get_Phase2ITQCore_pos(pixel);
+  std::pair<int, int> pos = get_QCore_pos(pixel);
 
   for (const auto& hit : hitList) {
-    if (get_Phase2ITQCore_pos(hit) == pos) {
+    if (get_QCore_pos(hit) == pos) {
       int i = (4 * (hit.row() % 4) + (hit.col() % 4) + 8) % 16;
       adcs[i] = hit.adc();
       hits[i] = 1;
@@ -104,7 +104,7 @@ std::vector<Phase2ITQCore> Phase2ITChip::get_organized_QCores() {
   std::vector<Phase2ITQCore> qcores = {};
 
   for (const auto& hit : hitList) {
-    qcores.push_back(get_Phase2ITQCore_from_hit(hit));
+    qcores.push_back(get_QCore_from_hit(hit));
   }
 
   return (link_QCores(organize_QCores(rem_duplicates(qcores))));
