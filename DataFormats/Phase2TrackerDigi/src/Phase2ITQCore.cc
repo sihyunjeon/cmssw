@@ -5,12 +5,12 @@
 
 //4x4 region of hits in sensor coordinates
 Phase2ITQCore::Phase2ITQCore(int rocid,
-             int ccol_in,
-             int qcrow_in,
-             bool isneighbour_in,
-             bool islast_in,
-             std::vector<int> adcs_in,
-             std::vector<int> hits_in) {
+                             int ccol_in,
+                             int qcrow_in,
+                             bool isneighbour_in,
+                             bool islast_in,
+                             std::vector<int> adcs_in,
+                             std::vector<int> hits_in) {
   rocid_ = rocid;
   ccol = ccol_in;
   qcrow = qcrow_in;

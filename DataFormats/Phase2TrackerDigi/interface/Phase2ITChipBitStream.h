@@ -19,7 +19,7 @@ public:
   const bool operator<(const Phase2ITChipBitStream& other) { return rocid_ < other.rocid_; }
 
 private:
-  int rocid_; // Chip index
-  std::vector<bool> bitstream_; // Chip bit stream output
+  int rocid_;                    // Chip index
+  std::vector<bool> bitstream_;  // Chip bit stream output
 };
 #endif  // DataFormats_Phase2TrackerDigi_Phase2ITChipBitStream_H

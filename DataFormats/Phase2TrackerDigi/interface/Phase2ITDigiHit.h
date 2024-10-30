@@ -3,9 +3,9 @@
 
 class Phase2ITDigiHit {
 private:
-  int row_; // Hit position row
-  int col_; // Hit position column
-  int adc_; // Hit position adc
+  int row_;  // Hit position row
+  int col_;  // Hit position column
+  int adc_;  // Hit position adc
 
 public:
   Phase2ITDigiHit(int row_num, int col_num, int adc_num);

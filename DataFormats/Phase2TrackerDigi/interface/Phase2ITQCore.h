@@ -5,22 +5,22 @@
 class Phase2ITQCore {
   // Collects hits and creates a quarter core (16 pixel positions)
 private:
-  std::vector<int> adcs; // Full array of adc values in a quarter core
-  std::vector<int> hits; // Full array of hit occurrences
-  bool islast_; // RD53 chip encoding bits
-  bool isneighbour_; // RD53 chip encoding bits
-  int rocid_; // Chip index number
-  int ccol; // QCore position column
-  int qcrow; // QCore position row
+  std::vector<int> adcs;  // Full array of adc values in a quarter core
+  std::vector<int> hits;  // Full array of hit occurrences
+  bool islast_;           // RD53 chip encoding bits
+  bool isneighbour_;      // RD53 chip encoding bits
+  int rocid_;             // Chip index number
+  int ccol;               // QCore position column
+  int qcrow;              // QCore position row
 
 public:
   Phase2ITQCore(int rocid,
-        int ccol_in,
-        int qcrow_in,
-        bool isneighbour_in,
-        bool islast_in,
-        std::vector<int> adcs_in,
-        std::vector<int> hits_in);
+                int ccol_in,
+                int qcrow_in,
+                bool isneighbour_in,
+                bool islast_in,
+                std::vector<int> adcs_in,
+                std::vector<int> hits_in);
 
   Phase2ITQCore() {
     rocid_ = -1;

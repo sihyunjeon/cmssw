@@ -162,7 +162,8 @@ void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
   using namespace std;
 
   unique_ptr<edm::DetSetVector<Phase2ITQCore>> aQCoreVector = make_unique<edm::DetSetVector<Phase2ITQCore>>();
-  unique_ptr<edm::DetSetVector<Phase2ITChipBitStream>> aBitStreamVector = make_unique<edm::DetSetVector<Phase2ITChipBitStream>>();
+  unique_ptr<edm::DetSetVector<Phase2ITChipBitStream>> aBitStreamVector =
+      make_unique<edm::DetSetVector<Phase2ITChipBitStream>>();
 
   auto const& tTopo = iSetup.getData(tTopoToken_);
 
