@@ -44,7 +44,7 @@ private:
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   const edm::EDGetTokenT<edm::DetSetVector<ROCBitStream>> ROCBitStreamToken_;
 
-  void AddHexToDataPtr(unsigned char *data_ptr, int word_index, const std::vector<bool>& moduleBitStream);
+  void AddHexToPtr(unsigned char *data_ptr, int word_index, const std::vector<bool>& moduleBitStream);
 
 };
 
@@ -58,83 +58,95 @@ Phase2TrackerDTCAssociator::~Phase2TrackerDTCAssociator() {}
 
 void Phase2TrackerDTCAssociator::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
-  // FIXME constant magic numbers, define it somewhere else
-  unsigned int NSLinksPerDTC = 16;
-  unsigned int NDTCs = 4*9;
-  unsigned int NSLinks = NDTCs * NSLinksPerDTC;
-  unsigned int MINITFEDID = 0;
-  unsigned int MAXITFEDID = MINITFEDID + NSLinks - 1;
+    using namespace edm;
+    using namespace std;
 
-  using namespace edm;
-  using namespace std;
+    unsigned int EventID = iEvent.id().event();
+    Phase2ITDTCCollection dtcColl(EventID);
+    const auto& cablingMap = iSetup.getData(cablingMapToken_);
+    auto fedRawDataCollection = std::make_unique<FEDRawDataCollection>();
 
-  unsigned int EventID = iEvent.id().event();
-  Phase2ITDTCCollection dtcColl(EventID);
+    for (const auto& detSet : iEvent.get(ROCBitStreamToken_)) {
+        DetId detId = detSet.detId();
+        auto DTCELinkId = cablingMap.detIdToDTCELinkId(detId);
+        int dtc_id = (*DTCELinkId.first).second.dtc_id();
+        unsigned int slinkIndex = dtc_id % 16;  // FIXME Determine slink index properly
 
-  const auto& cablingMap = iSetup.getData(cablingMapToken_);
-  auto fedRawDataCollection = std::make_unique<FEDRawDataCollection>();
+        auto dtc = dtcColl.getDTC(dtc_id);
 
-  for (const auto& detSet : iEvent.get(ROCBitStreamToken_)){
-      DetId detId = detSet.detId();
-      auto DTCELinkId = cablingMap.detIdToDTCELinkId(detId);
-      int dtc_id = (*DTCELinkId.first).second.dtc_id();
-      auto dtc = dtcColl.getDTC(dtc_id);
+        std::vector<bool> offsetWords;
+        std::vector<bool> dataWords;
+        unsigned int cumulativeOffset = 0;
 
-      std::vector<bool> moduleBitStream;
-    
-      for (const auto& roc : detSet) {  
-          std::vector<bool> bitstream = roc.get_bitstream();
-          unsigned int bitstream_size = bitstream.size();   
+        for (const auto& roc : detSet) {
+            std::vector<bool> bitstream = roc.get_bitstream();
+            unsigned int bitstream_size = bitstream.size();
+            unsigned int chip_offset = cumulativeOffset / 16;
 
-          // TODO make proper chip header 
-          std::vector<bool> DUMMY(16, false);
-          moduleBitStream.insert(moduleBitStream.end(), DUMMY.begin(), DUMMY.end());
+            std::vector<bool> offset_MSB(16, false);
+            std::vector<bool> offset_LSB(16, false);
+            for (int i = 0; i < 16; ++i) {
+                offset_MSB[15 - i] = (chip_offset >> (i + 16)) & 1; // MSB
+                offset_LSB[15 - i] = (chip_offset >> i) & 1;         // LSB
+            }
+            offsetWords.insert(offsetWords.end(), offset_MSB.begin(), offset_MSB.end());
+            offsetWords.insert(offsetWords.end(), offset_LSB.begin(), offset_LSB.end());
 
-          // adding how long the bit stream is
-          unsigned int num_16bit_chunks = (bitstream_size + 15) / 16;
-          std::vector<bool> length_bits(16, false);
-          for (int i = 0; i < 16; ++i) {
-              length_bits[15 - i] = (num_16bit_chunks >> i) & 1;
-          }
-          moduleBitStream.insert(moduleBitStream.end(), length_bits.begin(), length_bits.end());
+            unsigned int num_16bit_chunks = (bitstream_size + 15) / 16;
+            std::vector<bool> length_bits(16, false);
+            for (int i = 0; i < 16; ++i) {
+                length_bits[15 - i] = (num_16bit_chunks >> i) & 1;
+            }
+            offsetWords.insert(offsetWords.end(), length_bits.begin(), length_bits.end());
 
-          unsigned int padding = 16 - (bitstream_size % 16);
-          if (bitstream_size % 16 != 0) {
-              bitstream.insert(bitstream.end(), padding, false);
-          }
-          // Adding the bitstream itself
-          moduleBitStream.insert(moduleBitStream.end(), bitstream.begin(), bitstream.end());
-      }
+            unsigned int padding = 16 - (bitstream_size % 16);
+            if (bitstream_size % 16 != 0) {
+                bitstream.insert(bitstream.end(), padding, false);
+            }
 
-      //for (unsigned int slinkId = 0; slinkId < 16; slinkId++) {
-      for (unsigned int slinkId = 0; slinkId < 1; slinkId++) { // dumping into one s-link for now
-          FEDRawData& slinkRawData = dtc.getSLink(slinkId);
-          unsigned char *data_ptr = slinkRawData.data();
-    
-          slinkRawData.resize((moduleBitStream.size() + 15) / 16 * 8);
-          for (size_t word_index = 0; word_index < moduleBitStream.size() / 16; ++word_index) {
-              AddHexToDataPtr(data_ptr, word_index, moduleBitStream);
-          }
-      }
-  }
+            dataWords.insert(dataWords.end(), bitstream.begin(), bitstream.end());
 
-  iEvent.put(std::move(fedRawDataCollection));
+            cumulativeOffset += num_16bit_chunks * 16;
+        }
+
+        size_t offsetBytes = (offsetWords.size() + 7) / 8;
+        size_t dataBytes = (dataWords.size() + 7) / 8;
+
+        FEDRawData& slinkOffset = dtc.getSLinkOffset(slinkIndex);
+        FEDRawData& slinkData = dtc.getSLinkData(slinkIndex);
+        slinkOffset.resize(offsetBytes);
+        slinkData.resize(dataBytes);
+
+        unsigned char *offset_ptr = slinkOffset.data();
+        for (size_t index = 0; index < offsetWords.size() / 16; ++index) {
+            AddHexToPtr(offset_ptr, index, offsetWords);
+        }
+        unsigned char *data_ptr = slinkData.data();
+        for (size_t index = 0; index < dataWords.size() / 16; ++index) {
+            AddHexToPtr(data_ptr, index, dataWords);
+        }
+
+    }
+
+    //FIXME hadd to decide how to push ptrs to fedRawDataCollection
+
+    iEvent.put(std::move(fedRawDataCollection));
 }
 
-void Phase2TrackerDTCAssociator::AddHexToDataPtr(unsigned char *data_ptr, int word_index, const std::vector<bool>& moduleBitStream) 
+void Phase2TrackerDTCAssociator::AddHexToPtr(unsigned char *ptr, int index, const std::vector<bool>& bits)
 {
     uint16_t hex_word = 0;
 
     for (int i = 0; i < 16; ++i) {
-        if (moduleBitStream[word_index * 16 + i]) {
+        if (bits[index * 16 + i]) {
             hex_word |= (1 << (15 - i));
         }
     }
 
-    data_ptr[word_index * 4 + 0] = (hex_word >> 12) & 0xF;
-    data_ptr[word_index * 4 + 1] = (hex_word >> 8) & 0xF;
-    data_ptr[word_index * 4 + 2] = (hex_word >> 4) & 0xF;
-    data_ptr[word_index * 4 + 3] = hex_word & 0xF;
+    ptr[index * 4 + 0] = (hex_word >> 12) & 0xF;
+    ptr[index * 4 + 1] = (hex_word >> 8) & 0xF;
+    ptr[index * 4 + 2] = (hex_word >> 4) & 0xF;
+    ptr[index * 4 + 3] = hex_word & 0xF;
 }
 
 void Phase2TrackerDTCAssociator::beginJob() {}
