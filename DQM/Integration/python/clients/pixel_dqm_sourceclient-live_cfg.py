@@ -1,4 +1,3 @@
-from __future__ import print_function
 import FWCore.ParameterSet.Config as cms
 
 import sys
@@ -62,8 +61,8 @@ process.load("DQM.Integration.config.environment_cfi")
 process.dqmEnv.subSystemFolder = TAG
 process.dqmSaver.tag = TAG
 process.dqmSaver.runNumber = options.runNumber
-process.dqmSaverPB.tag = TAG
-process.dqmSaverPB.runNumber = options.runNumber
+# process.dqmSaverPB.tag = TAG
+# process.dqmSaverPB.runNumber = options.runNumber
 
 
 #-----------------------------
@@ -177,7 +176,7 @@ process.hltHighLevel.throw =  False
 # Scheduling
 #--------------------------
 
-process.DQMmodules = cms.Sequence(process.dqmEnv* process.dqmSaver*process.dqmSaverPB)
+process.DQMmodules = cms.Sequence(process.dqmEnv* process.dqmSaver)#*process.dqmSaverPB)
 
 process.RecoForDQM_LocalReco = cms.Sequence(process.siPixelDigis*process.siStripDigis*process.gtDigis*process.trackerlocalreco)
 

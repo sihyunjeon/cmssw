@@ -1,4 +1,3 @@
-from __future__ import print_function
 # L1 Emulator DQM sequence
 #
 #   authors previous versions - see CVS
@@ -34,8 +33,8 @@ process.load("DQM.Integration.config.environment_cfi")
 process.dqmEnv.subSystemFolder = 'L1TEMU'
 process.dqmSaver.tag = 'L1TEMU'
 process.dqmSaver.runNumber = options.runNumber
-process.dqmSaverPB.tag = 'L1TEMU'
-process.dqmSaverPB.runNumber = options.runNumber
+# process.dqmSaverPB.tag = 'L1TEMU'
+# process.dqmSaverPB.runNumber = options.runNumber
 #
 # no references needed
 
@@ -94,7 +93,7 @@ else:
 process.l1EmulatorMonitorClientPath = cms.Path(process.l1EmulatorMonitorClient)
 
 #
-process.l1EmulatorMonitorEndPath = cms.EndPath(process.dqmEnv*process.dqmSaver*process.dqmSaverPB)
+process.l1EmulatorMonitorEndPath = cms.EndPath(process.dqmEnv*process.dqmSaver)#*process.dqmSaverPB)
 
 #
 process.valCscTriggerPrimitiveDigis.gangedME1a = False

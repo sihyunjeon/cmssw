@@ -1,4 +1,3 @@
-from __future__ import print_function
 import FWCore.ParameterSet.Config as cms
 
 import sys
@@ -42,8 +41,8 @@ process.load("DQM.Integration.config.environment_cfi")
 process.dqmEnv.subSystemFolder = "BeamPixel"
 process.dqmSaver.tag = "BeamPixel"
 process.dqmSaver.runNumber = options.runNumber
-process.dqmSaverPB.tag = 'BeamPixel'
-process.dqmSaverPB.runNumber = options.runNumber
+# process.dqmSaverPB.tag = 'BeamPixel'
+# process.dqmSaverPB.runNumber = options.runNumber
 
 #----------------------------
 # Conditions
@@ -67,7 +66,7 @@ process.load("Configuration.StandardSequences.RawToDigi_Data_cff")
 #----------------------------
 # Define Sequences
 #----------------------------
-process.dqmModules  = cms.Sequence(process.dqmEnv + process.dqmSaver + process.dqmSaverPB)
+process.dqmModules  = cms.Sequence(process.dqmEnv + process.dqmSaver )#+ process.dqmSaverPB)
 process.physTrigger = cms.Sequence(process.hltTriggerTypeFilter)
 
 

@@ -1,4 +1,3 @@
-from __future__ import print_function
 from PhysicsTools.PatAlgos.tools.ConfigToolBase import *
 from FWCore.ParameterSet.Mixins import PrintOptions,_ParameterTypeBase,_SimpleParameterTypeBase, _Parameterizable, _ConfigureComponent, _TypedParameterizable, _Labelable,  _Unlabelable,  _ValidatingListBase
 from FWCore.ParameterSet.SequenceTypes import _ModuleSequenceType, _Sequenceable
@@ -786,7 +785,7 @@ def setupBTagging(process, jetSource, pfCandidates, explicitJTA, pvSource, svSou
                                       ),
                                     process, task)
 
-            if btagInfo == 'pfParticleNetTagInfos':
+            if btagInfo == 'pfParticleNetTagInfos' or btagInfo == 'pfGlobalParticleTransformerAK8TagInfos':
                 if pfCandidates.value() == 'packedPFCandidates':
                     # case 1: running over jets whose daughters are PackedCandidates (only via updateJetCollection for now)
                     vertex_associator = ""
@@ -797,7 +796,7 @@ def setupBTagging(process, jetSource, pfCandidates, explicitJTA, pvSource, svSou
                 else:
                     raise ValueError("Invalid pfCandidates collection: %s." % pfCandidates.value())
                 addToProcessAndTask(btagPrefix+btagInfo+labelName+postfix,
-                                    btag.pfParticleNetTagInfos.clone(
+                                    getattr(btag, btagInfo).clone(
                                       jets = jetSource,
                                       vertices = pvSource,
                                       secondary_vertices = svSource,
