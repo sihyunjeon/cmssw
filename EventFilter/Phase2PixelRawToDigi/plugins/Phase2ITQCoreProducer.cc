@@ -1,5 +1,5 @@
 // -*- C++ -*-
-// Package:    EventFilter/Phase2TrackerRawToDigi
+// Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITQCoreProducer
 // Description: Make Phase2ITQCore objects for digis
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
