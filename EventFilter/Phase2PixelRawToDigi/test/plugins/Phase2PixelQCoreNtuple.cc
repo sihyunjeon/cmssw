@@ -366,76 +366,13 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
   e.getByToken(bitstream_token_, aBitStreamVector);
 
   edm::DetSetVector<Phase2ITQCore>::const_iterator iterDet;
-  for (iterDet = aQCoreVector->begin(); iterDet != aQCoreVector->end(); iterDet++) {
-    DetId tkId = iterDet->id;
-
-    edm::DetSet<Phase2ITQCore> theQCores = (*aQCoreVector)[tkId];
-
-    //std::cout << "QCORE DETID NEW : " << tkId.rawId() << std::endl;
-
-    for (auto iterQCore = theQCores.begin(); iterQCore != theQCores.end(); ++iterQCore) {
-    }
-  }
-
   edm::DetSetVector<Phase2ITChipBitStream>::const_iterator iterDetBitStream;
-  for (iterDetBitStream = aBitStreamVector->begin(); iterDetBitStream != aBitStreamVector->end(); iterDetBitStream++) {
-    DetId tkId = iterDetBitStream->id;
-
-    edm::DetSet<Phase2ITChipBitStream> theBitStreams = (*aBitStreamVector)[tkId];
-
-    //std::cout << "BITSTREAM DETID : " << tkId.rawId() << std::endl;
-
-    for (auto iterBitStream = theBitStreams.begin(); iterBitStream != theBitStreams.end(); ++iterBitStream) {
-      //std::cout << "BITSTREAM : " << iterBitStream->get_rocid() << " size = " << iterBitStream->get_bitstream().size() << std::endl;
-    }
-  }
 
   // for finding matched simhit
   TrackerHitAssociator associate(e, trackerHitAssociatorConfig_);
 
   edm::Handle<edm::DetSetVector<PixelDigi>> pixelDigiHandle;
   e.getByToken(pixelDigi_token_, pixelDigiHandle);
-
-  /*
-
-  edm::DetSetVector<PixelDigi>::const_iterator iterDet;
-  for ( iterDet = pixelDigiHandle->begin();
-        iterDet != pixelDigiHandle->end();
-        iterDet++ ) {
-
-    DetId tkId = iterDet->id;
-
-    edm::DetSet<PixelDigi> theDigis = (*pixelDigiHandle)[ tkId ];
-
-    std::vector<std::pair<int,int>> hitlist;
-    
-    if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
-      int layer_num = tTopo->pxbLayer(tkId.rawId());
-      int ladder_num = tTopo->pxbLadder(tkId.rawId());
-      int module_num = tTopo->pxbModule(tkId.rawId());
-      //cout << "tkID: "<<tkId.subdetId()<<" Layer="<<layer_num<<" Ladder="<<ladder_num<<" Module="<<module_num<<endl;
-    } else if (tkId.subdetId() == PixelSubdetector::PixelEndcap) {
-      int module_num = tTopo->pxfModule(tkId());
-      int disk_num = tTopo->pxfDisk(tkId());
-      int blade_num = tTopo->pxfBlade(tkId());
-      int panel_num = tTopo->pxfPanel(tkId());
-      int side_num = tTopo->pxfSide(tkId());
-      //cout << "tkID: "<<tkId.subdetId()<<" Module="<<module_num<<" Disk="<<disk_num<<" Blade="<<blade_num
-      //	   <<" Panel="<<panel_num<<" Side="<<side_num<<endl;
-    }
-
-
-    for ( auto iterDigi = theDigis.begin();
-          iterDigi != theDigis.end();
-          ++iterDigi ) {
-      hitlist.emplace_back(iterDigi->row(),iterDigi->column());
-    }
-
-    processHits(hitlist);
-
-  }
-
-  */
 
   if ((recHitColl.product())->dataSize() > 0) {
     std::string detname;
