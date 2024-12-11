@@ -84,7 +84,7 @@ using namespace reco;
 class Phase2PixelQCoreNtuple : public edm::one::EDAnalyzer<> {
 public:
   explicit Phase2PixelQCoreNtuple(const edm::ParameterSet& conf);
-  virtual ~Phase2PixelQCoreNtuple();
+  ~Phase2PixelQCoreNtuple() override;
   virtual void beginJob();
   virtual void endJob();
   virtual void analyze(const edm::Event& e, const edm::EventSetup& es);
