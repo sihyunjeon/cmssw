@@ -365,9 +365,6 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
   edm::Handle<edm::DetSetVector<Phase2ITChipBitStream>> aBitStreamVector;
   e.getByToken(bitstream_token_, aBitStreamVector);
 
-  edm::DetSetVector<Phase2ITQCore>::const_iterator iterDet;
-  edm::DetSetVector<Phase2ITChipBitStream>::const_iterator iterDetBitStream;
-
   // for finding matched simhit
   TrackerHitAssociator associate(e, trackerHitAssociatorConfig_);
 
@@ -481,10 +478,8 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
     }
 
   } else {
-    int rT = 0;
     const TrajTrackAssociationCollection ttac = *(hTTAC.product());
     for (TrajTrackAssociationCollection::const_iterator it = ttac.begin(); it != ttac.end(); ++it) {
-      ++rT;
       const edm::Ref<std::vector<Trajectory>> refTraj = it->key;
       auto track = it->val;
       trkIsHighPurity_ = track->quality(reco::TrackBase::highPurity);
@@ -492,8 +487,6 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
       trkEta_ = track->eta();
       trkTheta_ = track->theta();
       trkPhi_ = track->phi();
-
-      int iT = 0;
 
       std::vector<TrajectoryMeasurement> tmeasColl = refTraj->measurements();
       for (auto const& tmeasIt : tmeasColl) {
@@ -508,7 +501,6 @@ void Phase2PixelQCoreNtuple::analyze(const edm::Event& e, const edm::EventSetup&
           continue;
         if (!pixhit->isValid())
           continue;
-        ++iT;
         TrajectoryStateOnSurface tsos = tsoscomb(tmeasIt.forwardPredictedState(), tmeasIt.backwardPredictedState());
         const DetId& detId = hit->geographicalId();
         const GeomDet* geomDet(theGeometry->idToDet(detId));
