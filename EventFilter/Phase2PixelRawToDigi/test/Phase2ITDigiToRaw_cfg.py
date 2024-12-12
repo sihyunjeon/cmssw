@@ -56,28 +56,6 @@ process.load("RecoTracker.TrackProducer.TrackRefitters_cff")
 process.TrackRefitter.src = "generalTracks"
 process.TrackRefitter.NavigationSchool = ""
 
-process.ReadLocalMeasurement = cms.EDAnalyzer("Phase2PixelPhase2ITQCoreNtuple",
-                                              trackProducer = cms.InputTag("generalTracks"),
-                                              trajectoryInput = cms.InputTag('TrackRefitter::USER'),
-                                              #verbose = cms.untracked.bool(True),
-                                              #picky = cms.untracked.bool(False),
-                                              ### for using track hit association
-                                              associatePixel = cms.bool(True),
-                                              associateStrip = cms.bool(False),
-                                              associateRecoTracks = cms.bool(False),
-                                              ROUList = cms.vstring('TrackerHitsPixelBarrelLowTof',
-                                                                    'TrackerHitsPixelBarrelHighTof',
-                                                                    'TrackerHitsPixelEndcapLowTof',
-                                                                    'TrackerHitsPixelEndcapHighTof'),
-                                              ttrhBuilder = cms.string("WithTrackAngle"),
-                                              usePhase2Tracker = cms.bool(True),
-                                              pixelSimLinkSrc = cms.InputTag("simSiPixelDigis", "Pixel"),
-                                              siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel"),
-                                              IntTag = cms.InputTag("TrackTrackPoints","integer"),
-                                              phase2TrackerSimLinkSrc = cms.InputTag("simSiPixelDigis", "Tracker")
-                                          )
-
-
 # Additional output definition
 
 # Other statements
@@ -96,7 +74,7 @@ process.digi2raw_step = cms.Path(process.DigiToRaw)
 process.raw2digi_step = cms.Path(process.RawToDigi)
 process.L1Reco_step = cms.Path(process.L1Reco)
 process.reconstruction_step = cms.Path(process.reconstruction)
-process.user_step = cms.Path(process.TrackRefitter * process.Phase2ITQCoreProducer * process.ReadLocalMeasurement)
+process.user_step = cms.Path(process.TrackRefitter * process.Phase2ITQCoreProducer)
 process.endjob_step = cms.EndPath(process.endOfProcess)
 
 # Schedule definition
