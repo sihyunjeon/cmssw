@@ -1,4 +1,4 @@
-<library file="plugins/*.cc" name="testEventFilterPhase2TrackerRawToDigiPlugins">
+<library file="plugins/*.cc" name="testEventFilterPhase2PixelRawToDigiPlugins">
   <use name="clhep"/>
   <use name="DataFormats/Common"/>
   <use name="FWCore/Framework"/>
@@ -6,7 +6,7 @@
   <use name="FWCore/ParameterSet"/>
   <use name="FWCore/PluginManager"/>
   <use name="rootcore"/>
-  <use name="EventFilter/Phase2TrackerRawToDigi"/>
+  <use name="EventFilter/Phase2PixelRawToDigi"/>
   <use name="FWCore/ServiceRegistry"/>
   <use name="CommonTools/UtilAlgos"/>
   <use name="DataFormats/TrackReco"/>
