@@ -49,6 +49,7 @@ std::vector<bool> Phase2ITQCore::toRocCoordinates(std::vector<bool>& hitmap) {
 std::vector<bool> Phase2ITQCore::getHitmap() {
   std::vector<bool> hitmap = {};
 
+  hitmap.reserve(hits_.size());
   for (auto hit : hits_) {
     hitmap.push_back(hit > 0);
   }
@@ -59,6 +60,7 @@ std::vector<bool> Phase2ITQCore::getHitmap() {
 std::vector<int> Phase2ITQCore::getADCs() {
   std::vector<int> adcmap = {};
 
+  adcmap.reserve(adcs_.size());
   for (auto adc : adcs_) {
     adcmap.push_back(adc);
   }
