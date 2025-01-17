@@ -29,10 +29,10 @@
 #include "DataFormats/FEDRawData/interface/FEDHeader.h"
 #include "DataFormats/FEDRawData/interface/FEDTrailer.h"
 
-class Phase2TrackerDTCAssociator : public edm::one::EDProducer<> {
+class Phase2ITSLinkProducer : public edm::one::EDProducer<> {
 public:
-  explicit Phase2TrackerDTCAssociator(const edm::ParameterSet&);
-  ~Phase2TrackerDTCAssociator() override;
+  explicit Phase2ITSLinkProducer(const edm::ParameterSet&);
+  ~Phase2ITSLinkProducer() override;
 
 private:
   void beginJob() override;
@@ -42,19 +42,20 @@ private:
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   const edm::EDGetTokenT<edm::DetSetVector<Phase2ITChipBitStream>> ITChipBitStreamToken_;
 
+  void printFEDRawDataCollection(const FEDRawDataCollection& fedRawDataCollection);
   void AddHexToPtr(unsigned char *data_ptr, int word_index, const std::vector<bool>& moduleBitStream);
 
 };
 
-Phase2TrackerDTCAssociator::Phase2TrackerDTCAssociator(const edm::ParameterSet& iConfig)
+Phase2ITSLinkProducer::Phase2ITSLinkProducer(const edm::ParameterSet& iConfig)
   : cablingMapToken_(esConsumes()),
     ITChipBitStreamToken_(consumes<edm::DetSetVector<Phase2ITChipBitStream>>(iConfig.getParameter<edm::InputTag>("Phase2ITChipBitStream"))){
     produces<FEDRawDataCollection>();
 }
 
-Phase2TrackerDTCAssociator::~Phase2TrackerDTCAssociator() {}
+Phase2ITSLinkProducer::~Phase2ITSLinkProducer() {}
 
-void Phase2TrackerDTCAssociator::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void Phase2ITSLinkProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
     using namespace edm;
     using namespace std;
@@ -73,11 +74,29 @@ void Phase2TrackerDTCAssociator::produce(edm::Event& iEvent, const edm::EventSet
         // FIXME ignore header and trailer for now
 
         DetId detId = detSet.detId();
-        auto DTCELinkId = cablingMap.detIdToDTCELinkId(detId);
-        int dtc_id = (*DTCELinkId.first).second.dtc_id();
-        unsigned int slinkIndex = dtc_id; // FIXME for now just dumping data stream to one DTC to one slink
+
+        /*
+        std::vector<uint32_t> const knownDetIds = cablingMap.getKnownDetIds();
+        for (uint32_t detId : knownDetIds) {
+          std::cout << "(" << detId << " : [";
+          auto equal_range = cablingMap.detIdToDTCELinkId(detId);
+          for (auto it = equal_range.first; it != equal_range.second; ++it)
+              std::cout << "(" << unsigned(it->second.dtc_id()) << ", " << unsigned(it->second.gbtlink_id()) << ", " << unsigned(it->second.elink_id()) << "), " << std::endl;
+        }
+        */
+
+        /*
+        auto range = cablingMap.detIdToDTCELinkId(detId.rawId());
+        int dtc_id = -1;
+        for (auto it = range.first; it != range.second; ++it) {
+            const auto& dtcELinkId = it->second;
+            dtc_id = dtcELinkId.dtc_id();
+        }
+        */
+        unsigned int slinkIndex = detId.rawId();//dtc_id; // FIXME for now just dumping data stream to one DTC to one slink
         // detId.rawId() : can do this but need to loop over again
         // Define a map file, xml or db to do the remapping
+        std::cout << slinkIndex << std::endl;
 
         std::vector<bool> offset_bits;
         std::vector<bool> data_bits;
@@ -120,18 +139,21 @@ void Phase2TrackerDTCAssociator::produce(edm::Event& iEvent, const edm::EventSet
             bitstream_cumulative += data_bits.size();
         }
 
-        unsigned int offset_bytes = (offset_bits.size() + 7) / 8;
-        unsigned int data_bytes = (data_bits.size() + 7) / 8;
+        unsigned int offset_bytes = 4 * ((offset_bits.size() + 15) / 16);
+        unsigned int data_bytes = 4 * ((data_bits.size() + 15) / 16);
 
         FEDRawData combined_slink;
         combined_slink.resize(offset_bytes + data_bytes);
         unsigned char *ptr = combined_slink.data();
 
+        std::cout << "offset" << std::endl;
         for (unsigned int i = 0; i < offset_bits.size() / 16; ++i) {
             AddHexToPtr(ptr, i, offset_bits);
         }
+        std::cout << "data" << std::endl;
         for (unsigned int i = 0; i < data_bits.size() / 16; ++i) {
             AddHexToPtr(ptr, i + offset_bits.size() / 16, data_bits);
+            //AddHexToPtr(ptr, i, data_bits);
         }
 
         FEDRawData& current_slink = fedRawDataCollection->FEDData(slinkIndex);
@@ -141,7 +163,7 @@ void Phase2TrackerDTCAssociator::produce(edm::Event& iEvent, const edm::EventSet
         std::memcpy(current_slink.data() + current_slink_size, combined_slink.data(), combined_slink.size());
 
     }
-
+    printFEDRawDataCollection(*fedRawDataCollection);
 
     //for (int dtc_id = MIN_DTC_ID; dtc_id < MAX_DTC_ID; dtc_id++){
     //    for (int slink_id = 0; slink_id < MAX_SLINK_ID + 1; slink_id++){
@@ -149,7 +171,24 @@ void Phase2TrackerDTCAssociator::produce(edm::Event& iEvent, const edm::EventSet
     //}
 }
 
-void Phase2TrackerDTCAssociator::AddHexToPtr(unsigned char *ptr, int index, const std::vector<bool>& bits)
+void Phase2ITSLinkProducer::printFEDRawDataCollection(const FEDRawDataCollection& fedRawDataCollection) {
+    // Loop over all FED IDs
+    for (int fedId = 0; fedId < 36; ++fedId) {
+        const FEDRawData& fedData = fedRawDataCollection.FEDData(fedId);
+        if (fedData.size() == 0) continue; // Skip empty FEDs
+
+        std::cout << "FED ID: " << fedId << ", Size: " << fedData.size() << " bytes\n";
+        const unsigned char* data = fedData.data();
+        for (size_t i = 0; i < fedData.size(); ++i) {
+            // Print each byte in hex
+            std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(data[i]) << " ";
+            if ((i + 1) % 16 == 0) std::cout << "\n"; // New line every 16 bytes
+        }
+        std::cout << std::dec << "\n"; // Reset formatting to decimal
+    }
+}
+
+void Phase2ITSLinkProducer::AddHexToPtr(unsigned char *ptr, int index, const std::vector<bool>& bits)
 {
     uint16_t hex_word = 0;
 
@@ -163,13 +202,15 @@ void Phase2TrackerDTCAssociator::AddHexToPtr(unsigned char *ptr, int index, cons
     ptr[index * 4 + 1] = (hex_word >> 8) & 0xF;
     ptr[index * 4 + 2] = (hex_word >> 4) & 0xF;
     ptr[index * 4 + 3] = (hex_word >> 0) & 0xF;
+    std::cout << hex_word << std::endl;
 }
 
-void Phase2TrackerDTCAssociator::beginJob() {}
+void Phase2ITSLinkProducer::beginJob() {}
 
-void Phase2TrackerDTCAssociator::endJob() {}
+void Phase2ITSLinkProducer::endJob() {}
 
 //define this as a plug-in
-DEFINE_FWK_MODULE(Phase2TrackerDTCAssociator);
+DEFINE_FWK_MODULE(Phase2ITSLinkProducer);
+
 
 
