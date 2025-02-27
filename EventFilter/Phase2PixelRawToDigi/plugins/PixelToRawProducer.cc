@@ -44,6 +44,11 @@ private:
     static constexpr int SLINKS_PER_DTC = 16;
     static constexpr int MIN_DTC_ID = 11;
     static constexpr int MAX_DTC_ID = 49;
+    static constexpr uint16_t HEADER_CHIP = 0xE000;
+    static constexpr uint16_t HEADER_TRAILER_PATTERN = 0xFFFF;
+    static constexpr int HEADER_TRAILER_LINES = 8;
+    static constexpr int BITS_PER_WORD = 16;
+    static constexpr int BITS_PER_CHUNK = 128;
 };
 
 PixelToRawProducer::PixelToRawProducer(const edm::ParameterSet& iConfig)
@@ -88,13 +93,13 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
                     const edm::DetSet<Phase2ITChipBitStream>& detSet = *found_det_id;            
                     auto& this_data_vec = data_bits[i_slink_id]; 
                     auto& this_offset_vec = offset_bits[i_slink_id];
-                    std::size_t offset_chip = this_data_vec.size()/16;
+                    std::size_t offset_chip = this_data_vec.size()/BITS_PER_WORD;
                     uint16_t msb = static_cast<uint16_t>((offset_chip >> 16) & 0xFFFF);
                     uint16_t lsb = static_cast<uint16_t>(offset_chip & 0xFFFF);
                     
-                    std::vector<bool> offset_msb(16, false); 
-                    std::vector<bool> offset_lsb(16, false);
-                    for (unsigned int i = 0; i < 16; ++i) {
+                    std::vector<bool> offset_msb(BITS_PER_WORD, false); 
+                    std::vector<bool> offset_lsb(BITS_PER_WORD, false);
+                    for (unsigned int i = 0; i < BITS_PER_WORD; ++i) {
                         offset_msb[15 - i] = (msb >> i) & 1;
                         offset_lsb[15 - i] = (lsb >> i) & 1;
                     }
@@ -104,18 +109,18 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
                     for (auto const& chip : detSet) {// loop over chips
                         std::vector<bool> bitstream = chip.get_bitstream();
                         unsigned int chip_data_size = 32 + bitstream.size(); // 2 headers (16b each) + bitstream
-                        unsigned int padding_needed = (128 - (chip_data_size % 128)) % 128;
+                        unsigned int padding_needed = (BITS_PER_CHUNK - (chip_data_size % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
 
                         // fill in chip headers
-                        uint16_t header1 = 0xE000 | (padding_needed & 0xF);
-                        std::vector<bool> data_header1(16, false);
-                        for (unsigned int i = 0; i < 16; ++i) {
+                        uint16_t header1 = HEADER_CHIP | (padding_needed & 0xF);
+                        std::vector<bool> data_header1(BITS_PER_WORD, false);
+                        for (unsigned int i = 0; i < BITS_PER_WORD; ++i) {
                             data_header1[15 - i] = (header1 >> i) & 1;
                         }
                         
                         uint16_t header2 = bitstream.size();
-                        std::vector<bool> data_header2(16, false);
-                        for (unsigned int i = 0; i < 16; ++i) {
+                        std::vector<bool> data_header2(BITS_PER_WORD, false);
+                        for (unsigned int i = 0; i < BITS_PER_WORD; ++i) {
                             data_header2[15 - i] = (header2 >> i) & 1;
                         }
 
@@ -130,7 +135,7 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
                 }
             }
 
-            unsigned int padding_offset_bits = (128 - (offset_bits[i_slink_id].size() % 128)) % 128;
+            unsigned int padding_offset_bits = (BITS_PER_CHUNK - (offset_bits[i_slink_id].size() % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
             if (padding_offset_bits > 0) {
                 offset_bits[i_slink_id].insert(offset_bits[i_slink_id].end(), padding_offset_bits, false);
             }
@@ -138,29 +143,52 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
             const auto& final_offset = offset_bits[i_slink_id];
             const auto& final_data = data_bits[i_slink_id];
 
-            unsigned int offset_chunks = final_offset.size() / 16; 
-            unsigned int data_chunks = final_data.size() / 16;
+            unsigned int offset_chunks = final_offset.size() / BITS_PER_WORD; 
+            unsigned int data_chunks = final_data.size() / BITS_PER_WORD;
 
             std::cout << "\nDTC ID: " << iter_dtc_id << ", SLink ID: " << i_slink_id << std::endl;
             PrintBitVectorAs16bit(offset_bits[i_slink_id], "Offset Block");
             PrintBitVectorAs16bit(data_bits[i_slink_id], "Data Block");
             std::cout << "Offset block size: " << offset_bits[i_slink_id].size() 
-                     << " bits (" << offset_bits[i_slink_id].size()/128 << " chunks)" << std::endl;
+                     << " bits (" << offset_bits[i_slink_id].size()/BITS_PER_CHUNK << " chunks)" << std::endl;
             std::cout << "Data block size: " << data_bits[i_slink_id].size() 
-                     << " bits (" << data_bits[i_slink_id].size()/128 << " chunks)" << std::endl;
+                     << " bits (" << data_bits[i_slink_id].size()/BITS_PER_CHUNK << " chunks)" << std::endl;
 
-            unsigned int offset_bytes = 4 * offset_chunks; 
-            unsigned int data_bytes = 4 * data_chunks;
+            unsigned int offset_bytes = 2 * offset_chunks; 
+            unsigned int data_bytes = 2 * data_chunks;
+            
+            // Calculate size including headers and trailers
+            unsigned int header_size = HEADER_TRAILER_LINES * 2; // 8 lines of 16-bit header (0xFFFF)
+            unsigned int trailer_size = HEADER_TRAILER_LINES * 2; // 8 lines of 16-bit trailer (0xFFFF)
+            unsigned int total_size = header_size + offset_bytes + data_bytes + trailer_size;
 
             FEDRawData combined_slink;
-            combined_slink.resize(offset_bytes + data_bytes);
+            combined_slink.resize(total_size);
             unsigned char* ptr = combined_slink.data();
-
-            for (unsigned int i_chunk = 0; i_chunk < offset_chunks; ++i_chunk) {
-                AddHexToPtr(ptr, i_chunk, i_chunk, final_offset);
+            
+            // Add header - 8 lines of 0xFFFF
+            for (int h = 0; h < HEADER_TRAILER_LINES; h++) {
+                ptr[h*2] = 0xFF;     // Upper byte
+                ptr[h*2+1] = 0xFF;   // Lower byte
             }
+            
+            // Add offset data
+            unsigned char* offset_ptr = ptr + header_size;
+            for (unsigned int i_chunk = 0; i_chunk < offset_chunks; ++i_chunk) {
+                AddHexToPtr(offset_ptr, i_chunk, i_chunk, final_offset);
+            }
+            
+            // Add data blocks
+            unsigned char* data_ptr = offset_ptr + offset_bytes;
             for (unsigned int i_chunk = 0; i_chunk < data_chunks; ++i_chunk) {
-                AddHexToPtr(ptr, i_chunk + offset_chunks, i_chunk, final_data);
+                AddHexToPtr(data_ptr, i_chunk, i_chunk, final_data);
+            }
+            
+            // Add trailer - 8 lines of 0xFFFF
+            unsigned char* trailer_ptr = data_ptr + data_bytes;
+            for (int t = 0; t < HEADER_TRAILER_LINES; t++) {
+                trailer_ptr[t*2] = 0xFF;     // Upper byte
+                trailer_ptr[t*2+1] = 0xFF;   // Lower byte
             }
 
             FEDRawData& current_slink = fedRawDataCollection->FEDData(total_slink_id);
@@ -188,8 +216,8 @@ void PixelToRawProducer::AddHexToPtr(unsigned char* ptr,
                                        int localIndex,
                                        const std::vector<bool>& bits) {
     uint16_t hex_word = 0;
-    for (int i = 0; i < 16; ++i) {
-        if (bits[localIndex * 16 + i]) {
+    for (int i = 0; i < BITS_PER_WORD; ++i) {
+        if (bits[localIndex * BITS_PER_WORD + i]) {
             hex_word |= (1 << (15 - i));
         }
     }
@@ -202,20 +230,22 @@ void PixelToRawProducer::PrintBitVectorAs16bit(const std::vector<bool>& bits, co
     std::cout << "\n=== " << label << " ===" << std::endl;
     std::cout << "Total bits: " << bits.size() << std::endl;
     
-    for (size_t i = 0; i < bits.size(); i += 16) {
+    for (size_t i = 0; i < bits.size(); i += BITS_PER_WORD) {
+        if (i + BITS_PER_WORD > bits.size()) break; // Skip incomplete chunks
+        
         // 16 bits to hex
         uint16_t value = 0;
-        for (int j = 0; j < 16; j++) {
+        for (int j = 0; j < BITS_PER_WORD; j++) {
             if (bits[i + j]) {
                 value |= (1 << (15 - j));
             }
         }
         
-        std::cout << "Bits[" << std::setw(4) << i << "]: 0x" 
+        std::cout << "Bits[" << std::setw(4) << std::dec << i << "]: 0x" 
                  << std::hex << std::setw(4) << std::setfill('0') << value 
                  << "  Binary: ";
         
-        for (int j = 0; j < 16; j++) {
+        for (int j = 0; j < BITS_PER_WORD; j++) {
             std::cout << (bits[i + j] ? "1" : "0");
             if ((j + 1) % 4 == 0) std::cout << " ";
         }
