@@ -50,6 +50,9 @@ public:
   // either cache the results or avoid calling them in hot loops.
   // NOTE: This vectors are unsorted
 
+  /// Return all DetIds associated with a given DTCId
+  std::vector<uint32_t> getAllDetIdsForDTCId(unsigned int dtcId) const;
+
   /// Returns a vector containing all elink DTCELinkId nown to the map
   std::vector<DTCELinkId> getKnownDTCELinkIds() const;
 

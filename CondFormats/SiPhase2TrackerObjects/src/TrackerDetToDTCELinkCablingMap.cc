@@ -82,6 +82,18 @@ std::vector<uint32_t> TrackerDetToDTCELinkCablingMap::getKnownDetIds() const {
   return knownDetId;
 }
 
+std::vector<uint32_t> TrackerDetToDTCELinkCablingMap::getAllDetIdsForDTCId(unsigned int dtcId) const {
+  std::vector<uint32_t> result;
+  // Iterate over all (DTCELinkId -> DetId) pairs
+  for (auto const& entry : cablingMapDTCELinkIdToDetId_) {
+    if (entry.first.dtc_id() == dtcId) {
+      result.push_back(entry.second);
+    }
+  }
+
+  return result;
+}
+
 void TrackerDetToDTCELinkCablingMap::insert(DTCELinkId const& dtcELinkId, uint32_t const detId) {
   cablingMapDTCELinkIdToDetId_.insert(std::make_pair(DTCELinkId(dtcELinkId), uint32_t(detId)));
   cablingMapDetIdToDTCELinkId_.insert(std::make_pair(uint32_t(detId), DTCELinkId(dtcELinkId)));
