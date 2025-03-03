@@ -1,6 +1,7 @@
 === Compile & Run Instructions ===
 
-NOTE : There is no compatible cabling map that can be used in CMSSW_15_0_0_pre2 for now. Though with same codes, everything runs under CMSSW_13_3_3.
+NOTE : There is no compatible cabling map that can be used in CMSSW_15_0_0_pre2 for now. Though with same codes, everything runs under CMSSW_13_3_3 (borrowing
+OTandITDTCCablingMap.db file from old geometry+cabling map combo).
 
 ```
 cmsrel CMSSW_15_0_0_pre2
