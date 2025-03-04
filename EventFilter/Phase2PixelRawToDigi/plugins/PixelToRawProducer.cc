@@ -1,4 +1,4 @@
-// -*- C++ -*-
+// ED producer that creates FEDRawDataCollection from inner tracker quarer cores
 #include <utility>
 #include <unordered_map>
 #include <string>
