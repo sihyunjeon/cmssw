@@ -61,19 +61,19 @@ process.load("Validation.RecoVertex.mcverticesanalyzer_cfi")
 process.mcverticesanalyzer.pileupSummaryCollection = cms.InputTag("addPileupInfo","","HLT")
 
 process.Phase2ITQCoreProducer = cms.EDProducer(
-    'Phase2ITQCoreProducer',
-    src = cms.InputTag("generalTracks"),
-    siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel")
+'Phase2ITQCoreProducer',
+src = cms.InputTag("generalTracks"),
+siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel")
 )
 
 process.Packer = cms.EDProducer(
-    'Phase2ITSLinkProducer',
+    'PixelToRawProducer',
     Phase2ITChipBitStream = cms.InputTag("Phase2ITQCoreProducer")
 )
 
 process.Unpacker = cms.EDProducer(
-    'Phase2ITSLinkUnpacker',
-    fedData = cms.InputTag("Packer")
+    'RawToPixelProducer',
+    fedRawDataCollection = cms.InputTag("Packer")
 )
 
 # # # -- Trajectory producer
@@ -88,6 +88,7 @@ process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
         'drop *',  # Drop everything by default
         'keep FEDRawDataCollection_*_*_*',
         'keep *_Phase2IT*_*_*',  # Save Phase2ITChipBitStream
+        'keep PixelDigi*_*_*_*'
     )
 )
 # Other statements
@@ -102,7 +103,8 @@ process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic_T30', ''
 process.digitisation_step = cms.Path(process.pdigi_valid)
 process.user_step = cms.Path(
     process.Phase2ITQCoreProducer *
-    process.Packer
+    process.Packer *
+    process.Unpacker
 )
 process.endjob_step = cms.EndPath(process.endOfProcess)
 process.output_step = cms.EndPath(process.FEVTDEBUGoutput)

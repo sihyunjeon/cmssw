@@ -6,9 +6,10 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChip.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITDigiHit.h"
 
-Phase2ITChip::Phase2ITChip(int rocnum, const std::vector<Phase2ITDigiHit> hl) {
+Phase2ITChip::Phase2ITChip(int rocnum, const std::vector<Phase2ITDigiHit> hl, uint32_t detId) {
   hitList_ = hl;
   rocnum_ = rocnum;
+  detId_ = detId;
 }
 
 unsigned int Phase2ITChip::size() { return hitList_.size(); }
@@ -80,13 +81,7 @@ std::vector<Phase2ITQCore> Phase2ITChip::organize_QCores(std::vector<Phase2ITQCo
 
 //Takes in an oranized list of Phase2ITQCores and sets the islast and isneighbor properties of those qcores
 std::vector<Phase2ITQCore> link_QCores(std::vector<Phase2ITQCore> qcores) {
-  for (size_t i = 1; i < qcores.size(); i++) {
-    if (qcores[i].get_row() == qcores[i - 1].get_row()) {
-      qcores[i].setIsNeighbour(true);
-    }
-  }
-
-  //.size() is unsigned. If size is zero size()-1 is a huge number hence this needs to be protected
+  // First set islast flags
   if (!qcores.empty()) {
     for (size_t i = 0; i < qcores.size() - 1; i++) {
       if (qcores[i].get_col() != qcores[i + 1].get_col()) {
@@ -95,7 +90,14 @@ std::vector<Phase2ITQCore> link_QCores(std::vector<Phase2ITQCore> qcores) {
     }
     qcores[qcores.size() - 1].setIsLast(true);
   }
-
+  
+  // Then set isneighbour flags, but only if previous isn't islast
+  for (size_t i = 1; i < qcores.size(); i++) {
+    if (qcores[i].get_row() == qcores[i - 1].get_row() && !qcores[i-1].islast()) {
+      qcores[i].setIsNeighbour(true);
+    }
+  }
+  
   return qcores;
 }
 
@@ -111,6 +113,7 @@ std::vector<Phase2ITQCore> Phase2ITChip::get_organized_QCores() {
   return (link_QCores(organize_QCores(rem_duplicates(qcores))));
 }
 
+/*
 //Returns the encoding of the readout chip
 std::vector<bool> Phase2ITChip::get_chip_code() {
   std::vector<bool> code = {};
@@ -128,4 +131,46 @@ std::vector<bool> Phase2ITChip::get_chip_code() {
   }
 
   return code;
+}
+*/
+
+std::vector<bool> Phase2ITChip::get_chip_code() {
+    std::vector<bool> code = {};
+    bool isDebugChip = (detId_ == 303046688);
+
+    if (!hitList_.empty()) {
+        std::vector<Phase2ITQCore> qcores = get_organized_QCores();
+
+        if (isDebugChip) {
+            std::cout << "FULL BITSTREAM DEBUG FOR CHIP:" << std::endl;
+        }
+
+        bool is_new_col = true;
+        for (auto& qcore : qcores) {
+            std::vector<bool> qcore_code = qcore.encodeQCore(is_new_col);
+
+            if (isDebugChip) {
+                std::cout << "QCore at (" << qcore.get_col() << "," << qcore.get_row()
+                          << ") code: ";
+                for (bool bit : qcore_code) {
+                    std::cout << (bit ? '1' : '0');
+                }
+                std::cout << std::endl;
+            }
+
+            code.insert(code.end(), qcore_code.begin(), qcore_code.end());
+            is_new_col = qcore.islast();
+        }
+
+        if (isDebugChip) {
+            std::cout << "FULL BITSTREAM: ";
+            for (bool bit : code) {
+                std::cout << (bit ? '1' : '0');
+            }
+            std::cout << std::endl;
+            std::cout << "BITSTREAM LENGTH: " << code.size() << " bits" << std::endl;
+        }
+    }
+
+    return code;
 }
