@@ -1,3 +1,5 @@
+// EDProducer that takes bitstream to FEDRawData (Packer)
+
 #include <utility>
 #include <unordered_map>
 #include <string>
@@ -29,49 +31,59 @@
 #include "DataFormats/FEDRawData/interface/FEDRawData.h"
 #include "DataFormats/FEDRawData/interface/FEDHeader.h"
 #include "DataFormats/FEDRawData/interface/FEDTrailer.h"
+#include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+ 
+using namespace Phase2DAQFormatSpecification;
 
-class PixelToRawProducer : public edm::one::EDProducer<> {
+class PixelToRawProducer : public edm::one::EDProducer<edm::one::WatchRuns> {
 public:
     explicit PixelToRawProducer(const edm::ParameterSet&);
-    ~PixelToRawProducer() override;
+    ~PixelToRawProducer() override = default;
     
     static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
-
-private:
+    void beginRun(const edm::Run&, const edm::EventSetup&) override;
+    void endRun(const edm::Run&, const edm::EventSetup&) override {}
     void produce(edm::Event&, const edm::EventSetup&) override;
-    
+private:
     const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
     const edm::EDGetTokenT<edm::DetSetVector<Phase2ITChipBitStream>> ITChipBitStreamToken_;
 
-    unsigned int calculateDTCIndex(unsigned int dtc_id);
     void addWordToBuffer(unsigned char* buffer, size_t position, uint16_t word);
     void addWordToBitVector(std::vector<bool>& vec, uint16_t word, bool debug = false);
     void printBitVectorAs16bit(const std::vector<bool>& bits, const std::string& label);
     void padToChunkBoundary(std::vector<bool>& vec);
     uint16_t calculateChipOffset(const std::vector<bool>& dataBlock);
     std::string getBitString(const std::vector<bool>& bits, size_t start, size_t len);
+    const TrackerDetToDTCELinkCablingMap* cablingMap_ = nullptr;
 
-    static constexpr int SLINKS_PER_DTC = 16;
-    static constexpr int MIN_DTC_ID = 11;
-    static constexpr int MAX_DTC_ID = 49;
-    static constexpr uint16_t CHIP_HEADER_MARKER = 0xE000;
-    static constexpr uint16_t HEADER_TRAILER_PATTERN = 0xFFFF;
-    static constexpr int HEADER_TRAILER_LINES = 8;
-    static constexpr int BITS_PER_WORD = 16;
-    static constexpr int BITS_PER_CHUNK = 128;
-    static constexpr int BYTES_PER_WORD = 2;
+    std::vector<std::pair<unsigned int, unsigned int>> knownDTCIdsWithIndex_;
+    std::unordered_map<unsigned int, std::vector<uint32_t>> dtcIdToDetIds_;
 };
 
 PixelToRawProducer::PixelToRawProducer(const edm::ParameterSet& iConfig)
-    : cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd>()),
+    : cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       ITChipBitStreamToken_(consumes<edm::DetSetVector<Phase2ITChipBitStream>>(
           iConfig.getParameter<edm::InputTag>("Phase2ITChipBitStream"))) {
     
     produces<FEDRawDataCollection>();
 }
 
-PixelToRawProducer::~PixelToRawProducer() {}
+void PixelToRawProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+    edm::ParameterSetDescription desc;
+    desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("PixelQCoreProducer"));
+    descriptions.add("pixelToRawProducer", desc);
+}
 
+void PixelToRawProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
+  cablingMap_ = &iSetup.getData(cablingMapToken_);
+  knownDTCIdsWithIndex_ = cablingMap_->getKnownDTCIdsWithIndex();
+    dtcIdToDetIds_.clear();
+
+    for (const auto& pair : knownDTCIdsWithIndex_) {
+        unsigned int dtcId = pair.second;
+        dtcIdToDetIds_[dtcId] = cablingMap_->getAllDetIdsForDTCId(dtcId);
+    }
+}    
 std::string PixelToRawProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) {
     std::string result;
     for (size_t i = 0; i < len && start + i < bits.size(); i++) {
@@ -90,22 +102,24 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
     edm::Handle<edm::DetSetVector<Phase2ITChipBitStream>> handle;
     iEvent.getByToken(ITChipBitStreamToken_, handle);
 
+    if (!handle.isValid()) {
+        std::cout << "ERROR: Phase2ITChipBitStream collection not found!" << std::endl;
+        iEvent.put(std::move(fedRawDataCollection));
+        return;
+    }
+
     std::cout << "PACKER: Received " << handle->size() << " detectors with chip bitstreams" << std::endl;
 
     // Loop over all DTCs
-    for (int iter_dtc_id = MIN_DTC_ID; iter_dtc_id <= MAX_DTC_ID; iter_dtc_id++) {
-        // Skip DTCs ending with 0 (10, 20, 30, etc.)
-        if (iter_dtc_id % 10 == 0) continue;
+    for (const auto& pair : knownDTCIdsWithIndex_) {
+        unsigned int dtcIndex = pair.first;
+        unsigned int dtcId = pair.second;
         
-        int dtc_index = calculateDTCIndex(iter_dtc_id);
-
         // Get all detector IDs for this DTC
-        auto det_ids = cablingMap.getAllDetIdsForDTCId(iter_dtc_id);
+        auto& det_ids = dtcIdToDetIds_[dtcId];
         int total_det_ids = det_ids.size();
         
-        std::cout << "PACKER: DTC " << iter_dtc_id << " has " << total_det_ids << " detectors" << std::endl;
-
-        // Calculate modules per slink - distribute evenly as much as possible
+        // Calculate modules per slink - distribute evenly
         int base_modules_per_slink = total_det_ids / SLINKS_PER_DTC;
         int remaining_modules = total_det_ids % SLINKS_PER_DTC;
 
@@ -113,7 +127,7 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
         
         // Loop over all SLinks
         for (int slink_id = 0; slink_id < SLINKS_PER_DTC; slink_id++) {
-            int global_slink_id = dtc_index * SLINKS_PER_DTC + slink_id;
+            int global_slink_id = dtcIndex * SLINKS_PER_DTC + slink_id;
             
             // Calculate how many modules should be assigned to this SLink
             int modules_for_this_slink = base_modules_per_slink + ((slink_id < remaining_modules) ? 1 : 0);
@@ -127,9 +141,9 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
             std::vector<bool> dataBlock;
             
             // Process each module assigned to this SLink
-            for (int mod_idx = 0; mod_idx < modules_for_this_slink && moduleIndex < total_det_ids; mod_idx++) {
+            for (int mod_idx = 0; mod_idx < modules_for_this_slink; mod_idx++) {
                 uint32_t det_id = det_ids[moduleIndex++];
-                bool isDebugModule = (det_id == 303046688);
+                bool isDebugModule = false;// (det_id == 303058948);
                 
                 auto found_det_id = handle->find(det_id);
                 if (found_det_id == handle->end()) {
@@ -209,10 +223,8 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
             padToChunkBoundary(offsetBlock);
             size_t newSize = offsetBlock.size();
             
-            if (newSize > oldSize) {
-                std::cout << "PACKER: Added " << (newSize - oldSize) 
-                         << " padding bits to align offset block to 128-bit boundary" << std::endl;
-            }
+            std::cout << "PACKER: Added " << (newSize - oldSize) 
+                      << " padding bits to align offset block to 128-bit boundary" << std::endl;
             
             // Calculate sizes in bytes
             unsigned int header_size = HEADER_TRAILER_LINES * BYTES_PER_WORD;
@@ -267,17 +279,9 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
             }
         }
         
-        break;
     }
     
     iEvent.put(std::move(fedRawDataCollection));
-}
-
-unsigned int PixelToRawProducer::calculateDTCIndex(unsigned int dtc_id) {
-    // Converts DTC ID (11-49) to index (0-35)
-    unsigned int tens = dtc_id / 10;
-    unsigned int units = dtc_id % 10;
-    return (tens - 1) * 9 + (units - 1);
 }
 
 void PixelToRawProducer::addWordToBuffer(unsigned char* buffer, size_t position, uint16_t word) {
@@ -333,6 +337,11 @@ uint16_t PixelToRawProducer::calculateChipOffset(const std::vector<bool>& dataBl
 
 void PixelToRawProducer::printBitVectorAs16bit(const std::vector<bool>& bits, const std::string& label) {
     std::cout << "\n=== " << label << " ===" << std::endl;
+    
+    if (bits.empty()) {
+        std::cout << "Empty bit vector" << std::endl;
+        return;
+    }
     
     std::cout << "Total bits: " << bits.size() << std::endl;
     

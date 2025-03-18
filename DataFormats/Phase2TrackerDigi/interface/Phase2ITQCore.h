@@ -26,6 +26,7 @@ public:
   bool islast() const { return islast_; }
 
   void setIsNeighbour(bool isneighbour) { isneighbour_ = isneighbour; }
+  bool isneighbour() const { return isneighbour_; }
 
   int rocid() const { return rocid_; }
   int get_col() const { return ccol_; }
