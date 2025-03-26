@@ -1,6 +1,6 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
-// Class:      Phase2ITQCoreProducer
+// Class:      PixelToBitStreamProducer
 // Description: Make Phase2ITQCore objects for digis
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 // Original Author:  Rohan Misra
@@ -32,10 +32,10 @@
 #include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
 
-class Phase2ITQCoreProducer : public edm::stream::EDProducer<> {
+class PixelToBitStreamProducer : public edm::stream::EDProducer<> {
 public:
-  Phase2ITQCoreProducer(const edm::ParameterSet&);
-  ~Phase2ITQCoreProducer() override = default;
+  PixelToBitStreamProducer(const edm::ParameterSet&);
+  ~PixelToBitStreamProducer() override = default;
 
 private:
   void produce(edm::Event&, const edm::EventSetup&) override;
@@ -47,7 +47,7 @@ private:
   typedef std::vector<Point> PointCollection;
 };
 
-Phase2ITQCoreProducer::Phase2ITQCoreProducer(const edm::ParameterSet& iConfig)
+PixelToBitStreamProducer::PixelToBitStreamProducer(const edm::ParameterSet& iConfig)
     : src_(iConfig.getParameter<edm::InputTag>("src")),
       pixelDigi_token_(consumes(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
       tTopoToken_(esConsumes()) {
@@ -145,7 +145,7 @@ std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, uint
 }
 
 // ------------ method called to produce the data  ------------
-void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   using namespace edm;
   using namespace std;
 
@@ -232,5 +232,5 @@ void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
   iEvent.put(std::move(aBitStreamVector));
 }
 
-DEFINE_FWK_MODULE(Phase2ITQCoreProducer);
+DEFINE_FWK_MODULE(PixelToBitStreamProducer);
 

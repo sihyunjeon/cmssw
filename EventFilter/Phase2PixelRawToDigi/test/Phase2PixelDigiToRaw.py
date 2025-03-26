@@ -28,7 +28,7 @@ process.maxEvents = cms.untracked.PSet(
 
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
-        "file:6aec09bc-1e00-4831-b90c-9b42254f627a.root"
+        "file:/eos/cms/store/group/phase2tracker/IT/samples/RelValTTbar_14TeV__CMSSW_13_1_0_pre3-PU_131X_mcRun4_realistic_v2_PDMVRELVALS146-v7__GEN-SIM-DIGI-RAW/6aec09bc-1e00-4831-b90c-9b42254f627a.root"
     )
 )
 
@@ -52,40 +52,32 @@ process.configurationMetadata = cms.untracked.PSet(
     version = cms.untracked.string('$Revision: 1.0 $')
 )
 
-# Phase2ITQCoreProducer remains unchanged:
-process.Phase2ITQCoreProducer = cms.EDProducer(
-    'Phase2ITQCoreProducer',
+process.PixelToBitStreamProducer = cms.EDProducer(
+    'PixelToBitStreamProducer',
     src = cms.InputTag("generalTracks"),
     siPixelDigi = cms.InputTag("simSiPixelDigis", "Pixel")
 )
 
-# Packer (PixelToRawProducer) remains unchanged:
-process.Packer = cms.EDProducer(
-    'PixelToRawProducer',
-    Phase2ITChipBitStream = cms.InputTag("Phase2ITQCoreProducer")
+process.BitStreamToRawProducer = cms.EDProducer(
+    'BitStreamToRawProducer',
+    Phase2ITChipBitStream = cms.InputTag("PixelToBitStreamProducer")
 )
 
-# Instead of the old RawToPixelProducer, we now introduce a two‐step chain:
-
-# 1. RawToBitStreamProducer: reads FEDRawData (from Packer) and produces intermediate bitstream
 process.RawToBitstreamProducer = cms.EDProducer(
     'RawToBitstreamProducer',
-    fedRawDataCollection = cms.InputTag("Packer"),
+    fedRawDataCollection = cms.InputTag("BitStreamToRawProducer"),
     debug = cms.untracked.bool(False)
 )
 
-# 2. BitStreamToPixelProducer: decodes the intermediate bitstream into PixelDigi objects.
 process.BitstreamToPixelProducer = cms.EDProducer(
-    'BitstreamToPixelProducer',
-    phase2ItChipBitStream = cms.InputTag("RawToBitstreamProducer")
+    'BitStreamToPixelProducer',
+    phase2ItChipBitStream = cms.InputTag("RawToBitStreamProducer")
 )
 
-# Trajectory producer (if needed)
 process.load("RecoTracker.TrackProducer.TrackRefitters_cff")
 process.TrackRefitter.src = "generalTracks"
 process.TrackRefitter.NavigationSchool = ""
 
-# Output module: keep FED raw, Phase2ITChipBitStream and PixelDigi
 process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
     fileName = cms.untracked.string('output_file.root'),
     outputCommands = cms.untracked.vstring(
@@ -96,13 +88,12 @@ process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
     )
 )
 
-# Path definitions
 process.digitisation_step = cms.Path(process.pdigi_valid)
 process.user_step = cms.Path(
-    process.Phase2ITQCoreProducer *
-    process.Packer *
-    process.RawToBitstreamProducer *
-    process.BitstreamToPixelProducer
+    process.PixelToBitStreamProducer *
+    process.BitStreamToRawProducer *
+    process.RawToBitStreamProducer *
+    process.BitStreamToPixelProducer
 )
 process.endjob_step = cms.EndPath(process.endOfProcess)
 process.output_step = cms.EndPath(process.FEVTDEBUGoutput)

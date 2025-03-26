@@ -35,10 +35,10 @@
  
 using namespace Phase2DAQFormatSpecification;
 
-class PixelToRawProducer : public edm::one::EDProducer<edm::one::WatchRuns> {
+class BitStreamToRawProducer : public edm::one::EDProducer<edm::one::WatchRuns> {
 public:
-    explicit PixelToRawProducer(const edm::ParameterSet&);
-    ~PixelToRawProducer() override = default;
+    explicit BitStreamToRawProducer(const edm::ParameterSet&);
+    ~BitStreamToRawProducer() override = default;
     
     static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
     void beginRun(const edm::Run&, const edm::EventSetup&) override;
@@ -60,7 +60,7 @@ private:
     std::unordered_map<unsigned int, std::vector<uint32_t>> dtcIdToDetIds_;
 };
 
-PixelToRawProducer::PixelToRawProducer(const edm::ParameterSet& iConfig)
+BitStreamToRawProducer::BitStreamToRawProducer(const edm::ParameterSet& iConfig)
     : cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       ITChipBitStreamToken_(consumes<edm::DetSetVector<Phase2ITChipBitStream>>(
           iConfig.getParameter<edm::InputTag>("Phase2ITChipBitStream"))) {
@@ -68,13 +68,13 @@ PixelToRawProducer::PixelToRawProducer(const edm::ParameterSet& iConfig)
     produces<FEDRawDataCollection>();
 }
 
-void PixelToRawProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+void BitStreamToRawProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("PixelQCoreProducer"));
     descriptions.add("pixelToRawProducer", desc);
 }
 
-void PixelToRawProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
+void BitStreamToRawProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
   cablingMap_ = &iSetup.getData(cablingMapToken_);
   knownDTCIdsWithIndex_ = cablingMap_->getKnownDTCIdsWithIndex();
     dtcIdToDetIds_.clear();
@@ -84,7 +84,7 @@ void PixelToRawProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& i
         dtcIdToDetIds_[dtcId] = cablingMap_->getAllDetIdsForDTCId(dtcId);
     }
 }    
-std::string PixelToRawProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) {
+std::string BitStreamToRawProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) {
     std::string result;
     for (size_t i = 0; i < len && start + i < bits.size(); i++) {
         result += (bits[start + i] ? "1" : "0");
@@ -93,7 +93,7 @@ std::string PixelToRawProducer::getBitString(const std::vector<bool>& bits, size
     return result;
 }
 
-void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
     using namespace edm;
     using namespace std;
 
@@ -284,13 +284,13 @@ void PixelToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
     iEvent.put(std::move(fedRawDataCollection));
 }
 
-void PixelToRawProducer::addWordToBuffer(unsigned char* buffer, size_t position, uint16_t word) {
+void BitStreamToRawProducer::addWordToBuffer(unsigned char* buffer, size_t position, uint16_t word) {
     // Add a 16-bit word to the buffer at the specified position
     buffer[position * BYTES_PER_WORD] = (word >> 8) & 0xFF;     // MSB
     buffer[position * BYTES_PER_WORD + 1] = word & 0xFF;        // LSB
 }
 
-void PixelToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint16_t word, bool debug) {
+void BitStreamToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint16_t word, bool debug) {
     // Track the starting position for debugging
     size_t startPos = vec.size();
     
@@ -322,7 +322,7 @@ void PixelToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint16_t wor
     }
 }
 
-void PixelToRawProducer::padToChunkBoundary(std::vector<bool>& vec) {
+void BitStreamToRawProducer::padToChunkBoundary(std::vector<bool>& vec) {
     // Add padding to align to 128-bit boundary if needed
     if (!vec.empty() && vec.size() % BITS_PER_CHUNK != 0) {
         size_t padding_needed = BITS_PER_CHUNK - (vec.size() % BITS_PER_CHUNK);
@@ -330,12 +330,12 @@ void PixelToRawProducer::padToChunkBoundary(std::vector<bool>& vec) {
     }
 }
 
-uint16_t PixelToRawProducer::calculateChipOffset(const std::vector<bool>& dataBlock) {
+uint16_t BitStreamToRawProducer::calculateChipOffset(const std::vector<bool>& dataBlock) {
     // Calculate the word offset where this chip's data will start
     return dataBlock.size() / BITS_PER_WORD;
 }
 
-void PixelToRawProducer::printBitVectorAs16bit(const std::vector<bool>& bits, const std::string& label) {
+void BitStreamToRawProducer::printBitVectorAs16bit(const std::vector<bool>& bits, const std::string& label) {
     std::cout << "\n=== " << label << " ===" << std::endl;
     
     if (bits.empty()) {
@@ -370,4 +370,4 @@ void PixelToRawProducer::printBitVectorAs16bit(const std::vector<bool>& bits, co
     }
 }
 
-DEFINE_FWK_MODULE(PixelToRawProducer);
+DEFINE_FWK_MODULE(BitStreamToRawProducer);
