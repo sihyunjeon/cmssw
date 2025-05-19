@@ -13,7 +13,7 @@
 
 #include <fstream>
 #include <vector>
-#include <map>
+#include <unordered_map>
 #include <iostream>
 #include <iomanip>
 #include <cstdint>
@@ -59,8 +59,9 @@ private:
     std::string inputFile_;
 
     // Store all fragments grouped by eventId
-    std::map<uint64_t, std::vector<FragmentData>> eventIdToFragments_;
-    std::map<uint64_t, std::vector<FragmentData>>::iterator currentEventIt_;
+    std::unordered_map<uint64_t, std::vector<FragmentData>> eventIdToFragments_;
+    std::vector<uint64_t> eventInsertionOrder_;
+    size_t currentEventIndex_ = 0;
 
     std::vector<char> readRawFile(const std::string& inputFile);
     void parseAllOrbitsAndFragments(const std::vector<char>& buffer);
@@ -78,17 +79,16 @@ void DTHDAQToFEDRawDataConverter::beginJob() {
     std::vector<char> buffer = readRawFile(inputFile_);
     parseAllOrbitsAndFragments(buffer);
     edm::LogInfo("DTHDAQToFEDRawDataConverter") << "Total unique eventIds found: " << eventIdToFragments_.size();
-    currentEventIt_ = eventIdToFragments_.begin();
 }
 
 void DTHDAQToFEDRawDataConverter::produce(edm::Event& event, const edm::EventSetup&) {
-    if (currentEventIt_ == eventIdToFragments_.end()) {
+    if (currentEventIndex_ >= eventInsertionOrder_.size()) {
         edm::LogWarning("DTHDAQToFEDRawDataConverter") << "No more event groups to produce.";
         return;
     }
 
-    uint64_t eventId = currentEventIt_->first;
-    const auto& fragments = currentEventIt_->second;
+    uint64_t eventId = eventInsertionOrder_[currentEventIndex_];
+    const auto& fragments = eventIdToFragments_.at(eventId);
 
     edm::LogInfo("DTHDAQToFEDRawDataConverter")
         << "Producing CMSSW event for eventId=" << eventId
@@ -103,7 +103,7 @@ void DTHDAQToFEDRawDataConverter::produce(edm::Event& event, const edm::EventSet
     }
 
     event.put(std::move(fedRawDataCollection));
-    ++currentEventIt_;
+    ++currentEventIndex_;
 }
 
 std::vector<char> DTHDAQToFEDRawDataConverter::readRawFile(const std::string& inputFile) {
@@ -197,7 +197,9 @@ void DTHDAQToFEDRawDataConverter::parseAllOrbitsAndFragments(const std::vector<c
             frag.eventId = eventId;
             frag.crc = crc;
             frag.payloadBytes.assign(buffer.begin() + payloadStart, buffer.begin() + payloadStart + payloadSizeBytes);
-
+            if (eventIdToFragments_.find(eventId) == eventIdToFragments_.end()) {
+                eventInsertionOrder_.push_back(eventId);
+            }
             eventIdToFragments_[eventId].emplace_back(std::move(frag));
             currentPos = payloadStart;
         }
