@@ -82,7 +82,7 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
     using namespace Phase2DAQFormatSpecification;
 
     // Retrieve collection of clusters from the event
-    edmNew::DetSetVector<Phase2TrackerCluster1D> all_clusters = iEvent.get(ClusterCollectionToken_);
+    edmNew::DetSetVector<Phase2TrackerCluster1D> const& all_clusters = iEvent.get(ClusterCollectionToken_);
 
     for (int dtc_id = MIN_DTC_ID; dtc_id < MAX_DTC_ID + 1; dtc_id++)
     {
