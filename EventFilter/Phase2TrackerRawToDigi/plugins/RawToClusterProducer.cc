@@ -206,6 +206,10 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
             unsigned int numStripClusters = (headerWord >> (N_BITS_PER_WORD - L1ID_BITS - CIC_ERROR_BITS - N_STRIP_CLUSTER_BITS)) & N_CLUSTER_MASK; // 7-bit field
             unsigned int numPixelClusters = (headerWord) & N_CLUSTER_MASK; // 7-bit field
             
+            if (is2SModule && numPixelClusters > 0)
+              edm::LogError("RawToClusterProducer") << "Header for channel " << iChannel << " expects non-zero (" << numPixelClusters 
+                                                    << ") pixel clusters on a 2S module" ;
+              
             // define the number of lines of the payload
             unsigned int nLines = (numStripClusters + numPixelClusters > 0) ? 
                                    int((numStripClusters * SS_CLUSTER_BITS + numPixelClusters * PX_CLUSTER_BITS)/ N_BITS_PER_WORD) + 1 : 0;
