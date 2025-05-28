@@ -19,6 +19,14 @@ public:
   std::vector<Phase2ITQCore> get_organized_QCores();
   std::vector<bool> get_chip_code();
 
+  static int encodeQCoreIndex(int row, int col);
+  static std::pair<int, int> decodeQCoreIndex(int index);
+
+  static std::pair<int, int> getGlobalPixelCoordinate(
+      int chipId, int qcoreCol, int qcoreRow, int localCol, int localRow);
+
+  static constexpr int kColsPerROC = 54;
+
 private:
   std::vector<Phase2ITDigiHit> hitList_;
   int rocnum_;

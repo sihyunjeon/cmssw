@@ -116,7 +116,7 @@ void adjustEdges(std::vector<Phase2ITDigiHit> hitList) {
   std::for_each(hitList.begin(), hitList.end(), &updateHitCoordinatesForLargePixels);
 }
 
-std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitList, uint32_t detId=0) {
+std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitList, uint32_t detId = 0) {
   // Split the hit list by read out chip
   std::array<std::vector<Phase2ITDigiHit>, 4> hits_per_chip;
   for (auto hit : hitList) {
@@ -137,7 +137,7 @@ std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitLis
   return chips;
 }
 
-std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, uint32_t detId=0) {
+std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, uint32_t detId = 0) {
   adjustEdges(hitList);
   std::vector<Phase2ITChip> chips = splitByChip(hitList, detId);
 
@@ -163,9 +163,9 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
     std::vector<int> id;
 
     bool debugThisDetector = (tkId.rawId() == 303046688);
-        
+
     if (debugThisDetector) {
-        std::cout << "\n======== DEBUGGING DETECTOR " << tkId.rawId() << " ========" << std::endl;
+      std::cout << "\n======== DEBUGGING DETECTOR " << tkId.rawId() << " ========" << std::endl;
     }
 
     if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
@@ -187,13 +187,13 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
     }
 
     if (debugThisDetector) {
-        std::cout << "Found " << hitlist.size() << " hits in detector " << tkId.rawId() << std::endl;
+      std::cout << "Found " << hitlist.size() << " hits in detector " << tkId.rawId() << std::endl;
     }
 
     std::vector<Phase2ITChip> chips = processHits(std::move(hitlist), tkId.rawId());
 
     if (debugThisDetector) {
-        std::cout << "Processed into " << chips.size() << " chips" << std::endl;
+      std::cout << "Processed into " << chips.size() << " chips" << std::endl;
     }
     DetSet<Phase2ITQCore> DetSetQCores(tkId);
     DetSet<Phase2ITChipBitStream> DetSetBitStream(tkId);
@@ -216,16 +216,14 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
         std::cout << "Chip " << i << " encoded to " << chip.get_chip_code().size() << " bits" << std::endl;
       }
       DetSetBitStream.push_back(aChipBitStream);
-
     }
 
     aBitStreamVector->insert(DetSetBitStream);
     aQCoreVector->insert(DetSetQCores);
 
     if (debugThisDetector) {
-        std::cout << "======== END DEBUGGING DETECTOR " << tkId.rawId() << " ========\n" << std::endl;
+      std::cout << "======== END DEBUGGING DETECTOR " << tkId.rawId() << " ========\n" << std::endl;
     }
-
   }
 
   iEvent.put(std::move(aQCoreVector));
@@ -233,4 +231,3 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
 }
 
 DEFINE_FWK_MODULE(PixelToBitStreamProducer);
-
