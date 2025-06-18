@@ -14,7 +14,6 @@
 #include "DataFormats/TestObjects/interface/OtherThingCollection.h"
 #include "DataFormats/TestObjects/interface/ThingCollection.h"
 #include "DataFormats/TestObjects/interface/ToyProducts.h"
-#include "FWCore/Framework/interface/ConstProductRegistry.h"
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/EventPrincipal.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
@@ -28,7 +27,6 @@
 #include "FWCore/Sources/interface/VectorInputSource.h"
 #include "FWCore/Sources/interface/VectorInputSourceDescription.h"
 #include "FWCore/Sources/interface/VectorInputSourceFactory.h"
-#include "FWCore/Utilities/interface/GetPassID.h"
 #include "FWCore/Utilities/interface/ProductKindOfType.h"
 #include "FWCore/Utilities/interface/TypeID.h"
 #include "FWCore/Version/interface/GetReleaseVersion.h"
@@ -49,9 +47,10 @@ namespace edm {
   // Constructor
   // make secondary input source
   SecondaryProducer::SecondaryProducer(ParameterSet const& pset)
-      : productRegistry_(new SignallingProductRegistry),
+      : productRegistry_(std::make_shared<SignallingProductRegistry>()),
         secInput_(makeSecInput(pset)),
-        processConfiguration_(new ProcessConfiguration(std::string("PROD"), getReleaseVersion(), getPassID())),
+        processConfiguration_(std::make_unique<ProcessConfiguration>(
+            std::string("PROD"), getReleaseVersion(), HardwareResourcesDescription())),
         eventPrincipal_(),
         sequential_(pset.getUntrackedParameter<bool>("seq", false)),
         specified_(pset.getUntrackedParameter<bool>("specified", false)),

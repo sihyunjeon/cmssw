@@ -89,7 +89,7 @@ namespace edm {
       //initialize the services
       auto& serviceSets = procDesc->getServicesPSets();
       ServiceToken token = items.initServices(serviceSets, *psetPtr, iToken, serviceregistry::kOverlapIsError, true);
-      serviceToken_ = items.addCPRandTNS(*psetPtr, token);
+      serviceToken_ = items.addTNS(*psetPtr, token);
 
       //make the services available
       ServiceRegistry::Operate operate(serviceToken_);
@@ -120,7 +120,7 @@ namespace edm {
       auto psetid = emptyPSet.id();
 
       for (auto const& p : iConfig.extraProcesses()) {
-        processHistory_.emplace_back(p, psetid, xstr(PROJECT_VERSION), "0");
+        processHistory_.emplace_back(p, psetid, xstr(PROJECT_VERSION), HardwareResourcesDescription());
         processHistoryRegistry_.registerProcessHistory(processHistory_);
       }
 
@@ -131,16 +131,14 @@ namespace edm {
           processName = processConfiguration_->processName();
         }
         edm::TypeWithDict twd(produce.type_.typeInfo());
-        edm::BranchDescription product(edm::InEvent,
-                                       produce.moduleLabel_,
-                                       processName,
-                                       twd.userClassName(),
-                                       twd.friendlyClassName(),
-                                       produce.instanceLabel_,
-                                       "",
-                                       psetid,
-                                       twd,
-                                       true  //force this to come from 'source'
+        edm::ProductDescription product(edm::InEvent,
+                                        produce.moduleLabel_,
+                                        processName,
+                                        twd.userClassName(),
+                                        twd.friendlyClassName(),
+                                        produce.instanceLabel_,
+                                        twd,
+                                        true  //force this to come from 'source'
         );
         product.init();
         dataProducts_.emplace_back(product, std::unique_ptr<WrapperBase>());

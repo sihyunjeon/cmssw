@@ -63,7 +63,7 @@ defaultOptions.datatier = None
 defaultOptions.inlineEventContent = True
 defaultOptions.inlineObjects =''
 defaultOptions.hideGen=False
-from Configuration.StandardSequences.VtxSmeared import VtxSmearedDefaultKey,VtxSmearedHIDefaultKey
+from Configuration.StandardSequences.VtxSmeared import VtxSmearedDefaultKey
 defaultOptions.beamspot=None
 defaultOptions.outputDefinition =''
 defaultOptions.inputCommands = None
@@ -680,12 +680,15 @@ class ConfigBuilder(object):
             if streamType=='': continue
             if streamType == 'ALCARECO' and not 'ALCAPRODUCER' in self._options.step: continue
             if streamType=='DQMIO': streamType='DQM'
+            streamQualifier=''
+            if streamType[-1].isdigit():
+                ## a special case where --eventcontent MINIAODSIM1 is set to have more than one output in a chain of configuration
+                streamQualifier = str(streamType[-1])
+                streamType = streamType[:-1]
             eventContent=streamType
             ## override streamType to eventContent in case NANOEDM
-            if streamType == "NANOEDMAOD" :
-                eventContent = "NANOAOD"
-            elif streamType == "NANOEDMAODSIM" :
-                eventContent = "NANOAODSIM"
+            if streamType.startswith("NANOEDMAOD"):
+                eventContent = eventContent.replace("NANOEDM","NANO")
             theEventContent = getattr(self.process, eventContent+"EventContent")
             if i==0:
                 theFileName=self._options.outfile_name
@@ -714,10 +717,11 @@ class ConfigBuilder(object):
                 output.dataset.filterName = cms.untracked.string('StreamALCACombined')
 
             if "MINIAOD" in streamType:
+                ## we should definitely get rid of this customization by now
                 from PhysicsTools.PatAlgos.slimming.miniAOD_tools import miniAOD_customizeOutput
                 miniAOD_customizeOutput(output)
 
-            outputModuleName=streamType+'output'
+            outputModuleName=streamType+streamQualifier+'output'
             setattr(self.process,outputModuleName,output)
             outputModule=getattr(self.process,outputModuleName)
             setattr(self.process,outputModuleName+'_step',cms.EndPath(outputModule))
@@ -1062,7 +1066,12 @@ class ConfigBuilder(object):
         self.EVTCONTDefaultCFF="Configuration/EventContent/EventContent_cff"
 
         if not self._options.beamspot:
-            self._options.beamspot=VtxSmearedDefaultKey
+            # GEN step always requires to have a VtxSmearing scenario (--beamspot) defined
+            # ...unless it's a special gen-only request (GEN:pgen_genonly)
+            if 'GEN' in self.stepMap and not 'pgen_genonly' in self.stepMap['GEN']:
+                raise Exception("Missing \'--beamspot\' option in the GEN step of the cmsDriver command!")
+            else:
+                self._options.beamspot=VtxSmearedDefaultKey
 
         # if its MC then change the raw2digi
         if self._options.isMC==True:
@@ -1095,8 +1104,6 @@ class ConfigBuilder(object):
             self.DQMDefaultSeq='DQMOfflineCosmics'
 
         if self._options.scenario=='HeavyIons':
-            if not self._options.beamspot:
-                self._options.beamspot=VtxSmearedHIDefaultKey
             self.HLTDefaultSeq = 'HIon'
             self.VALIDATIONDefaultCFF="Configuration/StandardSequences/ValidationHeavyIons_cff"
             self.VALIDATIONDefaultSeq=''
@@ -1444,7 +1451,8 @@ class ConfigBuilder(object):
                             self._options.nConcurrentIOVs = 1
                     elif isinstance(theObject, cms.Sequence) or isinstance(theObject, cmstypes.ESProducer):
                         self._options.inlineObjects+=','+name
-
+                    if name == 'ProductionFilterSequence':
+                        self.productionFilterSequence = 'ProductionFilterSequence'
             if stepSpec == self.GENDefaultSeq or stepSpec == 'pgen_genonly':
                 if 'ProductionFilterSequence' in genModules and ('generator' in genModules):
                     self.productionFilterSequence = 'ProductionFilterSequence'
@@ -1559,6 +1567,7 @@ class ConfigBuilder(object):
     def loadPhase2GTMenu(self, menuFile: str):
         import importlib
         menuPath = f'L1Trigger.Configuration.Phase2GTMenus.{menuFile}'
+        print(f"Loading P2GT menu from {menuPath}")
         menuModule = importlib.import_module(menuPath)
         
         theMenu = menuModule.menu
@@ -1585,7 +1594,7 @@ class ConfigBuilder(object):
         self.scheduleSequence('l1tGTProducerSequence', 'Phase2L1GTProducer')
         self.scheduleSequence('l1tGTAlgoBlockProducerSequence', 'Phase2L1GTAlgoBlockProducer')
         if stepSpec == None:
-            defaultMenuFile = "prototype_2023_v1_0_0"
+            defaultMenuFile = "step1_2024"
             self.loadPhase2GTMenu(menuFile = defaultMenuFile)
         else:
             self.loadPhase2GTMenu(menuFile = stepSpec)

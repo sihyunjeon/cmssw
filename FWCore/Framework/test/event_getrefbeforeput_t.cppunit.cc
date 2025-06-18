@@ -9,7 +9,7 @@ Test of the EventPrincipal class.
 #include "DataFormats/Provenance/interface/RunAuxiliary.h"
 #include "DataFormats/Provenance/interface/ProcessConfiguration.h"
 #include "DataFormats/Provenance/interface/ProductRegistry.h"
-#include "DataFormats/Provenance/interface/BranchDescription.h"
+#include "DataFormats/Provenance/interface/ProductDescription.h"
 #include "DataFormats/Provenance/interface/BranchIDListHelper.h"
 #include "DataFormats/Provenance/interface/ThinnedAssociationsHelper.h"
 #include "DataFormats/Provenance/interface/Timestamp.h"
@@ -24,10 +24,8 @@ Test of the EventPrincipal class.
 #include "FWCore/Framework/interface/ProductResolversFactory.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/Utilities/interface/EDMException.h"
-#include "FWCore/Utilities/interface/GetPassID.h"
 #include "FWCore/Utilities/interface/GlobalIdentifier.h"
 #include "FWCore/Reflection/interface/TypeWithDict.h"
-#include "FWCore/Version/interface/GetReleaseVersion.h"
 
 #include "cppunit/extensions/HelperMacros.h"
 
@@ -39,6 +37,8 @@ Test of the EventPrincipal class.
 #include <typeinfo>
 
 #include "FWCore/Framework/interface/Event.h"
+
+#include "makeDummyProcessConfiguration.h"
 
 class testEventGetRefBeforePut : public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(testEventGetRefBeforePut);
@@ -75,7 +75,7 @@ void testEventGetRefBeforePut::failGetProductNotRegisteredTest() {
   edm::EventID col(1L, 1L, 1L);
   std::string uuid = edm::createGlobalIdentifier();
   edm::Timestamp fakeTime;
-  edm::ProcessConfiguration pc("PROD", edm::ParameterSetID(), edm::getReleaseVersion(), edm::getPassID());
+  auto pc = edmtest::makeDummyProcessConfiguration("PROD");
   std::shared_ptr<edm::ProductRegistry const> pregc(preg.release());
   auto rp =
       std::make_shared<edm::RunPrincipal>(pregc, edm::productResolversFactory::makePrimary, pc, &historyAppender_, 0);
@@ -150,18 +150,8 @@ void testEventGetRefBeforePut::getRefTest() {
   auto processConfiguration = std::make_shared<edm::ProcessConfiguration>();
   processConfiguration->setParameterSetID(dummyProcessPset.id());
 
-  edm::ParameterSet pset;
-  pset.registerIt();
-
-  edm::BranchDescription product(edm::InEvent,
-                                 label,
-                                 processName,
-                                 dummytype.userClassName(),
-                                 className,
-                                 productInstanceName,
-                                 "",
-                                 pset.id(),
-                                 dummytype);
+  edm::ProductDescription product(
+      edm::InEvent, label, processName, dummytype.userClassName(), className, productInstanceName, dummytype);
 
   product.init();
 
@@ -174,8 +164,7 @@ void testEventGetRefBeforePut::getRefTest() {
   edm::EventID col(1L, 1L, 1L);
   std::string uuid = edm::createGlobalIdentifier();
   edm::Timestamp fakeTime;
-  auto pcPtr = std::make_shared<edm::ProcessConfiguration>(
-      processName, dummyProcessPset.id(), edm::getReleaseVersion(), edm::getPassID());
+  auto pcPtr = edmtest::makeSharedDummyProcessConfiguration(processName);
   edm::ProcessConfiguration& pc = *pcPtr;
   std::shared_ptr<edm::ProductRegistry const> pregc(preg.release());
   auto rp =

@@ -7,7 +7,7 @@ Test program for edm::Event.
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/OrphanHandle.h"
 #include "DataFormats/Common/interface/Wrapper.h"
-#include "DataFormats/Provenance/interface/BranchDescription.h"
+#include "DataFormats/Provenance/interface/ProductDescription.h"
 #include "DataFormats/Provenance/interface/BranchIDListHelper.h"
 #include "DataFormats/Provenance/interface/EventAuxiliary.h"
 #include "DataFormats/Provenance/interface/EventID.h"
@@ -34,13 +34,11 @@ Test program for edm::Event.
 #include "FWCore/ServiceRegistry/interface/ModuleCallingContext.h"
 #include "FWCore/Utilities/interface/Algorithms.h"
 #include "FWCore/Utilities/interface/EDMException.h"
-#include "FWCore/Utilities/interface/GetPassID.h"
 #include "FWCore/Utilities/interface/GlobalIdentifier.h"
 #include "FWCore/Utilities/interface/InputTag.h"
 #include "FWCore/Utilities/interface/ProductKindOfType.h"
 #include "FWCore/Utilities/interface/TypeID.h"
 #include "FWCore/Reflection/interface/TypeWithDict.h"
-#include "FWCore/Version/interface/GetReleaseVersion.h"
 #include "Utilities/Testing/interface/CppUnit_testdriver.icpp"
 
 #include "cppunit/extensions/HelperMacros.h"
@@ -54,6 +52,8 @@ Test program for edm::Event.
 #include <string>
 #include <typeinfo>
 #include <vector>
+
+#include "makeDummyProcessConfiguration.h"
 
 using namespace edm;
 
@@ -209,22 +209,20 @@ void testEvent::registerProduct(std::string const& tag,
   processParams.template addParameter<ParameterSet>(moduleLabel, moduleParams);
   processParams.registerIt();
 
-  ProcessConfiguration process(processName, processParams.id(), getReleaseVersion(), getPassID());
+  auto process = edmtest::makeDummyProcessConfiguration(processName, processParams.id());
 
   auto processX = std::make_shared<ProcessConfiguration>(process);
   processConfigurations_.push_back(processX);
 
   TypeWithDict product_type(typeid(T));
 
-  BranchDescription branch(InEvent,
-                           moduleLabel,
-                           processName,
-                           product_type.userClassName(),
-                           product_type.friendlyClassName(),
-                           productInstanceName,
-                           moduleClassName,
-                           moduleParams.id(),
-                           product_type);
+  ProductDescription branch(InEvent,
+                            moduleLabel,
+                            processName,
+                            product_type.userClassName(),
+                            product_type.friendlyClassName(),
+                            productInstanceName,
+                            product_type);
 
   moduleDescriptions_[tag] = ModuleDescription(
       moduleParams.id(), moduleClassName, moduleLabel, processX.get(), ModuleDescription::getUniqueID());
@@ -354,7 +352,7 @@ testEvent::testEvent()
   processParams.addParameter(moduleLabel, moduleParams);
   processParams.registerIt();
 
-  ProcessConfiguration process(processName, processParams.id(), getReleaseVersion(), getPassID());
+  auto process = edmtest::makeDummyProcessConfiguration(processName, processParams.id());
 
   TypeWithDict product_type(typeid(prod_t));
 
@@ -365,15 +363,13 @@ testEvent::testEvent()
 
   std::string productInstanceName("int1");
 
-  BranchDescription branch(InEvent,
-                           moduleLabel,
-                           processName,
-                           product_type.userClassName(),
-                           product_type.friendlyClassName(),
-                           productInstanceName,
-                           moduleClassName,
-                           moduleParams.id(),
-                           product_type);
+  ProductDescription branch(InEvent,
+                            moduleLabel,
+                            processName,
+                            product_type.userClassName(),
+                            product_type.friendlyClassName(),
+                            productInstanceName,
+                            product_type);
 
   availableProducts_->addProduct(branch);
 
@@ -402,7 +398,7 @@ void testEvent::setUp() {
   processParamsEarly.addParameter(moduleLabelEarly, moduleParamsEarly);
   processParamsEarly.registerIt();
 
-  ProcessConfiguration processEarly("EARLY", processParamsEarly.id(), getReleaseVersion(), getPassID());
+  auto processEarly = edmtest::makeDummyProcessConfiguration("EARLY", processParamsEarly.id());
 
   ParameterSet moduleParamsLate;
   std::string moduleLabelLate("currentModule");
@@ -417,7 +413,7 @@ void testEvent::setUp() {
   processParamsLate.addParameter(moduleLabelLate, moduleParamsLate);
   processParamsLate.registerIt();
 
-  ProcessConfiguration processLate("LATE", processParamsLate.id(), getReleaseVersion(), getPassID());
+  auto processLate = edmtest::makeDummyProcessConfiguration("LATE", processParamsLate.id());
 
   auto processHistory = std::make_unique<ProcessHistory>();
   ProcessHistory& ph = *processHistory;
@@ -994,7 +990,7 @@ void testEvent::deleteProduct() {
 
   BranchID id;
 
-  availableProducts_->callForEachBranch([&id](const BranchDescription& iDesc) {
+  availableProducts_->callForEachBranch([&id](const ProductDescription& iDesc) {
     if (iDesc.moduleLabel() == "modMulti" && iDesc.productInstanceName() == "int1") {
       id = iDesc.branchID();
     }

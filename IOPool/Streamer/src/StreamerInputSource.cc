@@ -6,7 +6,7 @@
 
 #include "FWCore/Framework/interface/EventPrincipal.h"
 #include "FWCore/Framework/interface/FileBlock.h"
-#include "DataFormats/Provenance/interface/BranchDescription.h"
+#include "DataFormats/Provenance/interface/ProductDescription.h"
 #include "DataFormats/Provenance/interface/ProductProvenance.h"
 #include "DataFormats/Provenance/interface/EventAuxiliary.h"
 #include "DataFormats/Provenance/interface/LuminosityBlockAuxiliary.h"
@@ -64,7 +64,7 @@ namespace edm::streamer {
     if (subsequent) {
       ProductRegistry pReg;
       pReg.updateFromInput(descs);
-      std::string mergeInfo = reg.merge(pReg, std::string(), BranchDescription::Permissive);
+      std::string mergeInfo = reg.merge(pReg, std::string(), ProductDescription::Permissive);
       if (!mergeInfo.empty()) {
         throw cms::Exception("MismatchedInput", "StreamerInputSource::mergeIntoRegistry") << mergeInfo;
       }
@@ -299,7 +299,7 @@ namespace edm::streamer {
   void StreamerInputSource::read(EventPrincipal& eventPrincipal) {
     if (adjustEventToNewProductRegistry_) {
       eventPrincipal.adjustIndexesAfterProductRegistryAddition();
-      bool eventOK = eventPrincipal.adjustToNewProductRegistry(*productRegistry());
+      bool eventOK = eventPrincipal.adjustToNewProductRegistry(productRegistry());
       assert(eventOK);
       adjustEventToNewProductRegistry_ = false;
     }
@@ -328,7 +328,7 @@ namespace edm::streamer {
                 << " " << spitem.desc()->className() << " " << spitem.desc()->productInstanceName() << " "
                 << spitem.desc()->branchID() << std::endl;
 
-      BranchDescription const branchDesc(*spitem.desc());
+      ProductDescription const branchDesc(*spitem.desc());
       // This ProductProvenance constructor inserts into the entry description registry
       if (spitem.parents()) {
         std::optional<ProductProvenance> productProvenance{std::in_place, spitem.branchID(), *spitem.parents()};

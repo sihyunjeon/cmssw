@@ -121,7 +121,6 @@ namespace edm {
   std::unique_ptr<InputSource> makeInput(unsigned int moduleIndex,
                                          ParameterSet& params,
                                          CommonParams const& common,
-                                         std::shared_ptr<ProductRegistry> preg,
                                          std::shared_ptr<BranchIDListHelper> branchIDListHelper,
                                          std::shared_ptr<ProcessBlockHelper> const& processBlockHelper,
                                          std::shared_ptr<ThinnedAssociationsHelper> thinnedAssociationsHelper,
@@ -166,7 +165,6 @@ namespace edm {
                          moduleIndex);
 
     InputSourceDescription isdesc(md,
-                                  preg,
                                   branchIDListHelper,
                                   processBlockHelper,
                                   thinnedAssociationsHelper,
@@ -182,7 +180,7 @@ namespace edm {
       //even if we have an exception, send the signal
       std::shared_ptr<int> sentry(nullptr, [areg, &md](void*) { areg->postSourceConstructionSignal_(md); });
       convertException::wrap([&]() {
-        input = std::unique_ptr<InputSource>(InputSourceFactory::get()->makeInputSource(*main_input, isdesc).release());
+        input = InputSourceFactory::get()->makeInputSource(*main_input, isdesc);
         input->preEventReadFromSourceSignal_.connect(std::cref(areg->preEventReadFromSourceSignal_));
         input->postEventReadFromSourceSignal_.connect(std::cref(areg->postEventReadFromSourceSignal_));
       });
@@ -442,7 +440,7 @@ namespace edm {
     //initialize the services
     auto& serviceSets = processDesc->getServicesPSets();
     ServiceToken token = items.initServices(serviceSets, *parameterSet, iToken, iLegacy, true);
-    serviceToken_ = items.addCPRandTNS(*parameterSet, token);
+    serviceToken_ = items.addTNS(*parameterSet, token);
 
     //make the services available
     ServiceRegistry::Operate operate(serviceToken_);
@@ -488,7 +486,6 @@ namespace edm {
         tbb::task_group group;
 
         // initialize the input source
-        auto tempReg = std::make_shared<ProductRegistry>();
         auto sourceID = ModuleDescription::getUniqueID();
 
         group.run([&, this]() {
@@ -499,12 +496,11 @@ namespace edm {
               items.initModules(*parameterSet, tns, preallocations_, &processContext_, moduleTypeResolverMaker_.get());
         });
 
-        group.run([&, this, tempReg]() {
+        group.run([&, this]() {
           ServiceRegistry::Operate operate(serviceToken_);
           input_ = makeInput(sourceID,
                              *parameterSet,
                              *common,
-                             /*items.preg(),*/ tempReg,
                              items.branchIDListHelper(),
                              get_underlying_safe(processBlockHelper_),
                              items.thinnedAssociationsHelper(),
@@ -514,9 +510,7 @@ namespace edm {
         });
 
         group.wait();
-        items.preg()->addFromInput(*tempReg);
-        input_->switchTo(items.preg());
-
+        items.preg()->addFromInput(input_->productRegistry());
         {
           auto const& tns = ServiceRegistry::instance().get<service::TriggerNamesService>();
           schedule_ = items.finishSchedule(std::move(*madeModules),
@@ -725,7 +719,7 @@ namespace edm {
     espController_->finishConfiguration();
     actReg_->eventSetupConfigurationSignal_(esp_->recordsToResolverIndices(), processContext_);
     try {
-      convertException::wrap([&]() { input_->doBeginJob(); });
+      convertException::wrap([&]() { input_->doBeginJob(*preg_); });
     } catch (cms::Exception& ex) {
       ex.addContext("Calling beginJob for the source");
       throw;
@@ -1013,7 +1007,6 @@ namespace edm {
 
   void EventProcessor::readFile() {
     FDEBUG(1) << " \treadFile\n";
-    size_t size = preg_->size();
     SendSourceTerminationSignalIfException sentry(actReg_.get());
 
     if (streamRunActive_ > 0) {
@@ -1026,6 +1019,9 @@ namespace edm {
     }
 
     fb_ = input_->readFile();
+    //incase the input's registry changed
+    const size_t size = preg_->size();
+    preg_->merge(input_->productRegistry(), fb_ ? fb_->fileName() : std::string());
     if (size < preg_->size()) {
       principalCache_.adjustIndexesAfterProductRegistryAddition();
     }

@@ -137,6 +137,7 @@ namespace edm {
     ProcessConfiguration const& processConfiguration() const { return *processConfiguration_; }
 
     ProductRegistry const& productRegistry() const { return *preg_; }
+    std::vector<ProductDescription const*> productDescriptions() const;
 
     ProductResolverIndexHelper const& productLookup() const { return *productLookup_; }
 
@@ -203,7 +204,7 @@ namespace edm {
     ProductResolverBase const* getExistingProduct(BranchID const& branchID) const;
     ProductResolverBase const* getExistingProduct(ProductResolverBase const& phb) const;
 
-    void put_(BranchDescription const& bd, std::unique_ptr<WrapperBase> edp) const;
+    void put_(ProductDescription const& bd, std::unique_ptr<WrapperBase> edp) const;
 
     //F must take an argument of type ProductResolverBase*
     template <typename F>
@@ -218,8 +219,7 @@ namespace edm {
     virtual void changedIndexes_() {}
 
     //called by adjustIndexesAfterProductRegistryAddition
-    void addDelayedReaderInputProduct(std::shared_ptr<BranchDescription const> bd);
-    void addPutOnReadInputProduct(std::shared_ptr<BranchDescription const> bd);
+    void addDroppedProduct(ProductDescription const& bd);
 
     WrapperBase const* getIt(ProductID const&) const override;
     std::optional<std::tuple<WrapperBase const*, unsigned int>> getThinnedProduct(ProductID const&,
