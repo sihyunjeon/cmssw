@@ -1,6 +1,6 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
-// Class:      Phase2ITQCoreProducer
+// Class:      PixelToBitStreamProducer
 // Description: Make Phase2ITQCore objects for digis
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 // Original Author:  Rohan Misra
@@ -32,10 +32,10 @@
 #include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
 
-class Phase2ITQCoreProducer : public edm::stream::EDProducer<> {
+class PixelToBitStreamProducer : public edm::stream::EDProducer<> {
 public:
-  Phase2ITQCoreProducer(const edm::ParameterSet&);
-  ~Phase2ITQCoreProducer() override = default;
+  PixelToBitStreamProducer(const edm::ParameterSet&);
+  ~PixelToBitStreamProducer() override = default;
 
 private:
   void produce(edm::Event&, const edm::EventSetup&) override;
@@ -47,7 +47,7 @@ private:
   typedef std::vector<Point> PointCollection;
 };
 
-Phase2ITQCoreProducer::Phase2ITQCoreProducer(const edm::ParameterSet& iConfig)
+PixelToBitStreamProducer::PixelToBitStreamProducer(const edm::ParameterSet& iConfig)
     : src_(iConfig.getParameter<edm::InputTag>("src")),
       pixelDigi_token_(consumes(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
       tTopoToken_(esConsumes()) {
@@ -116,7 +116,7 @@ void adjustEdges(std::vector<Phase2ITDigiHit> hitList) {
   std::for_each(hitList.begin(), hitList.end(), &updateHitCoordinatesForLargePixels);
 }
 
-std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitList) {
+std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitList, uint32_t detId = 0) {
   // Split the hit list by read out chip
   std::array<std::vector<Phase2ITDigiHit>, 4> hits_per_chip;
   for (auto hit : hitList) {
@@ -131,21 +131,21 @@ std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitLis
   std::vector<Phase2ITChip> chips;
   chips.reserve(4);
   for (int chip_index = 0; chip_index < 4; chip_index++) {
-    chips.push_back(Phase2ITChip(chip_index, hits_per_chip[chip_index]));
+    chips.push_back(Phase2ITChip(chip_index, hits_per_chip[chip_index], detId));
   }
 
   return chips;
 }
 
-std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList) {
+std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, uint32_t detId = 0) {
   adjustEdges(hitList);
-  std::vector<Phase2ITChip> chips = splitByChip(hitList);
+  std::vector<Phase2ITChip> chips = splitByChip(hitList, detId);
 
   return chips;
 }
 
 // ------------ method called to produce the data  ------------
-void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   using namespace edm;
   using namespace std;
 
@@ -161,6 +161,12 @@ void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
     DetId tkId = theDigis.id;
     std::vector<Phase2ITDigiHit> hitlist;
     std::vector<int> id;
+
+    bool debugThisDetector = (tkId.rawId() == 303046688);
+
+    if (debugThisDetector) {
+      std::cout << "\n======== DEBUGGING DETECTOR " << tkId.rawId() << " ========" << std::endl;
+    }
 
     if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
       int layer_num = tTopo.pxbLayer(tkId.rawId());
@@ -180,28 +186,48 @@ void Phase2ITQCoreProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
       hitlist.emplace_back(digi.row(), digi.column(), digi.adc());
     }
 
-    std::vector<Phase2ITChip> chips = processHits(std::move(hitlist));
+    if (debugThisDetector) {
+      std::cout << "Found " << hitlist.size() << " hits in detector " << tkId.rawId() << std::endl;
+    }
 
+    std::vector<Phase2ITChip> chips = processHits(std::move(hitlist), tkId.rawId());
+
+    if (debugThisDetector) {
+      std::cout << "Processed into " << chips.size() << " chips" << std::endl;
+    }
     DetSet<Phase2ITQCore> DetSetQCores(tkId);
     DetSet<Phase2ITChipBitStream> DetSetBitStream(tkId);
 
     for (size_t i = 0; i < chips.size(); i++) {
       Phase2ITChip chip = chips[i];
+      if (debugThisDetector) {
+        std::cout << "==== Processing Chip " << i << " ====" << std::endl;
+      }
       std::vector<Phase2ITQCore> qcores = chip.get_organized_QCores();
+      if (debugThisDetector) {
+        std::cout << "Chip " << i << " has " << qcores.size() << " QCores" << std::endl;
+      }
       for (auto& qcore : qcores) {
         DetSetQCores.push_back(qcore);
       }
-
       Phase2ITChipBitStream aChipBitStream(i, chip.get_chip_code());
+
+      if (debugThisDetector) {
+        std::cout << "Chip " << i << " encoded to " << chip.get_chip_code().size() << " bits" << std::endl;
+      }
       DetSetBitStream.push_back(aChipBitStream);
     }
 
     aBitStreamVector->insert(DetSetBitStream);
     aQCoreVector->insert(DetSetQCores);
+
+    if (debugThisDetector) {
+      std::cout << "======== END DEBUGGING DETECTOR " << tkId.rawId() << " ========\n" << std::endl;
+    }
   }
 
   iEvent.put(std::move(aQCoreVector));
   iEvent.put(std::move(aBitStreamVector));
 }
 
-DEFINE_FWK_MODULE(Phase2ITQCoreProducer);
+DEFINE_FWK_MODULE(PixelToBitStreamProducer);
