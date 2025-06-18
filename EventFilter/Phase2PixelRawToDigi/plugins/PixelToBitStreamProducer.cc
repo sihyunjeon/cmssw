@@ -162,11 +162,6 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
     std::vector<Phase2ITDigiHit> hitlist;
     std::vector<int> id;
 
-    bool debugThisDetector = (tkId.rawId() == 303046688);
-
-    if (debugThisDetector) {
-      std::cout << "\n======== DEBUGGING DETECTOR " << tkId.rawId() << " ========" << std::endl;
-    }
 
     if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
       int layer_num = tTopo.pxbLayer(tkId.rawId());
@@ -186,44 +181,26 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
       hitlist.emplace_back(digi.row(), digi.column(), digi.adc());
     }
 
-    if (debugThisDetector) {
-      std::cout << "Found " << hitlist.size() << " hits in detector " << tkId.rawId() << std::endl;
-    }
 
     std::vector<Phase2ITChip> chips = processHits(std::move(hitlist), tkId.rawId());
 
-    if (debugThisDetector) {
-      std::cout << "Processed into " << chips.size() << " chips" << std::endl;
-    }
     DetSet<Phase2ITQCore> DetSetQCores(tkId);
     DetSet<Phase2ITChipBitStream> DetSetBitStream(tkId);
 
     for (size_t i = 0; i < chips.size(); i++) {
       Phase2ITChip chip = chips[i];
-      if (debugThisDetector) {
-        std::cout << "==== Processing Chip " << i << " ====" << std::endl;
-      }
       std::vector<Phase2ITQCore> qcores = chip.get_organized_QCores();
-      if (debugThisDetector) {
-        std::cout << "Chip " << i << " has " << qcores.size() << " QCores" << std::endl;
-      }
       for (auto& qcore : qcores) {
         DetSetQCores.push_back(qcore);
       }
       Phase2ITChipBitStream aChipBitStream(i, chip.get_chip_code());
 
-      if (debugThisDetector) {
-        std::cout << "Chip " << i << " encoded to " << chip.get_chip_code().size() << " bits" << std::endl;
-      }
       DetSetBitStream.push_back(aChipBitStream);
     }
 
     aBitStreamVector->insert(DetSetBitStream);
     aQCoreVector->insert(DetSetQCores);
 
-    if (debugThisDetector) {
-      std::cout << "======== END DEBUGGING DETECTOR " << tkId.rawId() << " ========\n" << std::endl;
-    }
   }
 
   iEvent.put(std::move(aQCoreVector));

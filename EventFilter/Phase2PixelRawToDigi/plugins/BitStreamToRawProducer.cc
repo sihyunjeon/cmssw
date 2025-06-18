@@ -50,8 +50,7 @@ private:
   const edm::EDGetTokenT<edm::DetSetVector<Phase2ITChipBitStream>> ITChipBitStreamToken_;
 
   void addWordToBuffer(unsigned char* buffer, size_t position, uint16_t word);
-  void addWordToBitVector(std::vector<bool>& vec, uint16_t word, bool debug = false);
-  void printBitVectorAs16bit(const std::vector<bool>& bits, const std::string& label);
+  void addWordToBitVector(std::vector<bool>& vec, uint16_t word);
   void padToChunkBoundary(std::vector<bool>& vec);
   uint16_t calculateChipOffset(const std::vector<bool>& dataBlock);
   std::string getBitString(const std::vector<bool>& bits, size_t start, size_t len);
@@ -105,12 +104,8 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
   iEvent.getByToken(ITChipBitStreamToken_, handle);
 
   if (!handle.isValid()) {
-    std::cout << "ERROR: Phase2ITChipBitStream collection not found!" << std::endl;
-    iEvent.put(std::move(fedRawDataCollection));
-    return;
+    throw cms::Exception("BitStreamToRawProducer") << "Invalid BitStream handle";
   }
-
-  std::cout << "PACKER: Received " << handle->size() << " detectors with chip bitstreams" << std::endl;
 
   // Loop over all DTCs
   for (const auto& pair : knownDTCIdsWithIndex_) {
@@ -145,18 +140,13 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
       // Process each module assigned to this SLink
       for (int mod_idx = 0; mod_idx < modules_for_this_slink; mod_idx++) {
         uint32_t det_id = det_ids[moduleIndex++];
-        bool isDebugModule = false;  // (det_id == 303058948);
 
         auto found_det_id = handle->find(det_id);
         if (found_det_id == handle->end()) {
-          std::cout << "WARNING: DetID " << det_id << " not found in input collection, skipping" << std::endl;
-          continue;
+          throw cms::Exception("BitstreamToRawProducer") << "Could not find detId from the inputs";
         }
 
         const edm::DetSet<Phase2ITChipBitStream>& detSet = *found_det_id;
-        if (isDebugModule) {
-          std::cout << "PACKER: Found " << detSet.size() << " chips for detector " << det_id << std::endl;
-        }
 
         // Process each chip in this module
         int chipId = 0;
@@ -166,23 +156,11 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
           padToChunkBoundary(dataBlock);
           size_t newSize = dataBlock.size();
 
-          if (isDebugModule) {
-            if (newSize > oldSize) {
-              std::cout << "PACKER: Added " << (newSize - oldSize) << " padding bits to align to 128-bit boundary"
-                        << std::endl;
-            }
-          }
-
           // Calculate the offset for this chip (word position in the data block)
           uint16_t chipOffset = calculateChipOffset(dataBlock);
 
-          // Add chip offset to the offset block (MSB then LSB)
-          if (isDebugModule) {
-            std::cout << "PACKER: Adding chip " << chipId << " offset: " << chipOffset << " words" << std::endl;
-          }
-
-          addWordToBitVector(offsetBlock, (chipOffset >> 16) & 0xFFFF, isDebugModule);  // MSB
-          addWordToBitVector(offsetBlock, chipOffset & 0xFFFF, isDebugModule);          // LSB
+          addWordToBitVector(offsetBlock, (chipOffset >> 16) & 0xFFFF);  // MSB
+          addWordToBitVector(offsetBlock, chipOffset & 0xFFFF);          // LSB
 
           std::vector<bool> chipBitstream = chip.get_bitstream();
           unsigned int bitstreamSize = chipBitstream.size();
@@ -191,21 +169,12 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
           unsigned int total_chip_size = 2 * BITS_PER_WORD + bitstreamSize;  // 2 headers + bitstream
           unsigned int padding_needed = (BITS_PER_CHUNK - (total_chip_size % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
 
-          if (isDebugModule) {
-            std::cout << "PACKER BITSTREAM FOR CHIP " << chipId++ << ": ";
-            for (bool bit : chipBitstream) {
-              std::cout << (bit ? '1' : '0');
-            }
-            std::cout << std::endl;
-            std::cout << "PACKER BITSTREAM LENGTH: " << chipBitstream.size() << " bits" << std::endl;
-          }
-
           // Add chip header 1 (marker + padding info)
           uint16_t header1 = CHIP_HEADER_MARKER | (padding_needed & 0xF);
-          addWordToBitVector(dataBlock, header1, isDebugModule);
+          addWordToBitVector(dataBlock, header1);
 
           // Add chip header 2 (bitstream size)
-          addWordToBitVector(dataBlock, bitstreamSize, isDebugModule);
+          addWordToBitVector(dataBlock, bitstreamSize);
 
           dataBlock.insert(dataBlock.end(), chipBitstream.begin(), chipBitstream.end());
 
@@ -223,18 +192,12 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
       padToChunkBoundary(offsetBlock);
       size_t newSize = offsetBlock.size();
 
-      std::cout << "PACKER: Added " << (newSize - oldSize) << " padding bits to align offset block to 128-bit boundary"
-                << std::endl;
-
       // Calculate sizes in bytes
       unsigned int header_size = HEADER_TRAILER_LINES * BYTES_PER_WORD;
       unsigned int offset_size = offsetBlock.size() / BITS_PER_WORD * BYTES_PER_WORD;
       unsigned int data_size = dataBlock.size() / BITS_PER_WORD * BYTES_PER_WORD;
       unsigned int trailer_size = HEADER_TRAILER_LINES * BYTES_PER_WORD;
       unsigned int total_size = header_size + offset_size + data_size + trailer_size;
-
-      std::cout << "PACKER: Created FED data with " << offsetBlock.size() / (2 * BITS_PER_WORD) << " chip offsets and "
-                << dataBlock.size() << " data bits" << std::endl;
 
       // Create FEDRawData for this SLink
       FEDRawData& slink_data = fedRawDataCollection->FEDData(global_slink_id);
@@ -288,36 +251,16 @@ void BitStreamToRawProducer::addWordToBuffer(unsigned char* buffer, size_t posit
   buffer[position * BYTES_PER_WORD + 1] = word & 0xFF;     // LSB
 }
 
-void BitStreamToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint16_t word, bool debug) {
+void BitStreamToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint16_t word) {
   // Track the starting position for debugging
   size_t startPos = vec.size();
-
-  if (debug) {
-    std::cout << "PACKER: Converting word 0x" << std::hex << word << std::dec << " to bits at position " << startPos
-              << std::endl;
-    std::cout << "PACKER: Binary: ";
-    for (int bit = 15; bit >= 0; bit--) {
-      std::cout << ((word >> bit) & 1);
-      if (bit % 4 == 0)
-        std::cout << " ";
-    }
-    std::cout << std::endl;
-  }
 
   // Convert a 16-bit word to 16 bits and add to the vector
   for (int bit = 15; bit >= 0; bit--) {
     bool bitValue = (word >> bit) & 1;
     vec.push_back(bitValue);
-
-    if (debug) {
-      std::cout << "PACKER: Added bit[" << bit << "] = " << bitValue << " at position " << (vec.size() - 1)
-                << std::endl;
-    }
   }
 
-  if (debug) {
-    std::cout << "PACKER: Word added as: " << getBitString(vec, startPos, 16) << std::endl;
-  }
 }
 
 void BitStreamToRawProducer::padToChunkBoundary(std::vector<bool>& vec) {
@@ -331,42 +274,6 @@ void BitStreamToRawProducer::padToChunkBoundary(std::vector<bool>& vec) {
 uint16_t BitStreamToRawProducer::calculateChipOffset(const std::vector<bool>& dataBlock) {
   // Calculate the word offset where this chip's data will start
   return dataBlock.size() / BITS_PER_WORD;
-}
-
-void BitStreamToRawProducer::printBitVectorAs16bit(const std::vector<bool>& bits, const std::string& label) {
-  std::cout << "\n=== " << label << " ===" << std::endl;
-
-  if (bits.empty()) {
-    std::cout << "Empty bit vector" << std::endl;
-    return;
-  }
-
-  std::cout << "Total bits: " << bits.size() << std::endl;
-
-  // Print as 16-bit words
-  for (size_t i = 0; i < bits.size(); i += BITS_PER_WORD) {
-    if (i + BITS_PER_WORD > bits.size())
-      break;
-
-    // Convert 16 bits to hex
-    uint16_t word = 0;
-    for (int j = 0; j < BITS_PER_WORD; j++) {
-      if (bits[i + j]) {
-        word |= (1 << (15 - j));
-      }
-    }
-
-    std::cout << "Word[" << std::setw(4) << std::dec << i / 16 << "]: 0x" << std::hex << std::setw(4)
-              << std::setfill('0') << word << "  Binary: ";
-
-    // Print binary representation
-    for (int j = 0; j < BITS_PER_WORD; j++) {
-      std::cout << (bits[i + j] ? "1" : "0");
-      if ((j + 1) % 4 == 0)
-        std::cout << " ";
-    }
-    std::cout << std::dec << std::endl;
-  }
 }
 
 DEFINE_FWK_MODULE(BitStreamToRawProducer);

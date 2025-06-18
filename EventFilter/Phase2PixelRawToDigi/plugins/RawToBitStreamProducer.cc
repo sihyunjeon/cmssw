@@ -44,7 +44,6 @@ private:
   uint16_t readWord(const unsigned char* dataPtr, int wordIdx) const;
   std::string wordToHexString(uint16_t word) const;
   std::string bitPattern(uint16_t word) const;
-  void dumpMemorySection(const unsigned char* dataPtr, int startWord, int numWords) const;
 
   // Debugging functions for helper methods
   std::string getBitString(const std::vector<bool>& bits, size_t start, size_t len) const;
@@ -98,9 +97,6 @@ void RawToBitstreamProducer::fillDescriptions(edm::ConfigurationDescriptions& de
 
 void RawToBitstreamProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
   cablingMap_ = &iSetup.getData(cablingMapToken_);
-  if (debug_) {
-    std::cout << "RawToBitstreamProducer: Loaded cabling map in beginRun" << std::endl;
-  }
   buildFedToModuleMapping();
 }
 
@@ -129,17 +125,6 @@ void RawToBitstreamProducer::buildFedToModuleMapping() {
       fedToModuleMap_[fedId][slinkId] = modulesForFed;
     }
   }
-  if (debug_) {
-    std::cout << "Built FED to module mapping:" << std::endl;
-    for (const auto& fedEntry : fedToModuleMap_) {
-      int fedId = fedEntry.first;
-      for (const auto& slinkEntry : fedEntry.second) {
-        int slinkId = slinkEntry.first;
-        const auto& modules = slinkEntry.second;
-        std::cout << "  FED " << fedId << " (SLINK " << slinkId << "): " << modules.size() << " modules" << std::endl;
-      }
-    }
-  }
 }
 
 void RawToBitstreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
@@ -147,14 +132,7 @@ void RawToBitstreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
   edm::Handle<FEDRawDataCollection> fedRawDataCollection;
   iEvent.getByToken(fedRawDataToken_, fedRawDataCollection);
   if (!fedRawDataCollection.isValid()) {
-    std::cout << "ERROR: FEDRawDataCollection not found!" << std::endl;
-    iEvent.put(std::move(output));
-    return;
-  }
-  if (debug_) {
-    std::cout << "\n===========================================" << std::endl;
-    std::cout << "RawToBitstreamProducer: Starting unpacking event" << std::endl;
-    std::cout << "===========================================" << std::endl;
+    throw cms::Exception("RawToBitstreamProducer") << "Invalid FEDRawDataCollection";
   }
 
   for (const auto& fedEntry : fedToModuleMap_) {
@@ -166,14 +144,7 @@ void RawToBitstreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
     int dtcId = ((dtcIndex / 9) + 1) * 10 + (dtcIndex % 9) + 1;
     const unsigned char* dataPtr = fedData.data();
     int fedSizeInWords = fedData.size() / 2;
-    if (debug_) {
-      std::cout << "\n----- Processing FED ID " << fedId << " (DTC=" << dtcId << ", SLINK=" << slinkId
-                << "), size: " << fedData.size() << " bytes (" << fedSizeInWords << " words)" << std::endl;
-    }
     processFED(dataPtr, fedSizeInWords, fedId, dtcId, slinkId, *output);
-  }
-  if (debug_) {
-    std::cout << "\nProduced " << output->size() << " DetSets of Phase2ITChipBitStream" << std::endl;
   }
   iEvent.put(std::move(output));
 }
@@ -187,52 +158,24 @@ void RawToBitstreamProducer::processFED(const unsigned char* dataPtr,
   const std::vector<uint32_t>& detIds = fedToModuleMap_[fedId][slinkId];
   bool validHeader = verifyHeaderTrailerPattern(dataPtr, 0);
   if (!validHeader) {
-    std::cout << "ERROR: Invalid header pattern in FED " << fedId << ", skipping" << std::endl;
-    return;
-  }
-  if (debug_) {
-    std::cout << "Header section:" << std::endl;
-    dumpMemorySection(dataPtr, 0, HEADER_TRAILER_LINES);
+    throw cms::Exception("RawToBitstreamProducer") << "Invalid header in FEDRawData";
   }
   int trailerStart = findTrailerStart(dataPtr, fedSizeInWords);
   if (trailerStart < 0) {
-    std::cout << "WARNING: Could not find trailer in FED " << fedId << ", assuming it ends with the FED data"
-              << std::endl;
+    throw cms::Exception("RawToBitstreamProducer") << "Invalid trailer in FEDRawData";
     trailerStart = fedSizeInWords;
-  } else if (debug_) {
-    std::cout << "Found trailer at word " << trailerStart << std::endl;
-    std::cout << "Trailer section:" << std::endl;
-    dumpMemorySection(dataPtr, trailerStart, std::min(HEADER_TRAILER_LINES, fedSizeInWords - trailerStart));
-  }
+  } 
 
   int offsetStart = HEADER_TRAILER_LINES;
   std::vector<uint32_t> chipOffsets = extractChipOffsets(dataPtr, offsetStart, trailerStart - offsetStart);
-  if (debug_) {
-    std::cout << "Found " << chipOffsets.size() << " chip offsets:" << std::endl;
-    for (size_t i = 0; i < chipOffsets.size() && i < 5; i++) {
-      std::cout << "  Offset " << i << ": " << chipOffsets[i] << " words" << std::endl;
-    }
-    if (chipOffsets.size() > 5) {
-      std::cout << "  (... and " << (chipOffsets.size() - 5) << " more)" << std::endl;
-    }
-  }
   int offsetBlockSize = chipOffsets.size() * 2;
   int offsetBits = offsetBlockSize * BITS_PER_WORD;
   int paddingBits = (BITS_PER_CHUNK - (offsetBits % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
   int paddingWords = paddingBits / BITS_PER_WORD;
   int dataBlockStart = offsetStart + offsetBlockSize + paddingWords;
-  if (debug_) {
-    std::cout << "Offset block: " << offsetBlockSize << " words (with " << paddingWords << " padding words)"
-              << std::endl;
-    std::cout << "Data block starts at word " << dataBlockStart << std::endl;
-  }
   int numChips = chipOffsets.size();
   int numModules = detIds.size();
   const int chipsPerModule = 4;
-  if (debug_) {
-    std::cout << "Found " << numChips << " chips across " << numModules << " modules (approx. " << chipsPerModule
-              << " chips per module)" << std::endl;
-  }
 
   std::map<uint32_t, std::vector<std::pair<int, int>>> chipsByDetId;
 
@@ -274,16 +217,10 @@ void RawToBitstreamProducer::processChip(const unsigned char* dataPtr,
                                          uint32_t detId,
                                          int chipId,
                                          edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller& filler) {
-  bool debug = (detId == 303058948);
   if (chipEndWord <= chipStartWord) {
     std::cout << "WARNING: Invalid chip data size (start=" << chipStartWord << ", end=" << chipEndWord << "), skipping"
               << std::endl;
     return;
-  }
-  if (debug) {
-    std::cout << "\nUNPACKER: Processing chip " << chipId << " of detector " << detId << std::endl;
-    std::cout << "  Chip data: words " << chipStartWord << " to " << chipEndWord << " ("
-              << (chipEndWord - chipStartWord) << " words)" << std::endl;
   }
   uint16_t header1 = readWord(dataPtr, chipStartWord);
   if ((header1 & 0xF000) != CHIP_HEADER_MARKER) {
@@ -293,28 +230,12 @@ void RawToBitstreamProducer::processChip(const unsigned char* dataPtr,
   }
   uint8_t paddingBits = header1 & 0xF;
   uint16_t bitstreamSize = readWord(dataPtr, chipStartWord + 1);
-  if (debug) {
-    std::cout << "  Header 1: " << wordToHexString(header1) << " (marker 0x" << std::hex << (header1 & 0xF000)
-              << std::dec << " + padding " << (int)paddingBits << " bits)" << std::endl;
-    std::cout << "  Header 2 (bitstream size): " << bitstreamSize << " bits" << std::endl;
-  }
   std::vector<bool> bitstream = extractBitstream(dataPtr, chipStartWord + 2, bitstreamSize);
-  if (debug) {
-    std::cout << "UNPACKER BITSTREAM: ";
-    for (bool bit : bitstream) {
-      std::cout << (bit ? '1' : '0');
-    }
-    std::cout << std::endl;
-    std::cout << "UNPACKER BITSTREAM LENGTH: " << bitstream.size() << " bits" << std::endl;
-  }
 
   // Create the Phase2ITChipBitStream object and add it to the filler
   Phase2ITChipBitStream chipStream(chipId, bitstream);
   filler.push_back(chipStream);
 
-  if (debug) {
-    std::cout << "Added Phase2ITChipBitStream for chip " << chipId << " to filler" << std::endl;
-  }
 }
 
 std::string RawToBitstreamProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {
@@ -360,19 +281,6 @@ std::string RawToBitstreamProducer::bitPattern(uint16_t word) const {
       result += ' ';
   }
   return result;
-}
-
-void RawToBitstreamProducer::dumpMemorySection(const unsigned char* dataPtr, int startWord, int numWords) const {
-  std::cout << "\n=== Memory dump from word " << startWord << " to " << (startWord + numWords - 1)
-            << " ===" << std::endl;
-  for (int i = 0; i < numWords; i++) {
-    uint16_t word = readWord(dataPtr, startWord + i);
-    std::cout << "Word[" << std::setw(4) << startWord + i << "]: " << wordToHexString(word) << " (" << bitPattern(word)
-              << ")" << std::endl;
-    if ((i + 1) % 8 == 0) {
-      std::cout << "----------------------" << std::endl;
-    }
-  }
 }
 
 std::vector<uint32_t> RawToBitstreamProducer::extractChipOffsets(const unsigned char* dataPtr,

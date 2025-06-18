@@ -104,13 +104,6 @@ void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstrea
                                                edm::DetSetVector<PixelDigi>& outputDigis) {
   edm::DetSet<PixelDigi> detSet(detId);
 
-  bool debug = detId == 303058948;
-  if (debug) {
-    std::cout << "Decoding bitstream for detId " << detId << ", chip " << chipId << ", size: " << bitstream.size()
-              << " bits" << std::endl;
-    std::cout << "First 32 bits: " << getBitString(bitstream, 0, 32) << std::endl;
-  }
-
   DecoderState state;
 
   while (state.bitPos < bitstream.size()) {
@@ -118,10 +111,6 @@ void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstrea
       state.currentCol = binaryToInt(bitstream, state.bitPos, 6);
       state.previousCol = state.currentCol;
 
-      if (debug) {
-        std::cout << "DEBUG: DetId " << detId << ", chip " << chipId << " new QCore column = " << state.currentCol
-                  << std::endl;
-      }
     }
 
     bool islast = bitstream[state.bitPos++];
@@ -135,10 +124,6 @@ void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstrea
       state.currentRow = binaryToInt(bitstream, state.bitPos, 8);
       state.previousRow = state.currentRow;
 
-      if (debug) {
-        std::cout << "DEBUG: DetId " << detId << ", chip " << chipId << " new QCore row = " << state.currentRow
-                  << std::endl;
-      }
     }
 
     std::vector<bool> hitmap = Phase2ITQCore::decodeHitmap(bitstream, state.bitPos);
@@ -164,27 +149,20 @@ void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstrea
     state.previousIsLast = islast;
     state.previousCol = state.currentCol;
     state.qcoreCount++;
-    if (state.qcoreCount >= 20)
-      debug = false;
   }
 
-  if (!detSet.empty()) {
-    outputDigis.insert(detSet);
-  }
+  if (detSet.empty()) throw cms::Exception("BitstreamToPixelProducer") << "Empty detSet";
+
+  outputDigis.insert(detSet);
 }
 
 void BitstreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
-  std::cout << "===========================================" << std::endl;
-  std::cout << "BitstreamToPixelProducer" << std::endl;
-  std::cout << "===========================================" << std::endl;
 
   auto outputPixelDigis = std::make_unique<edm::DetSetVector<PixelDigi>>();
   edm::Handle<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamHandle;
   iEvent.getByToken(bitstreamToken_, bitstreamHandle);
   if (!bitstreamHandle.isValid()) {
-    std::cout << "ERROR: Phase2ITChipBitStream collection not found!" << std::endl;
-    iEvent.put(std::move(outputPixelDigis));
-    return;
+    throw cms::Exception("BitstreamToPixelProducer") << "Invalid BitStream handle";
   }
 
   // Loop over each DetSet in the input bitstream collection
