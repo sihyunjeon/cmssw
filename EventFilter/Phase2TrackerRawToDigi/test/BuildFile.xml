@@ -1,0 +1,9 @@
+<library   file="*.cc" name="Phase2TrackerRawToDigiTest">
+  <flags   EDM_PLUGIN="1"/>
+  <use name="EventFilter/Phase2TrackerRawToDigi"/>
+  <use name="Geometry/Records"/>
+  <use name="CondFormats/DataRecord"/>
+
+  <use name="root"/>
+  <use name="CommonTools/UtilAlgos"/>
+</library>

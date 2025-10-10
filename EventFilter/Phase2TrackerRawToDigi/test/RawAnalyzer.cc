@@ -41,7 +41,7 @@ void RawAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
   if (!fedRawDataCollection.isValid()) 
     {
-      edm::LogError("RawAnalyzer") << "No FEDRawDataCollection found!";
+      edm::LogError("RawAnalyzer") << "ERROR: No FEDRawDataCollection found!";
       return;
     }
   

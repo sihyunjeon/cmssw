@@ -21,9 +21,6 @@
 #include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
 #include "Geometry/TrackerGeometryBuilder/interface/TrackerGeometry.h"
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
-#include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
-#include "Geometry/CommonTopologies/interface/PixelGeomDetUnit.h"
-#include "Geometry/CommonTopologies/interface/PixelTopology.h"
 
 #include "EventFilter/Phase2TrackerRawToDigi/interface/SensorHybrid.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/Phase2TrackerSpecifications.h"
@@ -38,10 +35,9 @@ public:
 private:
     void produce(edm::Event&, const edm::EventSetup&) override;
     
-    edm::EDGetTokenT<Phase2TrackerCluster1DCollectionNew> ClusterCollectionToken_;
+    edm::EDGetTokenT<Phase2TrackerCluster1DCollectionNew> clusterCollectionToken_;
     const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
     const edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> trackerGeometryToken_;
-    const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> trackerTopologyToken_;
 
     void insertHexWordAt(unsigned char *data_ptr, size_t word_index, uint32_t hex_word) 
     {
@@ -54,10 +50,9 @@ private:
 };
 
 ClusterToRawProducer::ClusterToRawProducer(const edm::ParameterSet& iConfig)
-    : ClusterCollectionToken_(consumes<Phase2TrackerCluster1DCollectionNew>(iConfig.getParameter<edm::InputTag>("Phase2Clusters"))),
+    : clusterCollectionToken_(consumes<Phase2TrackerCluster1DCollectionNew>(iConfig.getParameter<edm::InputTag>("Phase2Clusters"))),
       cablingMapToken_(esConsumes()),
-      trackerGeometryToken_(esConsumes<TrackerGeometry, TrackerDigiGeometryRecord>()),
-      trackerTopologyToken_(esConsumes<TrackerTopology, TrackerTopologyRcd>())
+      trackerGeometryToken_(esConsumes<TrackerGeometry, TrackerDigiGeometryRecord>())
 {
     produces<FEDRawDataCollection>();
 }
@@ -66,7 +61,7 @@ ClusterToRawProducer::~ClusterToRawProducer() { }
 
 void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) 
 {
-    // Retrieve TrackerGeometry and TrackerTopology from EventSetup
+    // Retrieve TrackerGeometry from EventSetup
     const TrackerGeometry& trackerGeometry = iSetup.getData(trackerGeometryToken_);
     
     // Retrieve the CablingMap
@@ -75,14 +70,15 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
     // get EventID and RunID
     unsigned int eventId_ = iEvent.id().event();
 
+    // Get input clusters
+    edm::Handle<Phase2TrackerCluster1DCollectionNew> clusters_handle;
+    iEvent.getByToken(clusterCollectionToken_, clusters_handle);
+
     // Create FEDRawDataCollection to store the output
     auto fedRawDataCollection = std::make_unique<FEDRawDataCollection>();
 
     using namespace Phase2TrackerSpecifications;
     using namespace Phase2DAQFormatSpecification;
-
-    // Retrieve collection of clusters from the event
-    edmNew::DetSetVector<Phase2TrackerCluster1D> const& all_clusters = iEvent.get(ClusterCollectionToken_);
 
     for (int dtc_id = MIN_DTC_ID; dtc_id < MAX_DTC_ID + 1; dtc_id++)
     {
@@ -110,38 +106,33 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
                     auto link_to_det_association = cablingMap.dtcELinkIdToDetId(cms_link_id);
                     const DetId& det_id = link_to_det_association->second;
 
-                    // In order to prevent issues when retrieving the cluster collection for a given detID, check if it exists.
-                    // (the edmNew::DetSetVector.find method returns end() if the collection for the required det_id is not there, 
-                    // which could lead to inconsistencies later on)
-                    bool const sensor_1_clusters_exist = (all_clusters.exists(det_id + 1)) ? true : false;
-                    edmNew::DetSetVector<Phase2TrackerCluster1D>::const_iterator sensor_1_cluster_collection = all_clusters.find(det_id + 1);
+                    edmNew::DetSetVector<Phase2TrackerCluster1D>::const_iterator sensor_1_cluster_collection = clusters_handle->find(det_id + 1);
+                    edmNew::DetSetVector<Phase2TrackerCluster1D>::const_iterator sensor_2_cluster_collection = clusters_handle->find(det_id + 2);
+                    const edmNew::DetSetVector<Phase2TrackerCluster1D>::const_iterator nullIter = clusters_handle->end();
 
-                    bool const sensor_2_clusters_exist = (all_clusters.exists(det_id + 2)) ? true : false;
-                    edmNew::DetSetVector<Phase2TrackerCluster1D>::const_iterator sensor_2_cluster_collection = all_clusters.find(det_id + 2);
-                    
                     // sensor_1_cic_0 and sensor_2_cic_0 form a single output daq channel.
-                    SensorHybrid Hybrid_1 (sensor_1_cluster_collection, sensor_2_cluster_collection, sensor_1_clusters_exist, sensor_2_clusters_exist, 0, trackerGeometry, eventId_);
+                    SensorHybrid hybrid_1 (sensor_1_cluster_collection, sensor_2_cluster_collection, nullIter, 0, trackerGeometry, eventId_);
 
                     // // sensor_1_cic_1 and sensor_2_cic_1 form a single output daq channel.
-                    SensorHybrid Hybrid_2 (sensor_1_cluster_collection, sensor_2_cluster_collection, sensor_1_clusters_exist, sensor_2_clusters_exist, 1, trackerGeometry, eventId_);
+                    SensorHybrid hybrid_2 (sensor_1_cluster_collection, sensor_2_cluster_collection, nullIter, 1, trackerGeometry, eventId_);
 
                     // sensor_2 is always isUpper == 1 for 2S.
                     // sensor_2 is always isLower == 0 for 2S.
 
                     // Figure Out Offsets
                     uint16_t hybrid_1_offset = offset_in_32b_words;
-                    offset_in_32b_words += Hybrid_1.get_payload_size();
+                    offset_in_32b_words += hybrid_1.get_payload_size();
 
                     uint16_t hybrid_2_offset = offset_in_32b_words;
-                    offset_in_32b_words += Hybrid_2.get_payload_size();
+                    offset_in_32b_words += hybrid_2.get_payload_size();
 
                     // 24 is PSS, 23 is PSP, 26 is SS-SS
                     uint32_t combined_offsets = (static_cast<uint32_t>(hybrid_2_offset) << 16) | hybrid_1_offset;
                     offset_map[module_id_within_slink] = Word32Bits(combined_offsets);
 
                     // Figure out Payload
-                    Hybrid_1.set_payload(payload);
-                    Hybrid_2.set_payload(payload);
+                    hybrid_1.get_payload(payload);
+                    hybrid_2.get_payload(payload);
                 } 
                 catch (const cms::Exception& e) 
                 {

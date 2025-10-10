@@ -34,10 +34,10 @@
 
 using namespace std;
 
-class Phase2TrackerDumpClusters : public edm::one::EDAnalyzer<edm::one::WatchRuns> {
+class ClusterAnalyzer : public edm::one::EDAnalyzer<edm::one::WatchRuns> {
 public:
-  Phase2TrackerDumpClusters(const edm::ParameterSet& pset);
-  ~Phase2TrackerDumpClusters() override;
+  ClusterAnalyzer(const edm::ParameterSet& pset);
+  ~ClusterAnalyzer() override;
   void beginRun(edm::Run const&, edm::EventSetup const&) override;
   void endRun(edm::Run const& iEvent, edm::EventSetup const&) override {};
   void analyze(const edm::Event&, const edm::EventSetup&);
@@ -77,25 +77,25 @@ private:
   int dtcID_;
 };
 
-Phase2TrackerDumpClusters::Phase2TrackerDumpClusters(const edm::ParameterSet& pset)
+ClusterAnalyzer::ClusterAnalyzer(const edm::ParameterSet& pset)
     : geomToken_(esConsumes<TrackerGeometry, TrackerDigiGeometryRecord, edm::Transition::BeginRun>()),
       topoToken_(esConsumes<TrackerTopology, TrackerTopologyRcd, edm::Transition::BeginRun>()),
       cablingMapToken_(
           esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       token_(consumes<Phase2TrackerCluster1DCollectionNew>(pset.getParameter<edm::InputTag>("ProductLabel"))) {
   // Initialize the log file
-//   logfile_.open("Phase2TrackerDumpClusters_output.txt");
+//   logfile_.open("ClusterAnalyzer_output.txt");
 //   if (!logfile_.is_open()) {
 //     throw cms::Exception("OutputFileError") << "Failed to open log file for writing.";
 //   }
 }
 
-Phase2TrackerDumpClusters::~Phase2TrackerDumpClusters() {
+ClusterAnalyzer::~ClusterAnalyzer() {
   // Close the log file
 //   logfile_.close();
 }
 
-void Phase2TrackerDumpClusters::beginJob() {
+void ClusterAnalyzer::beginJob() {
   outTree_ = fs_->make<TTree>("ClusterTree", "ClusterTree");
 
   outTree_->Branch("detId", &detId_, "detId/i");
@@ -114,18 +114,18 @@ void Phase2TrackerDumpClusters::beginJob() {
   outTree_->Branch("clusterGlobalY", &clusterGlobalY_, "clusterGlobalY/F");
   outTree_->Branch("clusterGlobalZ", &clusterGlobalZ_, "clusterGlobalZ/F");
 }
-void Phase2TrackerDumpClusters::endJob() {
+void ClusterAnalyzer::endJob() {
   //     outTree_->GetDirectory()->cd();
   outTree_->Write();
 }
 
-void Phase2TrackerDumpClusters::beginRun(edm::Run const& run, edm::EventSetup const& es) {
+void ClusterAnalyzer::beginRun(edm::Run const& run, edm::EventSetup const& es) {
   tGeom_ = &es.getData(geomToken_);
   tTopo_ = &es.getData(topoToken_);
   cablingMap_ = &es.getData(cablingMapToken_);
 }
 
-void Phase2TrackerDumpClusters::analyze(const edm::Event& event, const edm::EventSetup& es) {
+void ClusterAnalyzer::analyze(const edm::Event& event, const edm::EventSetup& es) {
   edm::Handle<Phase2TrackerCluster1DCollectionNew> clusters_handle;
   event.getByToken(token_, clusters_handle);
 
@@ -200,4 +200,4 @@ void Phase2TrackerDumpClusters::analyze(const edm::Event& event, const edm::Even
 
 #include "FWCore/PluginManager/interface/ModuleDef.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
-DEFINE_FWK_MODULE(Phase2TrackerDumpClusters);
+DEFINE_FWK_MODULE(ClusterAnalyzer);

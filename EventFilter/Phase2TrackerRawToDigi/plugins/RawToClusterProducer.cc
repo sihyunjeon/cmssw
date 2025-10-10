@@ -118,7 +118,7 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
 
     if (!fedRawDataCollection.isValid()) 
     {
-      edm::LogError("RawtoClusterProducer") << "No FEDRawDataCollection found!";
+      edm::LogError("RawtoClusterProducer") << "ERROR: No FEDRawDataCollection found!";
       return;
     }
 
@@ -207,7 +207,7 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
             unsigned int numPixelClusters = (headerWord) & N_CLUSTER_MASK; // 7-bit field
             
             if (is2SModule && numPixelClusters > 0)
-              edm::LogError("RawToClusterProducer") << "Header for channel " << iChannel << " expects non-zero (" << numPixelClusters 
+              edm::LogError("RawToClusterProducer") << "ERROR: Header for channel " << iChannel << " expects non-zero (" << numPixelClusters 
                                                     << ") pixel clusters on a 2S module" ;
               
             // define the number of lines of the payload
@@ -227,7 +227,7 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
               lines.push_back(readLine(dataPtr, getLineIndex(idx, iline)));
             }        
             if ( lines.size() != nLines) {
-              edm::LogError("RawtoClusterProducer") << "Numbers of stored lines does not match with size of lines to be read!";
+              edm::LogError("RawtoClusterProducer") << "ERROR: Numbers of stored lines does not match with size of lines to be read!";
               return;
             }  
     
