@@ -163,7 +163,7 @@ void RawToBitstreamProducer::processFED(const unsigned char* dataPtr,
   if (trailerStart < 0) {
     throw cms::Exception("RawToBitstreamProducer") << "Invalid trailer in FEDRawData";
     trailerStart = fedSizeInWords;
-  } 
+  }
 
   int offsetStart = HEADER_TRAILER_LINES;
   std::vector<uint32_t> chipOffsets = extractChipOffsets(dataPtr, offsetStart, trailerStart - offsetStart);
@@ -234,7 +234,6 @@ void RawToBitstreamProducer::processChip(const unsigned char* dataPtr,
   // Create the Phase2ITChipBitStream object and add it to the filler
   Phase2ITChipBitStream chipStream(chipId, bitstream);
   filler.push_back(chipStream);
-
 }
 
 std::string RawToBitstreamProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {

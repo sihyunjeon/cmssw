@@ -1,4 +1,4 @@
-// EDAnalyzer producing a small ntuple containing properties of Phase2TrackerCluster1D, 
+// EDAnalyzer producing a small ntuple containing properties of Phase2TrackerCluster1D,
 // to be used to debug the clusters-to-raw and raw-to-cluster steps
 
 #include "DataFormats/Common/interface/Handle.h"
@@ -40,11 +40,11 @@ public:
   ~ClusterAnalyzer() override;
   void beginRun(edm::Run const&, edm::EventSetup const&) override;
   void endRun(edm::Run const& iEvent, edm::EventSetup const&) override {};
-  void analyze(const edm::Event&, const edm::EventSetup&);
+  void analyze(const edm::Event&, const edm::EventSetup&) override;
 
 private:
-  virtual void beginJob();
-  virtual void endJob();
+  void beginJob() override;
+  void endJob() override;
   const edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> geomToken_;
   const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> topoToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
@@ -84,15 +84,15 @@ ClusterAnalyzer::ClusterAnalyzer(const edm::ParameterSet& pset)
           esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       token_(consumes<Phase2TrackerCluster1DCollectionNew>(pset.getParameter<edm::InputTag>("ProductLabel"))) {
   // Initialize the log file
-//   logfile_.open("ClusterAnalyzer_output.txt");
-//   if (!logfile_.is_open()) {
-//     throw cms::Exception("OutputFileError") << "Failed to open log file for writing.";
-//   }
+  //   logfile_.open("ClusterAnalyzer_output.txt");
+  //   if (!logfile_.is_open()) {
+  //     throw cms::Exception("OutputFileError") << "Failed to open log file for writing.";
+  //   }
 }
 
 ClusterAnalyzer::~ClusterAnalyzer() {
   // Close the log file
-//   logfile_.close();
+  //   logfile_.close();
 }
 
 void ClusterAnalyzer::beginJob() {
@@ -195,7 +195,7 @@ void ClusterAnalyzer::analyze(const edm::Event& event, const edm::EventSetup& es
     }
   }
   // Output to terminal and log file
-//   logfile_ << output.str();
+  //   logfile_ << output.str();
 }
 
 #include "FWCore/PluginManager/interface/ModuleDef.h"

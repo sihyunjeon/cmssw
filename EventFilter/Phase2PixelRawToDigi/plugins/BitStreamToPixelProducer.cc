@@ -110,7 +110,6 @@ void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstrea
     if (state.previousIsLast) {
       state.currentCol = binaryToInt(bitstream, state.bitPos, 6);
       state.previousCol = state.currentCol;
-
     }
 
     bool islast = bitstream[state.bitPos++];
@@ -123,7 +122,6 @@ void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstrea
     } else {
       state.currentRow = binaryToInt(bitstream, state.bitPos, 8);
       state.previousRow = state.currentRow;
-
     }
 
     std::vector<bool> hitmap = Phase2ITQCore::decodeHitmap(bitstream, state.bitPos);
@@ -151,13 +149,13 @@ void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstrea
     state.qcoreCount++;
   }
 
-  if (detSet.empty()) throw cms::Exception("BitstreamToPixelProducer") << "Empty detSet";
+  if (detSet.empty())
+    throw cms::Exception("BitstreamToPixelProducer") << "Empty detSet";
 
   outputDigis.insert(detSet);
 }
 
 void BitstreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
-
   auto outputPixelDigis = std::make_unique<edm::DetSetVector<PixelDigi>>();
   edm::Handle<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamHandle;
   iEvent.getByToken(bitstreamToken_, bitstreamHandle);

@@ -247,7 +247,7 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
 void BitStreamToRawProducer::addWordToBuffer(unsigned char* buffer, size_t position, uint32_t word) {
   // Add 32-bit word to the buffer at the specified position
   buffer[position * BYTES_PER_WORD] = (word >> 16) & 0xFFFF;  // MSB
-  buffer[position * BYTES_PER_WORD + 1] = word         & 0xFFFF;  // LSB
+  buffer[position * BYTES_PER_WORD + 1] = word & 0xFFFF;      // LSB
 }
 
 void BitStreamToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint32_t word) {
@@ -259,7 +259,6 @@ void BitStreamToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint32_t
     bool bitValue = (word >> bit) & 1;
     vec.push_back(bitValue);
   }
-
 }
 
 void BitStreamToRawProducer::padToChunkBoundary(std::vector<bool>& vec) {

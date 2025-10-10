@@ -162,7 +162,6 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
     std::vector<Phase2ITDigiHit> hitlist;
     std::vector<int> id;
 
-
     if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
       int layer_num = tTopo.pxbLayer(tkId.rawId());
       int ladder_num = tTopo.pxbLadder(tkId.rawId());
@@ -180,7 +179,6 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
     for (const auto& digi : theDigis) {
       hitlist.emplace_back(digi.row(), digi.column(), digi.adc());
     }
-
 
     std::vector<Phase2ITChip> chips = processHits(std::move(hitlist), tkId.rawId());
 
@@ -200,7 +198,6 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
 
     aBitStreamVector->insert(DetSetBitStream);
     aQCoreVector->insert(DetSetQCores);
-
   }
 
   iEvent.put(std::move(aQCoreVector));
