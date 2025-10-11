@@ -11,6 +11,6 @@ git cms-checkout-topic -u P2-Tracker-BES-SW:unpackers_15_0_0_pre2
 scram b -j
 cd EventFilter/Phase2PixelRawToDigi/test/
 # Run IT Qcore --> RAW for Inner Tracker.
-cmsRun Phase2PixelDigiToRaw_cfg.py
+cmsRun PixelDigiToRawProducer_cfg.py
 ```
 
