@@ -143,7 +143,7 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
 
         auto found_det_id = handle->find(det_id);
         if (found_det_id == handle->end()) {
-          throw cms::Exception("BitstreamToRawProducer") << "Could not find detId from the inputs";
+          throw cms::Exception("BitStreamToRawProducer") << "Could not find detId from the inputs";
         }
 
         const edm::DetSet<Phase2ITChipBitStream>& detSet = *found_det_id;
@@ -161,8 +161,8 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
 
           addWordToBitVector(offsetBlock, chipOffset & 0xFFFFFFFF);
 
-          std::vector<bool> chipBitstream = chip.get_bitstream();
-          unsigned int bitstreamSize = chipBitstream.size();
+          std::vector<bool> chipBitStream = chip.get_bitstream();
+          unsigned int bitstreamSize = chipBitStream.size();
 
           // Calculate padding needed to align to 128-bit boundary
           unsigned int total_chip_size = 2 * BITS_PER_WORD + bitstreamSize;  // 2 headers + bitstream
@@ -175,7 +175,7 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
           // Add chip header 2 (bitstream size)
           addWordToBitVector(dataBlock, bitstreamSize);
 
-          dataBlock.insert(dataBlock.end(), chipBitstream.begin(), chipBitstream.end());
+          dataBlock.insert(dataBlock.end(), chipBitStream.begin(), chipBitStream.end());
 
           // Add padding to align to 128-bit boundary
           if (padding_needed > 0) {

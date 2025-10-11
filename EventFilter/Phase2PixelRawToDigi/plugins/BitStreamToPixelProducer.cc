@@ -31,10 +31,10 @@
 
 using namespace Phase2DAQFormatSpecification;
 
-class BitstreamToPixelProducer : public edm::stream::EDProducer<> {
+class BitStreamToPixelProducer : public edm::stream::EDProducer<> {
 public:
-  explicit BitstreamToPixelProducer(const edm::ParameterSet&);
-  ~BitstreamToPixelProducer() override = default;
+  explicit BitStreamToPixelProducer(const edm::ParameterSet&);
+  ~BitStreamToPixelProducer() override = default;
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
 private:
@@ -44,7 +44,7 @@ private:
   uint32_t binaryToInt(const std::vector<bool>& binary, size_t& bitPos, int length);
 
   // Decode a single chip's bitstream into PixelDigi objects.
-  void decodeBitstream(const std::vector<bool>& bitstream,
+  void decodeBitStream(const std::vector<bool>& bitstream,
                        uint32_t detId,
                        int chipId,
                        edm::DetSetVector<PixelDigi>& outputDigis);
@@ -52,13 +52,13 @@ private:
   const edm::EDGetTokenT<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamToken_;
 };
 
-BitstreamToPixelProducer::BitstreamToPixelProducer(const edm::ParameterSet& iConfig)
+BitStreamToPixelProducer::BitStreamToPixelProducer(const edm::ParameterSet& iConfig)
     : bitstreamToken_(consumes<edmNew::DetSetVector<Phase2ITChipBitStream>>(
           iConfig.getParameter<edm::InputTag>("phase2ItChipBitStream"))) {
   produces<edm::DetSetVector<PixelDigi>>();
 }
 
-void BitstreamToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+void BitStreamToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("phase2ItChipBitStream", edm::InputTag("rawToBitStreamProducer"));
   descriptions.add("bitstreamToPixelProducer", desc);
@@ -76,7 +76,7 @@ struct DecoderState {
   DecoderState() = default;
 };
 
-std::string BitstreamToPixelProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {
+std::string BitStreamToPixelProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {
   std::string result;
   for (size_t i = 0; i < len && (start + i) < bits.size(); i++) {
     result += (bits[start + i] ? "1" : "0");
@@ -86,7 +86,7 @@ std::string BitstreamToPixelProducer::getBitString(const std::vector<bool>& bits
   return result;
 }
 
-uint32_t BitstreamToPixelProducer::binaryToInt(const std::vector<bool>& binary, size_t& bitPos, int length) {
+uint32_t BitStreamToPixelProducer::binaryToInt(const std::vector<bool>& binary, size_t& bitPos, int length) {
   uint32_t result = 0;
   for (int i = 0; i < length; i++) {
     if (bitPos < binary.size()) {
@@ -98,7 +98,7 @@ uint32_t BitstreamToPixelProducer::binaryToInt(const std::vector<bool>& binary, 
   return result;
 }
 
-void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstream,
+void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstream,
                                                uint32_t detId,
                                                int chipId,
                                                edm::DetSetVector<PixelDigi>& outputDigis) {
@@ -150,17 +150,17 @@ void BitstreamToPixelProducer::decodeBitstream(const std::vector<bool>& bitstrea
   }
 
   if (detSet.empty())
-    throw cms::Exception("BitstreamToPixelProducer") << "Empty detSet";
+    throw cms::Exception("BitStreamToPixelProducer") << "Empty detSet";
 
   outputDigis.insert(detSet);
 }
 
-void BitstreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void BitStreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   auto outputPixelDigis = std::make_unique<edm::DetSetVector<PixelDigi>>();
   edm::Handle<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamHandle;
   iEvent.getByToken(bitstreamToken_, bitstreamHandle);
   if (!bitstreamHandle.isValid()) {
-    throw cms::Exception("BitstreamToPixelProducer") << "Invalid BitStream handle";
+    throw cms::Exception("BitStreamToPixelProducer") << "Invalid BitStream handle";
   }
 
   // Loop over each DetSet in the input bitstream collection
@@ -168,11 +168,11 @@ void BitstreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup
     DetId tkId = detSet.id();
     uint32_t detId = tkId.rawId();
     for (const auto& chipBS : detSet) {
-      decodeBitstream(chipBS.get_bitstream(), detId, chipBS.get_rocid(), *outputPixelDigis);
+      decodeBitStream(chipBS.get_bitstream(), detId, chipBS.get_rocid(), *outputPixelDigis);
     }
   }
 
   iEvent.put(std::move(outputPixelDigis));
 }
 
-DEFINE_FWK_MODULE(BitstreamToPixelProducer);
+DEFINE_FWK_MODULE(BitStreamToPixelProducer);

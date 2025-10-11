@@ -30,10 +30,10 @@
 
 using namespace Phase2DAQFormatSpecification;
 
-class RawToBitstreamProducer : public edm::stream::EDProducer<> {
+class RawToBitStreamProducer : public edm::stream::EDProducer<> {
 public:
-  explicit RawToBitstreamProducer(const edm::ParameterSet&);
-  ~RawToBitstreamProducer() override = default;
+  explicit RawToBitStreamProducer(const edm::ParameterSet&);
+  ~RawToBitStreamProducer() override = default;
 
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
   void beginRun(const edm::Run&, const edm::EventSetup&) override;
@@ -46,12 +46,12 @@ private:
 
   // Debugging functions for helper methods
   std::string getBitString(const std::vector<bool>& bits, size_t start, size_t len) const;
-  void dumpBitstream(const std::vector<bool>& bits, size_t position) const;
+  void dumpBitStream(const std::vector<bool>& bits, size_t position) const;
 
   bool verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const;
   int findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const;
   std::vector<uint32_t> extractChipOffsets(const unsigned char* dataPtr, int offsetStartWord, int maxWords) const;
-  std::vector<bool> extractBitstream(const unsigned char* dataPtr, int startWord, int bitstreamSize) const;
+  std::vector<bool> extractBitStream(const unsigned char* dataPtr, int startWord, int bitstreamSize) const;
 
   void processFED(const unsigned char* dataPtr,
                   int fedSizeInWords,
@@ -79,7 +79,7 @@ private:
   bool debug_ = false;
 };
 
-RawToBitstreamProducer::RawToBitstreamProducer(const edm::ParameterSet& iConfig)
+RawToBitStreamProducer::RawToBitStreamProducer(const edm::ParameterSet& iConfig)
     : fedRawDataToken_(consumes<FEDRawDataCollection>(iConfig.getParameter<edm::InputTag>("fedRawDataCollection"))),
       cablingMapToken_(
           esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
@@ -87,19 +87,19 @@ RawToBitstreamProducer::RawToBitstreamProducer(const edm::ParameterSet& iConfig)
   produces<edmNew::DetSetVector<Phase2ITChipBitStream>>();
 }
 
-void RawToBitstreamProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+void RawToBitStreamProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("fedRawDataCollection", edm::InputTag("rawDataCollector"));
   desc.addUntracked<bool>("debug", false);
-  descriptions.add("phase2RawToBitstreamProducer", desc);
+  descriptions.add("phase2RawToBitStreamProducer", desc);
 }
 
-void RawToBitstreamProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
+void RawToBitStreamProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
   cablingMap_ = &iSetup.getData(cablingMapToken_);
   buildFedToModuleMapping();
 }
 
-void RawToBitstreamProducer::buildFedToModuleMapping() {
+void RawToBitStreamProducer::buildFedToModuleMapping() {
   auto knownDTCIdsWithIndex = cablingMap_->getKnownDTCIdsWithIndex();
   fedToModuleMap_.clear();
   for (const auto& pair : knownDTCIdsWithIndex) {
@@ -126,12 +126,12 @@ void RawToBitstreamProducer::buildFedToModuleMapping() {
   }
 }
 
-void RawToBitstreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   auto output = std::make_unique<edmNew::DetSetVector<Phase2ITChipBitStream>>();
   edm::Handle<FEDRawDataCollection> fedRawDataCollection;
   iEvent.getByToken(fedRawDataToken_, fedRawDataCollection);
   if (!fedRawDataCollection.isValid()) {
-    throw cms::Exception("RawToBitstreamProducer") << "Invalid FEDRawDataCollection";
+    throw cms::Exception("RawToBitStreamProducer") << "Invalid FEDRawDataCollection";
   }
 
   for (const auto& fedEntry : fedToModuleMap_) {
@@ -148,7 +148,7 @@ void RawToBitstreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
   iEvent.put(std::move(output));
 }
 
-void RawToBitstreamProducer::processFED(const unsigned char* dataPtr,
+void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
                                         int fedSizeInWords,
                                         int fedId,
                                         int dtcId,
@@ -157,11 +157,11 @@ void RawToBitstreamProducer::processFED(const unsigned char* dataPtr,
   const std::vector<uint32_t>& detIds = fedToModuleMap_[fedId][slinkId];
   bool validHeader = verifyHeaderTrailerPattern(dataPtr, 0);
   if (!validHeader) {
-    throw cms::Exception("RawToBitstreamProducer") << "Invalid header in FEDRawData";
+    throw cms::Exception("RawToBitStreamProducer") << "Invalid header in FEDRawData";
   }
   int trailerStart = findTrailerStart(dataPtr, fedSizeInWords);
   if (trailerStart < 0) {
-    throw cms::Exception("RawToBitstreamProducer") << "Invalid trailer in FEDRawData";
+    throw cms::Exception("RawToBitStreamProducer") << "Invalid trailer in FEDRawData";
     trailerStart = fedSizeInWords;
   }
 
@@ -210,7 +210,7 @@ void RawToBitstreamProducer::processFED(const unsigned char* dataPtr,
   }
 }
 
-void RawToBitstreamProducer::processChip(const unsigned char* dataPtr,
+void RawToBitStreamProducer::processChip(const unsigned char* dataPtr,
                                          int chipStartWord,
                                          int chipEndWord,
                                          uint32_t detId,
@@ -229,14 +229,14 @@ void RawToBitstreamProducer::processChip(const unsigned char* dataPtr,
   }
   uint8_t paddingBits = header1 & 0xF;
   uint32_t bitstreamSize = readWord(dataPtr, chipStartWord + 1);
-  std::vector<bool> bitstream = extractBitstream(dataPtr, chipStartWord + 2, bitstreamSize);
+  std::vector<bool> bitstream = extractBitStream(dataPtr, chipStartWord + 2, bitstreamSize);
 
   // Create the Phase2ITChipBitStream object and add it to the filler
   Phase2ITChipBitStream chipStream(chipId, bitstream);
   filler.push_back(chipStream);
 }
 
-std::string RawToBitstreamProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {
+std::string RawToBitStreamProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {
   std::string result;
   for (size_t i = 0; i < len && start + i < bits.size(); i++) {
     result += (bits[start + i] ? "1" : "0");
@@ -246,18 +246,18 @@ std::string RawToBitstreamProducer::getBitString(const std::vector<bool>& bits, 
   return result;
 }
 
-uint32_t RawToBitstreamProducer::readWord(const unsigned char* dataPtr, int wordIdx) const {
+uint32_t RawToBitStreamProducer::readWord(const unsigned char* dataPtr, int wordIdx) const {
   int byteIdx = wordIdx * 2;
   return (static_cast<uint32_t>(dataPtr[byteIdx]) << 16) | static_cast<uint32_t>(dataPtr[byteIdx + 1]);
 }
 
-std::string RawToBitstreamProducer::wordToHexString(uint32_t word) const {
+std::string RawToBitStreamProducer::wordToHexString(uint32_t word) const {
   std::stringstream ss;
   ss << "0x" << std::hex << std::setw(4) << std::setfill('0') << word;
   return ss.str();
 }
 
-std::vector<uint32_t> RawToBitstreamProducer::extractChipOffsets(const unsigned char* dataPtr,
+std::vector<uint32_t> RawToBitStreamProducer::extractChipOffsets(const unsigned char* dataPtr,
                                                                  int offsetStartWord,
                                                                  int maxWords) const {
   std::vector<uint32_t> offsets;
@@ -291,7 +291,7 @@ std::vector<uint32_t> RawToBitstreamProducer::extractChipOffsets(const unsigned 
   return offsets;
 }
 
-std::vector<bool> RawToBitstreamProducer::extractBitstream(const unsigned char* dataPtr,
+std::vector<bool> RawToBitStreamProducer::extractBitStream(const unsigned char* dataPtr,
                                                            int startWord,
                                                            int bitstreamSize) const {
   std::vector<bool> bitstream;
@@ -319,7 +319,7 @@ std::vector<bool> RawToBitstreamProducer::extractBitstream(const unsigned char* 
 
 // FIXME for now this works because we are assuming 4 lines of 0xFFFFFFFF for both headers and trailers
 // Later we have to come up with something more concrete to parse out these 4 lines
-bool RawToBitstreamProducer::verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const {
+bool RawToBitStreamProducer::verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const {
   for (int i = 0; i < HEADER_TRAILER_LINES; i++) {
     uint32_t word = readWord(dataPtr, wordIdx + i);
     if (word != HEADER_TRAILER_PATTERN) {
@@ -329,7 +329,7 @@ bool RawToBitstreamProducer::verifyHeaderTrailerPattern(const unsigned char* dat
   return true;
 }
 
-int RawToBitstreamProducer::findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const {
+int RawToBitStreamProducer::findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const {
   // Start searching from the end, going backwards
   for (int i = fedSizeInWords - HEADER_TRAILER_LINES; i >= HEADER_TRAILER_LINES; --i) {
     if (verifyHeaderTrailerPattern(dataPtr, i)) {
@@ -339,4 +339,4 @@ int RawToBitstreamProducer::findTrailerStart(const unsigned char* dataPtr, int f
   return -1;  // trailer not found
 }
 
-DEFINE_FWK_MODULE(RawToBitstreamProducer);
+DEFINE_FWK_MODULE(RawToBitStreamProducer);
