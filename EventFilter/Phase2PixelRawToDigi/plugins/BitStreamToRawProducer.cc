@@ -98,7 +98,6 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
   using namespace edm;
   using namespace std;
 
-  const auto& cablingMap = iSetup.getData(cablingMapToken_);
   auto fedRawDataCollection = std::make_unique<FEDRawDataCollection>();
   edm::Handle<edm::DetSetVector<Phase2ITChipBitStream>> handle;
   iEvent.getByToken(ITChipBitStreamToken_, handle);
