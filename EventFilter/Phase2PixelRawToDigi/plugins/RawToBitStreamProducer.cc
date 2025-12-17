@@ -183,7 +183,6 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
     if (moduleIdx >= numModules)
       moduleIdx = numModules - 1;
     uint32_t detId = detIds[moduleIdx];
-    int chipIdInModule = chipIdx % chipsPerModule;
     int chipStartWord = dataBlockStart + chipOffsets[chipIdx];
     int chipEndWord = (chipIdx == numChips - 1) ? trailerStart : dataBlockStart + chipOffsets[chipIdx + 1];
 
@@ -227,7 +226,6 @@ void RawToBitStreamProducer::processChip(const unsigned char* dataPtr,
               << ", skipping" << std::endl;
     return;
   }
-  uint8_t paddingBits = header1 & 0xF;
   uint32_t bitstreamSize = readWord(dataPtr, chipStartWord + 1);
   std::vector<bool> bitstream = extractBitStream(dataPtr, chipStartWord + 2, bitstreamSize);
 

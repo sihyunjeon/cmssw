@@ -151,9 +151,7 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
         int chipId = 0;
         for (auto const& chip : detSet) {
           // Make sure dataBlock is aligned to 128-bit boundary before adding a new chip
-          size_t oldSize = dataBlock.size();
           padToChunkBoundary(dataBlock);
-          size_t newSize = dataBlock.size();
 
           // Calculate the offset for this chip (word position in the data block)
           uint32_t chipOffset = calculateChipOffset(dataBlock);
@@ -186,9 +184,7 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
       }
 
       // Ensure offset block is padded to 128-bit boundary
-      size_t oldSize = offsetBlock.size();
       padToChunkBoundary(offsetBlock);
-      size_t newSize = offsetBlock.size();
 
       // Calculate sizes in bytes
       unsigned int header_size = HEADER_TRAILER_LINES * BYTES_PER_WORD;
@@ -250,8 +246,6 @@ void BitStreamToRawProducer::addWordToBuffer(unsigned char* buffer, size_t posit
 }
 
 void BitStreamToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint32_t word) {
-  // Track the starting position for debugging
-  size_t startPos = vec.size();
 
   // Convert two 32-bit words to 32 bits and add to the vector
   for (int bit = 31; bit >= 0; bit--) {
