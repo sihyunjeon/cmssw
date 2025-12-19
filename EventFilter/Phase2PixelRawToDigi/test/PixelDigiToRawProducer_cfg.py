@@ -1,6 +1,12 @@
 import FWCore.ParameterSet.Config as cms
 from Configuration.Eras.Era_Phase2C17I13M9_cff import Phase2C17I13M9
 
+'''
+Configuration file to run packer/unpacker for HL-LHC inner tracker
+Packer : PixelToBitStreamProducer & BitStreamToRawProducer
+Unpacker : RawToBitStreamProducer & BitStreamToPixelProducer
+'''
+
 process = cms.Process('USER', Phase2C17I13M9)
 
 # Standard configurations
@@ -21,7 +27,7 @@ process.load('Configuration.StandardSequences.L1Reco_cff')
 process.load('Configuration.StandardSequences.Reconstruction_cff')
 process.load('Configuration.StandardSequences.EndOfProcess_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
-#process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
+process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 
 
 process.maxEvents = cms.untracked.PSet(
@@ -81,19 +87,19 @@ process.TrackRefitter.NavigationSchool = ""
 process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
     fileName = cms.untracked.string('output_file.root'),
     outputCommands = cms.untracked.vstring(
-        'drop *',
-        'keep FEDRawDataCollection_*_*_*',
-        'keep *_Phase2IT*_*_*',  # Save intermediate Phase2ITChipBitStream
-        'keep PixelDigi*_*_*_*'
+        #'drop *',
+        #'keep FEDRawDataCollection_*_*_*',
+        #'keep *_Phase2IT*_*_*',  # Save intermediate Phase2ITChipBitStream
+        #'keep PixelDigi*_*_*_*'
     )
 )
 
 process.digitisation_step = cms.Path(process.pdigi_valid)
 process.user_step = cms.Path(
     process.PixelToBitStreamProducer
-    #process.BitStreamToRawProducer *
-    #process.RawToBitStreamProducer *
-    #process.BitStreamToPixelProducer
+    #* process.BitStreamToRawProducer
+    #* process.RawToBitStreamProducer
+    #* process.BitStreamToPixelProducer
 )
 process.endjob_step = cms.EndPath(process.endOfProcess)
 process.output_step = cms.EndPath(process.FEVTDEBUGoutput)
