@@ -40,7 +40,7 @@ process.source = cms.Source("PoolSource",
 )
 
 process.load("CondCore.CondDB.CondDB_cfi")
-process.CondDB.connect = "sqlite_file:cablingmap/OTandITDTCCablingMap.db"
+process.CondDB.connect = "sqlite_file:OTandITDTCCablingMap.db"
 process.PoolDBESSource = cms.ESSource("PoolDBESSource",
     process.CondDB,
     DumpStat = cms.untracked.bool(True),
