@@ -142,7 +142,7 @@ void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
     int dtcIndex = fedId / SLINKS_PER_DTC;
     int dtcId = ((dtcIndex / 9) + 1) * 10 + (dtcIndex % 9) + 1;
     const unsigned char* dataPtr = fedData.data();
-    int fedSizeInWords = fedData.size() / 2;
+    int fedSizeInWords = fedData.size() / 4;
     processFED(dataPtr, fedSizeInWords, fedId, dtcId, slinkId, *output);
   }
   iEvent.put(std::move(output));
@@ -167,7 +167,7 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
 
   int offsetStart = HEADER_TRAILER_LINES;
   std::vector<uint32_t> chipOffsets = extractChipOffsets(dataPtr, offsetStart, trailerStart - offsetStart);
-  int offsetBlockSize = chipOffsets.size() * 2;
+  int offsetBlockSize = chipOffsets.size();
   int offsetBits = offsetBlockSize * BITS_PER_WORD;
   int paddingBits = (BITS_PER_CHUNK - (offsetBits % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
   int paddingWords = paddingBits / BITS_PER_WORD;
@@ -175,7 +175,22 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
   int numChips = chipOffsets.size();
   int numModules = detIds.size();
   const int chipsPerModule = 4;
+std::cout << "  dataBlockStart=" << dataBlockStart << std::endl;
+std::cout << "  numChips=" << numChips << " numModules=" << numModules << std::endl;
 
+for (int chipIdx = 0; chipIdx < numChips; chipIdx++) {
+    int moduleIdx = chipIdx / chipsPerModule;
+    uint32_t detId = detIds[moduleIdx];
+    int chipStartWord = dataBlockStart + chipOffsets[chipIdx];
+    int chipEndWord = (chipIdx == numChips - 1) ? trailerStart : dataBlockStart + chipOffsets[chipIdx + 1];
+    
+    std::cout << "  chipIdx=" << chipIdx 
+              << " moduleIdx=" << moduleIdx
+              << " offset=" << chipOffsets[chipIdx]
+              << " chipStartWord=" << chipStartWord 
+              << " chipEndWord=" << chipEndWord 
+              << " size=" << (chipEndWord - chipStartWord) << std::endl;
+}
   std::map<uint32_t, std::vector<std::pair<int, int>>> chipsByDetId;
 
   for (int chipIdx = 0; chipIdx < numChips; chipIdx++) {
@@ -228,6 +243,10 @@ void RawToBitStreamProducer::processChip(const unsigned char* dataPtr,
   }
   uint32_t bitstreamSize = readWord(dataPtr, chipStartWord + 1);
   std::vector<bool> bitstream = extractBitStream(dataPtr, chipStartWord + 2, bitstreamSize);
+std::cout << "DECODER detId=" << detId
+          << " chip=" << chipId
+          << " size=" << bitstream.size()
+          << " first32=" << getBitString(bitstream, 0, 32) << std::endl;
 
   // Create the Phase2ITChipBitStream object and add it to the filler
   Phase2ITChipBitStream chipStream(chipId, bitstream);
@@ -245,8 +264,11 @@ std::string RawToBitStreamProducer::getBitString(const std::vector<bool>& bits, 
 }
 
 uint32_t RawToBitStreamProducer::readWord(const unsigned char* dataPtr, int wordIdx) const {
-  int byteIdx = wordIdx * 2;
-  return (static_cast<uint32_t>(dataPtr[byteIdx]) << 16) | static_cast<uint32_t>(dataPtr[byteIdx + 1]);
+  int byteIdx = wordIdx * 4;
+  return (static_cast<uint32_t>(dataPtr[byteIdx])     << 24) |
+         (static_cast<uint32_t>(dataPtr[byteIdx + 1]) << 16) |
+         (static_cast<uint32_t>(dataPtr[byteIdx + 2]) <<  8) |
+          static_cast<uint32_t>(dataPtr[byteIdx + 3]);
 }
 
 std::string RawToBitStreamProducer::wordToHexString(uint32_t word) const {
@@ -256,36 +278,28 @@ std::string RawToBitStreamProducer::wordToHexString(uint32_t word) const {
 }
 
 std::vector<uint32_t> RawToBitStreamProducer::extractChipOffsets(const unsigned char* dataPtr,
-                                                                 int offsetStartWord,
-                                                                 int maxWords) const {
+                                                                   int offsetStartWord,
+                                                                   int maxWords) const {
   std::vector<uint32_t> offsets;
-  std::cout << "  Analyzing offset block from word " << offsetStartWord << ":" << std::endl;
-  int words_per_chunk = BITS_PER_CHUNK / BITS_PER_WORD;  // 4 words per chunk
-  for (int i = 0; i < maxWords - 1; i += 2) {
-    if (offsetStartWord + i + 1 >= maxWords)
+  //std::cout << "  Analyzing offset block from word " << offsetStartWord << ":" << std::endl;
+  for (int i = 0; i < maxWords; i++) {
+    uint32_t offset = readWord(dataPtr, offsetStartWord + i);
+    //std::cout << "    Word " << i << ": " << wordToHexString(offset)
+    //          << " -> Offset: " << offset << std::endl;
+    if ((offset & 0xF000) == CHIP_HEADER_MARKER) {
+      //std::cout << "    Found chip header marker " << wordToHexString(offset)
+      //          << " at word " << (offsetStartWord + i)
+      //          << ", ending offset extraction" << std::endl;
       break;
-    uint16_t msb = readWord(dataPtr, offsetStartWord + i);
-    uint16_t lsb = readWord(dataPtr, offsetStartWord + i + 1);
-    uint32_t offset = (static_cast<uint32_t>(msb) << 16) | lsb;
-    std::cout << "    Pair " << i / 2 << ": " << wordToHexString(msb) << " " << wordToHexString(lsb)
-              << " -> Offset: " << offset << std::endl;
+    }
+    if (offset == HEADER_TRAILER_PATTERN) {
+      //std::cout << "    Found trailer pattern at word " << (offsetStartWord + i)
+      //          << ", ending offset extraction" << std::endl;
+      break;
+    }
     offsets.push_back(offset);
-    if ((i + 2) % words_per_chunk == 0) {
-      if (offsetStartWord + i + 2 < maxWords) {
-        uint32_t nextWord = readWord(dataPtr, offsetStartWord + i + 2);
-        if ((nextWord & 0xF000) == CHIP_HEADER_MARKER) {
-          std::cout << "    Found chip header marker " << wordToHexString(nextWord) << " at word "
-                    << (offsetStartWord + i + 2) << ", ending offset extraction" << std::endl;
-          break;
-        }
-      }
-    }
-    if (msb == HEADER_TRAILER_PATTERN && lsb == HEADER_TRAILER_PATTERN) {
-      std::cout << "    Found trailer pattern at word " << (offsetStartWord + i) << ", ending offset extraction"
-                << std::endl;
-      break;
-    }
   }
+  //std::cout << "  Total offsets found: " << offsets.size() << std::endl;
   return offsets;
 }
 

@@ -159,6 +159,10 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
           addWordToBitVector(offsetBlock, chipOffset & 0xFFFFFFFF);
 
           std::vector<bool> chipBitStream = chip.get_bitstream();
+std::cout << "ENCODER detId=" << det_id 
+          << " chip=" << chipId 
+          << " size=" << chipBitStream.size() 
+          << " first32=" << getBitString(chipBitStream, 0, 32) << std::endl;
           unsigned int bitstreamSize = chipBitStream.size();
 
           // Calculate padding needed to align to 128-bit boundary
@@ -240,9 +244,10 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
 }
 
 void BitStreamToRawProducer::addWordToBuffer(unsigned char* buffer, size_t position, uint32_t word) {
-  // Add 32-bit word to the buffer at the specified position
-  buffer[position * BYTES_PER_WORD] = (word >> 16) & 0xFFFF;  // MSB
-  buffer[position * BYTES_PER_WORD + 1] = word & 0xFFFF;      // LSB
+  buffer[position * 4]     = (word >> 24) & 0xFF;
+  buffer[position * 4 + 1] = (word >> 16) & 0xFF;
+  buffer[position * 4 + 2] = (word >>  8) & 0xFF;
+  buffer[position * 4 + 3] =  word        & 0xFF;
 }
 
 void BitStreamToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint32_t word) {

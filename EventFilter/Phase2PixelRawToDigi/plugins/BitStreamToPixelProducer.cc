@@ -102,6 +102,18 @@ void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstrea
                                                uint32_t detId,
                                                int chipId,
                                                edm::DetSetVector<PixelDigi>& outputDigis) {
+  std::cout << "==========================" <<std::endl;
+  std::cout << "DECODER chip=" << chipId 
+          << " size=" << bitstream.size() 
+          << " first32=" << getBitString(bitstream, 0, 32) << std::endl;
+  std::cout << "==========================" <<std::endl;
+  //std::cout << "Decoding chip detId=" << detId 
+  //          << " chipId=" << chipId 
+  //          << " bitstreamSize=" << bitstream.size() << std::endl;
+  if (bitstream.empty()) {
+    //std::cout << "WARNING: Empty bitstream for detId=" << detId << " chipId=" << chipId << std::endl;
+    return;
+  }
   edm::DetSet<PixelDigi> detSet(detId);
 
   DecoderState state;
@@ -129,17 +141,35 @@ void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstrea
     std::vector<int> adcValues = Phase2ITQCore::decodeADCs(bitstream, state.bitPos, numHits);
 
     hitmap = Phase2ITQCore::toSensorCoordinates(hitmap);
+std::cout << "DECODE QCore col=" << state.currentCol << " row=" << state.currentRow << std::endl;
+for (int i = 0; i < 16; i++) {
+    if (hitmap[i]) {
+        std::cout << "  hit at sensorIndex=" << i 
+                  << " sensorRow=" << i/4 
+                  << " sensorCol=" << i%4 << std::endl;
+    }
+}
     int adcIndex = 0;
-
-    for (int i = 0; i < HITMAP_COL; i++) {
-      for (int j = 0; j < HITMAP_ROW; j++) {
-        int hitIndex = i * HITMAP_ROW + j;
-        auto [localRow, localCol] = Phase2ITChip::decodeQCoreIndex(hitIndex);
-        if (hitIndex < static_cast<int>(hitmap.size()) && hitmap[hitIndex]) {
-          auto [globalRow, globalCol] =
-              Phase2ITChip::getGlobalPixelCoordinate(chipId, state.currentCol, state.currentRow, localCol, localRow);
+for (int i = 0; i < HITMAP_ROW; i++) {    // i = row
+  for (int j = 0; j < HITMAP_COL; j++) {  // j = col
+    int hitIndex = i * HITMAP_COL + j;     // = row*4 + col  ← matches toSensorCoordinates
+    auto [localRow, localCol] = Phase2ITChip::decodeQCoreIndex(hitIndex);
+    if (hitIndex < static_cast<int>(hitmap.size()) && hitmap[hitIndex]) {
+      auto [globalRow, globalCol] =
+          Phase2ITChip::getGlobalPixelCoordinate(chipId, state.currentCol, state.currentRow, localCol, localRow);
           int adc = adcValues[adcIndex++];
+if (detId == 353383448) {
+    std::cout << "OUTPUT detId=353383448"
+              << " col=" << globalCol 
+              << " row=" << globalRow 
+              << " adc=" << adc << std::endl;
+}
           detSet.push_back(PixelDigi(globalRow, globalCol, adc));
+          if (detId == 303042594){
+std::cout << "  Decoded hit: col=" << globalCol 
+          << " row=" << globalRow 
+          << " adc=" << adc << std::endl;
+          }
         }
       }
     }
