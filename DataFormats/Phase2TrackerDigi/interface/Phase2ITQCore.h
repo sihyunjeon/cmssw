@@ -47,7 +47,8 @@ public:
   }
 
   static std::vector<bool> toSensorCoordinates(const std::vector<bool>& roc_hitmap);
-  static std::vector<bool> toRocCoordinates(const std::vector<bool>& hitmap);
+  template <typename T>
+  static std::vector<T> toRocCoordinates(const std::vector<T>& input_map);
 
   static std::vector<bool> encodeHitmap(const std::vector<bool>& hitmap);
   static std::vector<bool> decodeHitmap(const std::vector<bool>& bitstream, size_t& bitPos);

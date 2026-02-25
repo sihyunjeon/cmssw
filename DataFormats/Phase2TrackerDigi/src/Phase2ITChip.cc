@@ -51,7 +51,7 @@ std::pair<int, int> Phase2ITChip::decodeQCoreIndex(int index) {
 std::pair<int, int> Phase2ITChip::getGlobalPixelCoordinate(
     int chipId, int qcoreCol, int qcoreRow, int localCol, int localRow) {
   int globalRow = qcoreRow * HITMAP_COL + localRow;
-  int globalCol = (qcoreCol + kColsPerROC * chipId) * HITMAP_ROW + localCol;
+  int globalCol = qcoreCol * HITMAP_ROW + localCol;
 
   return {globalRow, globalCol};
 }

@@ -22,10 +22,13 @@ Phase2ITQCore::Phase2ITQCore(int rocid,
 }
 
 //Takes a hitmap in sensor coordinates in 4x4 and converts it to readout chip coordinates with 2x8
-std::vector<bool> Phase2ITQCore::toRocCoordinates(const std::vector<bool>& hitmap) {
-  std::vector<bool> ROC_hitmap(16, false);
+template <typename T>
+std::vector<T> Phase2ITQCore::toRocCoordinates(const std::vector<T>& input_map) {
 
-  for (size_t i = 0; i < hitmap.size(); i++) {
+  std::vector<T> roc_coord(16);
+
+  for (size_t i = 0; i < input_map.size(); i++) {
+
     int row = i / 4;
     int col = i % 4;
     int new_row;
@@ -40,10 +43,10 @@ std::vector<bool> Phase2ITQCore::toRocCoordinates(const std::vector<bool>& hitma
     }
 
     int new_index = 8 * new_row + new_col;
-    ROC_hitmap[new_index] = hitmap[i];
+    roc_coord[new_index] = input_map[i];
   }
 
-  return ROC_hitmap;
+  return roc_coord;
 }
 
 std::vector<bool> Phase2ITQCore::toSensorCoordinates(const std::vector<bool>& roc_hitmap) {
@@ -79,7 +82,7 @@ std::vector<int> Phase2ITQCore::getADCs() {
     adcmap.push_back(adc);
   }
 
-  return adcmap;
+  return (toRocCoordinates(adcmap));
 }
 
 //Converts an integer into a binary, and formats it with the given length
@@ -221,13 +224,43 @@ std::vector<bool> Phase2ITQCore::encodeQCore(bool is_new_col) {
     code.insert(code.end(), row_code.begin(), row_code.end());
   }
 
-  std::vector<bool> hitmap_code = encodeHitmap(getHitmap());
+  std::vector<bool> hitmap = getHitmap();
+  std::vector<bool> hitmap_code = encodeHitmap(hitmap);
   code.insert(code.end(), hitmap_code.begin(), hitmap_code.end());
 
-  for (auto adc : adcs_) {
-    std::vector<bool> adc_code = intToBinary(adc, 4);
-    code.insert(code.end(), adc_code.begin(), adc_code.end());
-  }
+  std::vector<int> adcs_code = getADCs();
+for (int i = 0; i < 16; i++) {
+    if (hitmap[i]) {  // only write ADC if there's a hit
+        std::vector<bool> adc_code = intToBinary(adcs_code[i], 4);
+        code.insert(code.end(), adc_code.begin(), adc_code.end());
+    }
+}
 
+std::vector<int> adcs = getADCs();
+std::cout << "ENCODE QCore col=" << ccol_ << " row=" << qcrow_ << std::endl;
+for (int i = 0; i < 16; i++) {
+    if (hitmap[i]) {
+        std::cout << "  hit at rocIndex=" << i 
+                  << " rocRow=" << i/8 
+                  << " rocCol=" << i%8 
+                  << " adc=" << adcs[i] << std::endl;  // note: adcs now only hit ADCs, adjust index
+    }
+}
+
+
+  /*
+  std::cout<<"hitmap : ";
+  for (auto hit: getHitmap()){
+    std::cout<<hit<<" ";
+  }
+  std::cout<<std::endl;
+
+  std::cout<<"totmap : ";
+  for (auto adc: adcs_code){
+    std::cout<<adc<<" ";
+  }
+  std::cout<<std::endl;
+  std::cout<<std::endl;
+  */
   return code;
 }
