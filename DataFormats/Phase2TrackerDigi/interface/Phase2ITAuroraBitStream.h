@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 
+// Data format to emulate Phase2ITAuroraBitStream from Phase2ITChipBitStream
 class Phase2ITAuroraBitStream {
 public:
     Phase2ITAuroraBitStream() : chipId_(0), nEvents_(0) {}

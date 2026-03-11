@@ -1,5 +1,5 @@
-// EDProducer that packs N events of bitstream into AuroraBitStream (Aurora Packer)
-
+// EDProducer that packs N events of bitstream into Phase2ITAuroraBitStream (Aurora Packer)
+// isComplete flag is stored to filter out N-th events with valid Phase2ITAuroraBitStream
 #include <map>
 #include <vector>
 #include <cstdint>
@@ -48,8 +48,8 @@ BitStreamToAuroraProducer::BitStreamToAuroraProducer(const edm::ParameterSet& iC
 void BitStreamToAuroraProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("Phase2ITQCoreProducer"));
-  desc.add<unsigned int>("blockSize", 16);
-  descriptions.add("bitStreamToAuroraProducer", desc);
+  desc.add<unsigned int>("blockSize", 16); // default event block size set to 16 (configurable 1-64)
+  descriptions.add("BitStreamToAuroraProducer", desc);
 }
 
 void BitStreamToAuroraProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
@@ -100,7 +100,7 @@ void BitStreamToAuroraProducer::produce(edm::Event& iEvent, const edm::EventSetu
 
     auto output = std::make_unique<edm::DetSetVector<Phase2ITAuroraBitStream>>(detsets);
     iEvent.put(std::move(output));
-    buffer_.clear();
+    buffer_.clear(); // Clear out buffers if the Phase2ITAuroraBitStream is filled in
   }
 
   iEvent.put(std::make_unique<bool>(complete), "isComplete");
