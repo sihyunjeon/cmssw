@@ -61,8 +61,7 @@ process.PixelToBitStreamProducer = cms.EDProducer(
 
 process.BitStreamToAuroraProducer = cms.EDProducer("BitStreamToAuroraProducer",
     Phase2ITChipBitStream = cms.InputTag("PixelToBitStreamProducer"),
-    blockSize = cms.uint32(16),
-    serviceSize = cms.uint32(50)
+    blockSize = cms.uint32(16)
 )
 
 # Filter to only write events where the block is complete
@@ -87,7 +86,7 @@ process.auroraOutput = cms.OutputModule("PoolOutputModule",
 process.digitisation_step = cms.Path(process.pdigi_valid)
 process.user_step = cms.Path(
     process.PixelToBitStreamProducer
-    * process.BitStreamToAuroraProducer
+    * process.auroraProducer
     * process.auroraFilter
 )
 process.endjob_step = cms.EndPath(process.endOfProcess)
