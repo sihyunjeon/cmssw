@@ -1,14 +1,6 @@
 // EDProducer that takes bitstream to FEDRawData (Packer)
 
-#include <utility>
-#include <unordered_map>
-#include <string>
-#include <iostream>
-#include <iomanip>
-#include <array>
-#include <cstring>
-#include <algorithm>
-#include <bitset>
+#include <memory>
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDProducer.h"
@@ -16,22 +8,17 @@
 #include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
-#include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 
-#include "Geometry/CommonDetUnit/interface/PixelGeomDetUnit.h"
-
 #include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
-#include "CondFormats/SiPhase2TrackerObjects/interface/DTCELinkId.h"
 #include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
 
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 #include "DataFormats/Common/interface/DetSetVector.h"
 #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
 #include "DataFormats/FEDRawData/interface/FEDRawData.h"
-#include "DataFormats/FEDRawData/interface/FEDHeader.h"
-#include "DataFormats/FEDRawData/interface/FEDTrailer.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+#include "EventFilter/Phase2PixelRawToDigi/interface/SLinkModuleMap.h"
 
 using namespace Phase2DAQFormatSpecification;
 
@@ -52,12 +39,8 @@ private:
   void addWordToBuffer(unsigned char* buffer, size_t position, uint32_t word);
   void addWordToBitVector(std::vector<bool>& vec, uint32_t word);
   void padToChunkBoundary(std::vector<bool>& vec);
-  uint32_t calculateChipOffset(const std::vector<bool>& dataBlock);
-  std::string getBitString(const std::vector<bool>& bits, size_t start, size_t len);
-  const TrackerDetToDTCELinkCablingMap* cablingMap_ = nullptr;
 
-  std::vector<std::pair<unsigned int, unsigned int>> knownDTCIdsWithIndex_;
-  std::unordered_map<unsigned int, std::vector<uint32_t>> dtcIdToDetIds_;
+  std::unique_ptr<SLinkModuleMap> slinkMap_;
 };
 
 BitStreamToRawProducer::BitStreamToRawProducer(const edm::ParameterSet& iConfig)
@@ -75,23 +58,7 @@ void BitStreamToRawProducer::fillDescriptions(edm::ConfigurationDescriptions& de
 }
 
 void BitStreamToRawProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
-  cablingMap_ = &iSetup.getData(cablingMapToken_);
-  knownDTCIdsWithIndex_ = cablingMap_->getKnownDTCIdsWithIndex();
-  dtcIdToDetIds_.clear();
-
-  for (const auto& pair : knownDTCIdsWithIndex_) {
-    unsigned int dtcId = pair.second;
-    dtcIdToDetIds_[dtcId] = cablingMap_->getAllDetIdsForDTCId(dtcId);
-  }
-}
-std::string BitStreamToRawProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) {
-  std::string result;
-  for (size_t i = 0; i < len && start + i < bits.size(); i++) {
-    result += (bits[start + i] ? "1" : "0");
-    if ((i + 1) % 8 == 0)
-      result += " ";
-  }
-  return result;
+  slinkMap_ = std::make_unique<SLinkModuleMap>(iSetup.getData(cablingMapToken_));
 }
 
 void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
@@ -106,137 +73,103 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
     throw cms::Exception("BitStreamToRawProducer") << "Invalid BitStream handle";
   }
 
-  // Loop over all DTCs
-  for (const auto& pair : knownDTCIdsWithIndex_) {
-    unsigned int dtcIndex = pair.first;
-    unsigned int dtcId = pair.second;
+  // Loop over slinks to fill in the bitstreams
+  for (const auto& entry : slinkMap_->fedIdToDetIds()) {
+    int fedId = entry.first;
+    const std::vector<uint32_t>& detIds = entry.second;
 
-    // Get all detector IDs for this DTC
-    auto& det_ids = dtcIdToDetIds_[dtcId];
-    int total_det_ids = det_ids.size();
+    // Block 2: per-module offsets.
+    // Block 3: per-module sequence of (chip header word, chip bitstream, 32-bit pad) repeated for CHIPS_PER_MODULE chips
+    std::vector<bool> offsetBlock;
+    std::vector<bool> dataBlock;
 
-    // Calculate modules per slink - distribute evenly
-    int base_modules_per_slink = total_det_ids / SLINKS_PER_DTC;
-    int remaining_modules = total_det_ids % SLINKS_PER_DTC;
-
-    int moduleIndex = 0;
-
-    // Loop over all SLinks
-    for (int slink_id = 0; slink_id < SLINKS_PER_DTC; slink_id++) {
-      int global_slink_id = dtcIndex * SLINKS_PER_DTC + slink_id;
-
-      // Calculate how many modules should be assigned to this SLink
-      int modules_for_this_slink = base_modules_per_slink + ((slink_id < remaining_modules) ? 1 : 0);
-
-      if (modules_for_this_slink == 0) {
-        continue;
+    for (uint32_t detId : detIds) {
+      auto foundDetId = handle->find(detId);
+      if (foundDetId == handle->end()) {
+        throw cms::Exception("BitStreamToRawProducer") << "Could not find detId from the inputs";
       }
+      const edm::DetSet<Phase2ITChipBitStream>& detSet = *foundDetId;
 
-      // Data structure for each SLink (offset block and data block)
-      std::vector<bool> offsetBlock;
-      std::vector<bool> dataBlock;
+      // Module-level offset = dataBlock position for module in 32-bit words.
+      // FIXME For the first module the value is always 0, is it necessary?
+      uint32_t moduleOffset = dataBlock.size() / BITS_PER_WORD;
+      addWordToBitVector(offsetBlock, moduleOffset);
 
-      // Process each module assigned to this SLink
-      for (int mod_idx = 0; mod_idx < modules_for_this_slink; mod_idx++) {
-        uint32_t det_id = det_ids[moduleIndex++];
+      for (auto const& chip : detSet) {
+        std::vector<bool> chipBitStream = chip.get_bitstream();
+        unsigned int bitstreamSize = chipBitStream.size();
+        unsigned int sizeWords = (bitstreamSize + BITS_PER_WORD - 1) / BITS_PER_WORD;
+        unsigned int endBit = bitstreamSize % BITS_PER_WORD;  // 0 means no last word : full or empty
 
-        auto found_det_id = handle->find(det_id);
-        if (found_det_id == handle->end()) {
-          throw cms::Exception("BitStreamToRawProducer") << "Could not find detId from the inputs";
-        }
+        // Per-chip header word:
+        //   bits 31..28 : magic = 0xE
+        //   bits 27..24 : error flags FIXME dummy given for now
+        //   bits 23..21 : reserved
+        //   bits 20..16 : end bit number (bits used in last 32-bit word)
+        //   bits 15..0  : chip bitstream size in 32-bit words, NOT PER MODULE
+        uint32_t chipHeader = ((CHIP_HEADER_MAGIC & 0xF) << 28) | ((0u & 0xF) << 24) | ((0u & 0x7) << 21) |
+                              ((endBit & 0x1F) << 16) | (sizeWords & 0xFFFF);
+        addWordToBitVector(dataBlock, chipHeader);
 
-        const edm::DetSet<Phase2ITChipBitStream>& detSet = *found_det_id;
+        dataBlock.insert(dataBlock.end(), chipBitStream.begin(), chipBitStream.end());
 
-        // Process each chip in this module
-        int chipId = 0;
-        for (auto const& chip : detSet) {
-          // Make sure dataBlock is aligned to 128-bit boundary before adding a new chip
-          padToChunkBoundary(dataBlock);
-
-          // Calculate the offset for this chip (word position in the data block)
-          uint32_t chipOffset = calculateChipOffset(dataBlock);
-
-          addWordToBitVector(offsetBlock, chipOffset & 0xFFFFFFFF);
-
-          std::vector<bool> chipBitStream = chip.get_bitstream();
-std::cout << "ENCODER detId=" << det_id 
-          << " chip=" << chipId 
-          << " size=" << chipBitStream.size() 
-          << " first32=" << getBitString(chipBitStream, 0, 32) << std::endl;
-          unsigned int bitstreamSize = chipBitStream.size();
-
-          // Calculate padding needed to align to 128-bit boundary
-          unsigned int total_chip_size = 2 * BITS_PER_WORD + bitstreamSize;  // 2 headers + bitstream
-          unsigned int padding_needed = (BITS_PER_CHUNK - (total_chip_size % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
-
-          // Add chip header 1 (marker + padding info)
-          uint32_t header1 = CHIP_HEADER_MARKER | (padding_needed & 0xF);
-          addWordToBitVector(dataBlock, header1);
-
-          // Add chip header 2 (bitstream size)
-          addWordToBitVector(dataBlock, bitstreamSize);
-
-          dataBlock.insert(dataBlock.end(), chipBitStream.begin(), chipBitStream.end());
-
-          // Add padding to align to 128-bit boundary
-          if (padding_needed > 0) {
-            dataBlock.insert(dataBlock.end(), padding_needed, false);
-          }
-
-          chipId++;
+        // Pad chip bitstream to 32-bit boundary
+        unsigned int chipPadBits = (endBit > 0) ? (BITS_PER_WORD - endBit) : 0;
+        if (chipPadBits > 0) {
+          dataBlock.insert(dataBlock.end(), chipPadBits, false);
         }
       }
 
-      // Ensure offset block is padded to 128-bit boundary
-      padToChunkBoundary(offsetBlock);
+      // Pad module to 128-bit boundary at module end
+      padToChunkBoundary(dataBlock);
+    }
 
-      // Calculate sizes in bytes
-      unsigned int header_size = HEADER_TRAILER_LINES * BYTES_PER_WORD;
-      unsigned int offset_size = offsetBlock.size() / BITS_PER_WORD * BYTES_PER_WORD;
-      unsigned int data_size = dataBlock.size() / BITS_PER_WORD * BYTES_PER_WORD;
-      unsigned int trailer_size = HEADER_TRAILER_LINES * BYTES_PER_WORD;
-      unsigned int total_size = header_size + offset_size + data_size + trailer_size;
+    // Pad offset block to 128-bit boundary
+    padToChunkBoundary(offsetBlock);
 
-      // Create FEDRawData for this SLink
-      FEDRawData& slink_data = fedRawDataCollection->FEDData(global_slink_id);
-      slink_data.resize(total_size);
-      unsigned char* buffer = slink_data.data();
+    // Calculate sizes in bytes
+    unsigned int headerSize = HEADER_TRAILER_LINES * BYTES_PER_WORD;
+    unsigned int offsetSize = offsetBlock.size() / BITS_PER_WORD * BYTES_PER_WORD;
+    unsigned int dataSize = dataBlock.size() / BITS_PER_WORD * BYTES_PER_WORD;
+    unsigned int trailerSize = HEADER_TRAILER_LINES * BYTES_PER_WORD;
+    unsigned int totalSize = headerSize + offsetSize + dataSize + trailerSize;
 
-      // Add header (4 lines of 0xFFFFFFFF)
-      for (int i = 0; i < HEADER_TRAILER_LINES; i++) {
-        addWordToBuffer(buffer, i, HEADER_TRAILER_PATTERN);
-      }
+    FEDRawData& slinkData = fedRawDataCollection->FEDData(fedId);
+    slinkData.resize(totalSize);
+    unsigned char* buffer = slinkData.data();
 
-      // Add offset block
-      unsigned int offset_words = offsetBlock.size() / BITS_PER_WORD;
-      for (unsigned int i = 0; i < offset_words; i++) {
-        // Extract 32-bit word from offset block
-        uint32_t word = 0;
-        for (int bit = 0; bit < BITS_PER_WORD; bit++) {
-          if (offsetBlock[i * BITS_PER_WORD + bit]) {
-            word |= (1 << (31 - bit));
-          }
+    // Header (4 lines of 0xFFFFFFFF) FIXME Dummy given for now
+    for (int i = 0; i < HEADER_TRAILER_LINES; i++) {
+      addWordToBuffer(buffer, i, HEADER_TRAILER_PATTERN);
+    }
+
+    // Offset block
+    unsigned int offsetWords = offsetBlock.size() / BITS_PER_WORD;
+    for (unsigned int i = 0; i < offsetWords; i++) {
+      uint32_t word = 0;
+      for (int bit = 0; bit < BITS_PER_WORD; bit++) {
+        if (offsetBlock[i * BITS_PER_WORD + bit]) {
+          word |= (1 << (31 - bit));
         }
-        addWordToBuffer(buffer, HEADER_TRAILER_LINES + i, word);
       }
+      addWordToBuffer(buffer, HEADER_TRAILER_LINES + i, word);
+    }
 
-      // Add data block
-      unsigned int data_words = dataBlock.size() / BITS_PER_WORD;
-      for (unsigned int i = 0; i < data_words; i++) {
-        // Extract 32-bit word from data block
-        uint32_t word = 0;
-        for (int bit = 0; bit < BITS_PER_WORD; bit++) {
-          if (dataBlock[i * BITS_PER_WORD + bit]) {
-            word |= (1 << (31 - bit));
-          }
+    // Data block
+    unsigned int dataWords = dataBlock.size() / BITS_PER_WORD;
+    for (unsigned int i = 0; i < dataWords; i++) {
+      uint32_t word = 0;
+      for (int bit = 0; bit < BITS_PER_WORD; bit++) {
+        if (dataBlock[i * BITS_PER_WORD + bit]) {
+          word |= (1 << (31 - bit));
         }
-        addWordToBuffer(buffer, HEADER_TRAILER_LINES + offset_words + i, word);
       }
+      addWordToBuffer(buffer, HEADER_TRAILER_LINES + offsetWords + i, word);
+    }
 
-      // Add trailer (4 lines of 0xFFFFFFFF)
-      for (int i = 0; i < HEADER_TRAILER_LINES; i++) {
-        addWordToBuffer(buffer, HEADER_TRAILER_LINES + offset_words + data_words + i, HEADER_TRAILER_PATTERN);
-      }
+    // Trailer (4 lines of 0xFFFFFFFF) FIXME dummy given for now
+    for (int i = 0; i < HEADER_TRAILER_LINES; i++) {
+      addWordToBuffer(buffer, HEADER_TRAILER_LINES + offsetWords + dataWords + i, HEADER_TRAILER_PATTERN);
     }
   }
 
@@ -250,26 +183,19 @@ void BitStreamToRawProducer::addWordToBuffer(unsigned char* buffer, size_t posit
   buffer[position * 4 + 3] =  word        & 0xFF;
 }
 
+// Append a 32-bit word to a bit vector
 void BitStreamToRawProducer::addWordToBitVector(std::vector<bool>& vec, uint32_t word) {
-
-  // Convert two 32-bit words to 32 bits and add to the vector
   for (int bit = 31; bit >= 0; bit--) {
-    bool bitValue = (word >> bit) & 1;
-    vec.push_back(bitValue);
+    vec.push_back((word >> bit) & 1);
   }
 }
 
+// Pad bit vector with zeros up to the next 128-bit chunk boundary
 void BitStreamToRawProducer::padToChunkBoundary(std::vector<bool>& vec) {
-  // Add padding to align to 128-bit boundary if needed
   if (!vec.empty() && vec.size() % BITS_PER_CHUNK != 0) {
-    size_t padding_needed = BITS_PER_CHUNK - (vec.size() % BITS_PER_CHUNK);
-    vec.insert(vec.end(), padding_needed, false);
+    size_t paddingNeeded = BITS_PER_CHUNK - (vec.size() % BITS_PER_CHUNK);
+    vec.insert(vec.end(), paddingNeeded, false);
   }
-}
-
-uint32_t BitStreamToRawProducer::calculateChipOffset(const std::vector<bool>& dataBlock) {
-  // Calculate the word offset where this chip's data will start
-  return dataBlock.size() / BITS_PER_WORD;
 }
 
 DEFINE_FWK_MODULE(BitStreamToRawProducer);
