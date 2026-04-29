@@ -5,10 +5,6 @@
 #include <vector>
 #include <iostream>
 #include <iomanip>
-#include <algorithm>
-#include <map>
-#include <utility>
-#include <numeric>
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/stream/EDProducer.h"
@@ -27,6 +23,7 @@
 #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+#include "EventFilter/Phase2PixelRawToDigi/interface/SLinkModuleMap.h"
 
 using namespace Phase2DAQFormatSpecification;
 
@@ -50,31 +47,18 @@ private:
 
   bool verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const;
   int findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const;
-  std::vector<uint32_t> extractChipOffsets(const unsigned char* dataPtr, int offsetStartWord, int maxWords) const;
-  std::vector<bool> extractBitStream(const unsigned char* dataPtr, int startWord, int bitstreamSize) const;
+  std::vector<bool> extractBitStream(
+      const unsigned char* dataPtr, int startWord, int bitstreamSize, int fedSizeInWords) const;
 
   void processFED(const unsigned char* dataPtr,
                   int fedSizeInWords,
                   int fedId,
-                  int dtcId,
-                  int slinkId,
                   edmNew::DetSetVector<Phase2ITChipBitStream>& output);
-  void processChip(const unsigned char* dataPtr,
-                   int chipStartWord,
-                   int chipEndWord,
-                   uint32_t detId,
-                   int chipId,
-                   edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller& filler);
-
-  void buildFedToModuleMapping();
 
   const edm::EDGetTokenT<FEDRawDataCollection> fedRawDataToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
 
-  const TrackerDetToDTCELinkCablingMap* cablingMap_ = nullptr;
-
-  // Cached module mapping: FED (calculated from DTC/SLink) -> vector of detector IDs
-  std::map<int, std::map<int, std::vector<uint32_t>>> fedToModuleMap_;
+  std::unique_ptr<SLinkModuleMap> slinkMap_;
 
   bool debug_ = false;
 };
@@ -95,35 +79,7 @@ void RawToBitStreamProducer::fillDescriptions(edm::ConfigurationDescriptions& de
 }
 
 void RawToBitStreamProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
-  cablingMap_ = &iSetup.getData(cablingMapToken_);
-  buildFedToModuleMapping();
-}
-
-void RawToBitStreamProducer::buildFedToModuleMapping() {
-  auto knownDTCIdsWithIndex = cablingMap_->getKnownDTCIdsWithIndex();
-  fedToModuleMap_.clear();
-  for (const auto& pair : knownDTCIdsWithIndex) {
-    unsigned int dtcIndex = pair.first;
-    unsigned int dtcId = pair.second;
-    auto detIds = cablingMap_->getAllDetIdsForDTCId(dtcId);
-    if (detIds.empty())
-      continue;
-    int base_modules_per_slink = detIds.size() / SLINKS_PER_DTC;
-    int remain_modules = detIds.size() % SLINKS_PER_DTC;
-    int moduleIndex = 0;
-    for (int slinkId = 0; slinkId < SLINKS_PER_DTC; slinkId++) {
-      int fedId = dtcIndex * SLINKS_PER_DTC + slinkId;
-      int modules_for_this_slink = base_modules_per_slink + ((slinkId < remain_modules) ? 1 : 0);
-      if (modules_for_this_slink == 0)
-        continue;
-      std::vector<uint32_t> modulesForFed;
-      for (int i = 0; i < modules_for_this_slink && moduleIndex < (int)detIds.size(); i++) {
-        modulesForFed.push_back(detIds[moduleIndex++]);
-      }
-      fedToModuleMap_[fedId] = std::map<int, std::vector<uint32_t>>();
-      fedToModuleMap_[fedId][slinkId] = modulesForFed;
-    }
-  }
+  slinkMap_ = std::make_unique<SLinkModuleMap>(iSetup.getData(cablingMapToken_));
 }
 
 void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
@@ -134,16 +90,12 @@ void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
     throw cms::Exception("RawToBitStreamProducer") << "Invalid FEDRawDataCollection";
   }
 
-  for (const auto& fedEntry : fedToModuleMap_) {
-    int fedId = fedEntry.first;
+  for (const auto& entry : slinkMap_->fedIdToDetIds()) {
+    int fedId = entry.first;
     const FEDRawData& fedData = fedRawDataCollection->FEDData(fedId);
-
-    int slinkId = fedId % SLINKS_PER_DTC;
-    int dtcIndex = fedId / SLINKS_PER_DTC;
-    int dtcId = ((dtcIndex / 9) + 1) * 10 + (dtcIndex % 9) + 1;
     const unsigned char* dataPtr = fedData.data();
     int fedSizeInWords = fedData.size() / 4;
-    processFED(dataPtr, fedSizeInWords, fedId, dtcId, slinkId, *output);
+    processFED(dataPtr, fedSizeInWords, fedId, *output);
   }
   iEvent.put(std::move(output));
 }
@@ -151,106 +103,83 @@ void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
 void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
                                         int fedSizeInWords,
                                         int fedId,
-                                        int dtcId,
-                                        int slinkId,
                                         edmNew::DetSetVector<Phase2ITChipBitStream>& output) {
-  const std::vector<uint32_t>& detIds = fedToModuleMap_[fedId][slinkId];
-  bool validHeader = verifyHeaderTrailerPattern(dataPtr, 0);
-  if (!validHeader) {
+  const std::vector<uint32_t>& detIds = slinkMap_->detIdsForFedId(fedId);
+  if (!verifyHeaderTrailerPattern(dataPtr, 0)) {
     throw cms::Exception("RawToBitStreamProducer") << "Invalid header in FEDRawData";
   }
   int trailerStart = findTrailerStart(dataPtr, fedSizeInWords);
   if (trailerStart < 0) {
     throw cms::Exception("RawToBitStreamProducer") << "Invalid trailer in FEDRawData";
-    trailerStart = fedSizeInWords;
   }
 
+  int numModules = detIds.size();
   int offsetStart = HEADER_TRAILER_LINES;
-  std::vector<uint32_t> chipOffsets = extractChipOffsets(dataPtr, offsetStart, trailerStart - offsetStart);
-  int offsetBlockSize = chipOffsets.size();
-  int offsetBits = offsetBlockSize * BITS_PER_WORD;
+
+  // Block 2: read N module offsets (one 32-bit word per module)
+  std::vector<uint32_t> moduleOffsets;
+  moduleOffsets.reserve(numModules);
+  for (int i = 0; i < numModules; i++) {
+    moduleOffsets.push_back(readWord(dataPtr, offsetStart + i));
+  }
+
+  // The offset block is padded to a 128-bit boundary at its end.
+  int offsetBits = numModules * BITS_PER_WORD;
   int paddingBits = (BITS_PER_CHUNK - (offsetBits % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
   int paddingWords = paddingBits / BITS_PER_WORD;
-  int dataBlockStart = offsetStart + offsetBlockSize + paddingWords;
-  int numChips = chipOffsets.size();
-  int numModules = detIds.size();
-  const int chipsPerModule = 4;
-std::cout << "  dataBlockStart=" << dataBlockStart << std::endl;
-std::cout << "  numChips=" << numChips << " numModules=" << numModules << std::endl;
+  int dataBlockStart = offsetStart + numModules + paddingWords;
 
-for (int chipIdx = 0; chipIdx < numChips; chipIdx++) {
-    int moduleIdx = chipIdx / chipsPerModule;
-    uint32_t detId = detIds[moduleIdx];
-    int chipStartWord = dataBlockStart + chipOffsets[chipIdx];
-    int chipEndWord = (chipIdx == numChips - 1) ? trailerStart : dataBlockStart + chipOffsets[chipIdx + 1];
-    
-    std::cout << "  chipIdx=" << chipIdx 
-              << " moduleIdx=" << moduleIdx
-              << " offset=" << chipOffsets[chipIdx]
-              << " chipStartWord=" << chipStartWord 
-              << " chipEndWord=" << chipEndWord 
-              << " size=" << (chipEndWord - chipStartWord) << std::endl;
-}
-  std::map<uint32_t, std::vector<std::pair<int, int>>> chipsByDetId;
+  // Block 3: walk each module, then walk CHIPS_PER_MODULE chips inside it.
+  for (int modIdx = 0; modIdx < numModules; modIdx++) {
+    uint32_t detId = detIds[modIdx];
+    int moduleStartWord = dataBlockStart + moduleOffsets[modIdx];
 
-  for (int chipIdx = 0; chipIdx < numChips; chipIdx++) {
-    int moduleIdx = chipIdx / chipsPerModule;
-    if (moduleIdx >= numModules)
-      moduleIdx = numModules - 1;
-    uint32_t detId = detIds[moduleIdx];
-    int chipStartWord = dataBlockStart + chipOffsets[chipIdx];
-    int chipEndWord = (chipIdx == numChips - 1) ? trailerStart : dataBlockStart + chipOffsets[chipIdx + 1];
-
-    // Store chip info for this detector ID
-    chipsByDetId[detId].push_back(std::make_pair(chipStartWord, chipEndWord));
-  }
-
-  // FIXME splitted the top and bottom for easier debugging for now
-
-  // Process all chips for each detector ID at once
-  for (const auto& detIdEntry : chipsByDetId) {
-    uint32_t detId = detIdEntry.first;
-    const auto& chipInfos = detIdEntry.second;
+    if (moduleStartWord < 0 || moduleStartWord >= fedSizeInWords) {
+      edm::LogWarning("RawToBitStreamProducer")
+          << "Module offset out of FED bounds: detId=" << detId << " moduleStartWord=" << moduleStartWord
+          << " fedSize=" << fedSizeInWords << ". Skipping module.";
+      continue;
+    }
 
     edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller filler(output, detId);
 
-    for (size_t i = 0; i < chipInfos.size(); i++) {
-      int chipStartWord = chipInfos[i].first;
-      int chipEndWord = chipInfos[i].second;
-      int chipIdInModule = i % chipsPerModule;
+    int chipCursor = moduleStartWord;
+    for (int chipId = 0; chipId < CHIPS_PER_MODULE; chipId++) {
+      if (chipCursor >= fedSizeInWords) {
+        edm::LogWarning("RawToBitStreamProducer")
+            << "Chip cursor past FED end: detId=" << detId << " chip=" << chipId << " cursor=" << chipCursor
+            << " fedSize=" << fedSizeInWords << ". Stopping module.";
+        break;
+      }
 
-      processChip(dataPtr, chipStartWord, chipEndWord, detId, chipIdInModule, filler);
+      uint32_t chipHeader = readWord(dataPtr, chipCursor);
+
+      uint32_t magic = (chipHeader >> 28) & 0xF;
+      // FIXME ignoring the chip error bits with Dummy for now
+      uint32_t endBit = (chipHeader >> 16) & 0x1F;
+      uint32_t sizeWords = chipHeader & 0xFFFF;
+
+      if (magic != CHIP_HEADER_MAGIC) {
+        edm::LogWarning("RawToBitStreamProducer")
+            << "Invalid chip header magic " << wordToHexString(chipHeader) << " at word " << chipCursor
+            << " (detId=" << detId << " chip=" << chipId << "), skipping rest of module";
+        break;
+      }
+
+      // Reconstruct bitstream length in bits.
+      //   endBit == 0  -> last word is full or chip is empty: size = sizeWords * 32
+      //   endBit  > 0  -> last word holds endBit real bits:   size = (sizeWords - 1) * 32 + endBit
+      unsigned int bitstreamSize = (endBit == 0) ? (sizeWords * BITS_PER_WORD)
+                                                 : ((sizeWords - 1) * BITS_PER_WORD + endBit);
+
+      std::vector<bool> bitstream = extractBitStream(dataPtr, chipCursor + 1, bitstreamSize, fedSizeInWords);
+
+      Phase2ITChipBitStream chipStream(chipId, bitstream);
+      filler.push_back(chipStream);
+
+      chipCursor += 1 + sizeWords;
     }
   }
-}
-
-void RawToBitStreamProducer::processChip(const unsigned char* dataPtr,
-                                         int chipStartWord,
-                                         int chipEndWord,
-                                         uint32_t detId,
-                                         int chipId,
-                                         edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller& filler) {
-  if (chipEndWord <= chipStartWord) {
-    std::cout << "WARNING: Invalid chip data size (start=" << chipStartWord << ", end=" << chipEndWord << "), skipping"
-              << std::endl;
-    return;
-  }
-  uint32_t header1 = readWord(dataPtr, chipStartWord);
-  if ((header1 & 0xF000) != CHIP_HEADER_MARKER) {
-    std::cout << "WARNING: Invalid chip header " << wordToHexString(header1) << " at word " << chipStartWord
-              << ", skipping" << std::endl;
-    return;
-  }
-  uint32_t bitstreamSize = readWord(dataPtr, chipStartWord + 1);
-  std::vector<bool> bitstream = extractBitStream(dataPtr, chipStartWord + 2, bitstreamSize);
-std::cout << "DECODER detId=" << detId
-          << " chip=" << chipId
-          << " size=" << bitstream.size()
-          << " first32=" << getBitString(bitstream, 0, 32) << std::endl;
-
-  // Create the Phase2ITChipBitStream object and add it to the filler
-  Phase2ITChipBitStream chipStream(chipId, bitstream);
-  filler.push_back(chipStream);
 }
 
 std::string RawToBitStreamProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {
@@ -277,39 +206,27 @@ std::string RawToBitStreamProducer::wordToHexString(uint32_t word) const {
   return ss.str();
 }
 
-std::vector<uint32_t> RawToBitStreamProducer::extractChipOffsets(const unsigned char* dataPtr,
-                                                                   int offsetStartWord,
-                                                                   int maxWords) const {
-  std::vector<uint32_t> offsets;
-  //std::cout << "  Analyzing offset block from word " << offsetStartWord << ":" << std::endl;
-  for (int i = 0; i < maxWords; i++) {
-    uint32_t offset = readWord(dataPtr, offsetStartWord + i);
-    //std::cout << "    Word " << i << ": " << wordToHexString(offset)
-    //          << " -> Offset: " << offset << std::endl;
-    if ((offset & 0xF000) == CHIP_HEADER_MARKER) {
-      //std::cout << "    Found chip header marker " << wordToHexString(offset)
-      //          << " at word " << (offsetStartWord + i)
-      //          << ", ending offset extraction" << std::endl;
-      break;
-    }
-    if (offset == HEADER_TRAILER_PATTERN) {
-      //std::cout << "    Found trailer pattern at word " << (offsetStartWord + i)
-      //          << ", ending offset extraction" << std::endl;
-      break;
-    }
-    offsets.push_back(offset);
-  }
-  //std::cout << "  Total offsets found: " << offsets.size() << std::endl;
-  return offsets;
-}
-
 std::vector<bool> RawToBitStreamProducer::extractBitStream(const unsigned char* dataPtr,
                                                            int startWord,
-                                                           int bitstreamSize) const {
+                                                           int bitstreamSize,
+                                                           int fedSizeInWords) const {
   std::vector<bool> bitstream;
-  bitstream.reserve(bitstreamSize);
+  if (bitstreamSize <= 0)
+    return bitstream;
+
   int fullWords = bitstreamSize / BITS_PER_WORD;
   int remainingBits = bitstreamSize % BITS_PER_WORD;
+  int wordsNeeded = fullWords + (remainingBits > 0 ? 1 : 0);
+
+  // Safe guard to ignore when the bits are malformed
+  if (startWord < 0 || startWord + wordsNeeded > fedSizeInWords) {
+    edm::LogWarning("RawToBitStreamProducer")
+        << "Bitstream read out of FED bounds: startWord=" << startWord << ", needs " << wordsNeeded
+        << " words, FED size " << fedSizeInWords << " words. Returning empty bitstream.";
+    return bitstream;
+  }
+
+  bitstream.reserve(bitstreamSize);
   for (int i = 0; i < fullWords; i++) {
     uint32_t word = readWord(dataPtr, startWord + i);
     for (int j = 0; j < BITS_PER_WORD; j++) {
