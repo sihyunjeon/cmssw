@@ -9,12 +9,12 @@ class Phase2ITQCore {
 
 public:
   Phase2ITQCore(int rocid,
-                int ccol_in,
-                int qcrow_in,
-                bool isneighbour_in,
-                bool islast_in,
-                const std::vector<int>& adcs_in,
-                const std::vector<int>& hits_in);
+                int ccolIn,
+                int qcrowIn,
+                bool isneighbourIn,
+                bool islastIn,
+                const std::vector<int>& adcsIn,
+                const std::vector<int>& hitsIn);
 
   Phase2ITQCore() {
     rocid_ = -1;
@@ -31,24 +31,22 @@ public:
   bool isneighbour() const { return isneighbour_; }
 
   int rocid() const { return rocid_; }
-  int get_col() const { return ccol_; }
-  int get_row() const { return qcrow_; }
+  int getCol() const { return ccol_; }
+  int getRow() const { return qcrow_; }
 
   std::vector<bool> getHitmap();
   std::vector<int> getADCs();
-  std::vector<bool> encodeQCore(bool is_new_col);
+  std::vector<bool> encodeQCore(bool isNewCol);
 
-  const bool operator<(const Phase2ITQCore& other) {
-    if (ccol_ == other.ccol_) {
-      return (ccol_ < other.ccol_);
-    } else {
-      return (qcrow_ < other.qcrow_);
-    }
+  bool operator<(const Phase2ITQCore& other) const {
+    if (ccol_ != other.ccol_)
+      return ccol_ < other.ccol_;
+    return qcrow_ < other.qcrow_;
   }
 
-  static std::vector<bool> toSensorCoordinates(const std::vector<bool>& roc_hitmap);
+  static std::vector<bool> toSensorCoordinates(const std::vector<bool>& rocHitmap);
   template <typename T>
-  static std::vector<T> toRocCoordinates(const std::vector<T>& input_map);
+  static std::vector<T> toRocCoordinates(const std::vector<T>& inputMap);
 
   static std::vector<bool> encodeHitmap(const std::vector<bool>& hitmap);
   static std::vector<bool> decodeHitmap(const std::vector<bool>& bitstream, size_t& bitPos);

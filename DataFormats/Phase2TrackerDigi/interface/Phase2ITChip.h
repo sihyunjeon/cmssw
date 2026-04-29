@@ -16,8 +16,8 @@ public:
   int rocnum() const { return rocnum_; }
   uint32_t detId() const { return detId_; }
 
-  std::vector<Phase2ITQCore> get_organized_QCores();
-  std::vector<bool> get_chip_code();
+  std::vector<Phase2ITQCore> getOrganizedQCores();
+  std::vector<bool> getChipCode();
 
   static int encodeQCoreIndex(int row, int col);
   static std::pair<int, int> decodeQCoreIndex(int index);
@@ -26,17 +26,19 @@ public:
       int chipId, int qcoreCol, int qcoreRow, int localCol, int localRow);
 
   static constexpr int kColsPerROC = 54;
+  static constexpr int kRowsPerChip = 672;
+  static constexpr int kColsPerChip = 216;
 
 private:
   std::vector<Phase2ITDigiHit> hitList_;
   int rocnum_;
   uint32_t detId_;
 
-  std::pair<int, int> get_QCore_pos(Phase2ITDigiHit hit);
+  std::pair<int, int> getQCorePos(Phase2ITDigiHit hit);
 
-  Phase2ITQCore get_QCore_from_hit(Phase2ITDigiHit pixel);
-  std::vector<Phase2ITQCore> rem_duplicates(std::vector<Phase2ITQCore> qcores);
-  std::vector<Phase2ITQCore> organize_QCores(std::vector<Phase2ITQCore> qcores);
+  Phase2ITQCore getQCoreFromHit(Phase2ITDigiHit pixel);
+  std::vector<Phase2ITQCore> remDuplicates(std::vector<Phase2ITQCore> qcores);
+  std::vector<Phase2ITQCore> organizeQCores(std::vector<Phase2ITQCore> qcores);
 };
 
 #endif  // DataFormats_Phase2TrackerDigi_Phase2ITChip_H
