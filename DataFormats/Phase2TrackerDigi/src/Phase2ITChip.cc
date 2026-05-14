@@ -26,6 +26,23 @@ std::pair<int, int> Phase2ITChip::getQCorePos(Phase2ITDigiHit hit) {
   return {row, col};
 }
 
+//Takes a hit and returns the 4x4 QCore that contains it
+Phase2ITQCore Phase2ITChip::getQCoreFromHit(Phase2ITDigiHit pixel) {
+  std::vector<int> adcs(16, 0), hits(16, 0);
+  std::pair<int, int> pos = getQCorePos(pixel);
+
+  for (const auto& hit : hitList_) {
+    if (getQCorePos(hit) == pos) {
+      int i = encodeQCoreIndex(hit.row(), hit.col());
+      adcs[i] = hit.adc();
+      hits[i] = 1;
+    }
+  }
+
+  Phase2ITQCore qcore(0, pos.second, pos.first, false, false, adcs, hits);
+  return qcore;
+}
+
 int Phase2ITChip::encodeQCoreIndex(int row, int col) { return ((4 * (row % 4) + (col % 4) + 8) % 16); }
 
 std::pair<int, int> Phase2ITChip::decodeQCoreIndex(int index) {
