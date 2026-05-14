@@ -282,7 +282,7 @@ std::vector<int> Phase2ITQCore::decodeADCs(const std::vector<bool>& bitstream, s
 }
 
 //Returns the bit code associated with the Phase2ITQCore
-std::vector<bool> Phase2ITQCore::encodeQCore(bool isNewCol) {
+std::vector<bool> Phase2ITQCore::encodeQCore(bool isNewCol, bool dropTot) {
   std::vector<bool> code = {};
 
   if (isNewCol) {
@@ -302,11 +302,13 @@ std::vector<bool> Phase2ITQCore::encodeQCore(bool isNewCol) {
   std::vector<bool> hitmapCode = encodeHitmap(hitmap);
   code.insert(code.end(), hitmapCode.begin(), hitmapCode.end());
 
-  std::vector<int> adcsCode = getADCs();
-  for (int i = 0; i < 16; i++) {
-    if (hitmap[i]) {  // only write ADC if there's a hit
-      std::vector<bool> adcCode = intToBinary(adcsCode[i], 4);
-      code.insert(code.end(), adcCode.begin(), adcCode.end());
+  if (!dropTot) {
+    std::vector<int> adcsCode = getADCs();
+    for (int i = 0; i < 16; i++) {
+      if (hitmap[i]) {  // only write ADC if there's a hit
+        std::vector<bool> adcCode = intToBinary(adcsCode[i], 4);
+        code.insert(code.end(), adcCode.begin(), adcCode.end());
+      }
     }
   }
 

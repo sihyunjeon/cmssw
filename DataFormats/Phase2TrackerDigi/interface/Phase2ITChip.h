@@ -17,17 +17,26 @@ public:
   uint32_t detId() const { return detId_; }
 
   std::vector<Phase2ITQCore> getOrganizedQCores();
-  std::vector<bool> getChipCode();
+  // dropTot=true forwards to Phase2ITQCore::encodeQCore to suppress ToTs
+  std::vector<bool> getChipCode(bool dropTot = false);
 
   static int encodeQCoreIndex(int row, int col);
   static std::pair<int, int> decodeQCoreIndex(int index);
 
   static std::pair<int, int> getGlobalPixelCoordinate(
-      int chipId, int qcoreCol, int qcoreRow, int localCol, int localRow);
+      int chipId, int qcoreCol, int qcoreRow, int localCol, int localRow,
+      bool keepMode = false);
 
   static constexpr int kColsPerROC = 54;
   static constexpr int kRowsPerChip = 672;
   static constexpr int kColsPerChip = 216;
+  static constexpr int kLargePixelNRows = 10;
+  static constexpr int kLargePixelNCols = 2;
+  // KEEP-mode: Each chip boundary moves to the midline of the gap so that the gap is effectively none, making the pixels to be placed in one of the chips everytime.
+  static constexpr int kRowsPerChipKeep     = kRowsPerChip + kLargePixelNRows / 2;  // 677
+  static constexpr int kColsPerChipKeep     = kColsPerChip + kLargePixelNCols / 2;  // 217
+  static constexpr int kLargePixelNRowsKeep = 0;
+  static constexpr int kLargePixelNColsKeep = 0;
 
 private:
   std::vector<Phase2ITDigiHit> hitList_;
@@ -35,10 +44,6 @@ private:
   uint32_t detId_;
 
   std::pair<int, int> getQCorePos(Phase2ITDigiHit hit);
-
-  Phase2ITQCore getQCoreFromHit(Phase2ITDigiHit pixel);
-  std::vector<Phase2ITQCore> remDuplicates(std::vector<Phase2ITQCore> qcores);
-  std::vector<Phase2ITQCore> organizeQCores(std::vector<Phase2ITQCore> qcores);
 };
 
 #endif  // DataFormats_Phase2TrackerDigi_Phase2ITChip_H
