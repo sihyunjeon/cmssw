@@ -36,7 +36,8 @@ public:
 
   std::vector<bool> getHitmap();
   std::vector<int> getADCs();
-  std::vector<bool> encodeQCore(bool isNewCol);
+  // dropTot=true skips the per-hit 4-bit ToT field entirely (binary readout mode).
+  std::vector<bool> encodeQCore(bool isNewCol, bool dropTot = false);
 
   bool operator<(const Phase2ITQCore& other) const {
     if (ccol_ != other.ccol_)
