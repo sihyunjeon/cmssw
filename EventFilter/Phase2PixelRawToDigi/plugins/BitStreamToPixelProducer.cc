@@ -3,9 +3,6 @@
 
 #include <memory>
 #include <vector>
-#include <iostream>
-#include <iomanip>
-#include <sstream>
 #include <algorithm>
 #include <functional>
 
@@ -40,27 +37,46 @@ public:
 private:
   void produce(edm::Event&, const edm::EventSetup&) override;
 
-  std::string getBitString(const std::vector<bool>& bits, size_t start, size_t len) const;
   uint32_t binaryToInt(const std::vector<bool>& binary, size_t& bitPos, int length);
 
-  // Decode a single chip's bitstream into PixelDigi objects.
+  // Decode a single chip's bitstream and append its PixelDigi objects to an accumulating per-module detSet. 
   void decodeBitStream(const std::vector<bool>& bitstream,
                        uint32_t detId,
                        int chipId,
-                       edm::DetSetVector<PixelDigi>& outputDigis);
+                       edm::DetSet<PixelDigi>& detSet);
 
   const edm::EDGetTokenT<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamToken_;
+  // Must match the dropTot setting that produced the bitstream. When true the encoded stream omits the per-hit 4-bit ToT field.
+  // the decoder skips decodeADCs and emits PixelDigi.adc = 0 for every hit.
+  const bool dropTot_;
+  // Must match the encoder's handleGapPixels mode.
+  // KEEP shifts each chip boundary to the gap midline so former gap pixels reverse correctly.
+  // DROP/AGGREGATE use the standard physical chip extents.
+  const bool keepMode_;
 };
+
+namespace {
+  bool parseKeepMode(const std::string& s) {
+    if (s == "DROP" || s == "AGGREGATE") return false;
+    if (s == "KEEP")                     return true;
+    throw cms::Exception("BitStreamToPixelProducer")
+        << "handleGapPixels must be one of DROP/KEEP/AGGREGATE, got '" << s << "'";
+  }
+}
 
 BitStreamToPixelProducer::BitStreamToPixelProducer(const edm::ParameterSet& iConfig)
     : bitstreamToken_(consumes<edmNew::DetSetVector<Phase2ITChipBitStream>>(
-          iConfig.getParameter<edm::InputTag>("phase2ItChipBitStream"))) {
+          iConfig.getParameter<edm::InputTag>("phase2ItChipBitStream"))),
+      dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)),
+      keepMode_(parseKeepMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "DROP"))) {
   produces<edm::DetSetVector<PixelDigi>>();
 }
 
 void BitStreamToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("phase2ItChipBitStream", edm::InputTag("rawToBitStreamProducer"));
+  desc.addUntracked<bool>("dropTot", false);
+  desc.addUntracked<std::string>("handleGapPixels", "DROP");
   descriptions.add("bitstreamToPixelProducer", desc);
 }
 
@@ -75,16 +91,6 @@ struct DecoderState {
 
   DecoderState() = default;
 };
-
-std::string BitStreamToPixelProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {
-  std::string result;
-  for (size_t i = 0; i < len && (start + i) < bits.size(); i++) {
-    result += (bits[start + i] ? "1" : "0");
-    if ((i + 1) % 8 == 0)
-      result += " ";
-  }
-  return result;
-}
 
 uint32_t BitStreamToPixelProducer::binaryToInt(const std::vector<bool>& binary, size_t& bitPos, int length) {
   uint32_t result = 0;
@@ -101,58 +107,58 @@ uint32_t BitStreamToPixelProducer::binaryToInt(const std::vector<bool>& binary, 
 void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstream,
                                                uint32_t detId,
                                                int chipId,
-                                               edm::DetSetVector<PixelDigi>& outputDigis) {
-  edm::DetSet<PixelDigi> detSet(detId);
-
+                                               edm::DetSet<PixelDigi>& detSet) {
+  if (bitstream.empty()) {
+    return;
+  }
   DecoderState state;
 
   while (state.bitPos < bitstream.size()) {
+    // Read a fresh ccol only at the start of a new column group (previous QCore was islast, or this is the first QCore in the chip stream). Otherwise the current QCore is in the same column as the previous one, so we keep currentCol unchanged.
     if (state.previousIsLast) {
       state.currentCol = binaryToInt(bitstream, state.bitPos, 6);
-      state.previousCol = state.currentCol;
     }
 
     bool islast = bitstream[state.bitPos++];
     bool isneighbor = bitstream[state.bitPos++];
 
+    // isneighbor=1 means the previous qrow address is current_qrow - 1, so the qrow field is omitted and we give previous + 1.
     if (isneighbor) {
-      if (!state.previousIsLast)
-        state.currentCol = state.previousCol + 1;
-      state.currentRow = state.previousRow;
+      state.currentRow = state.previousRow + 1;
     } else {
       state.currentRow = binaryToInt(bitstream, state.bitPos, 8);
-      state.previousRow = state.currentRow;
     }
 
     std::vector<bool> hitmap = Phase2ITQCore::decodeHitmap(bitstream, state.bitPos);
     int numHits = std::count(hitmap.begin(), hitmap.end(), true);
-    std::vector<int> adcValues = Phase2ITQCore::decodeADCs(bitstream, state.bitPos, numHits);
+    // In dropTot mode the encoder skipped the ToT bits.
+    // emit adc=0 for every hit otherwise read 4 bits per hit as the ToT/ADC value.
+    std::vector<int> adcValues =
+        dropTot_ ? std::vector<int>(numHits, 0)
+                 : Phase2ITQCore::decodeADCs(bitstream, state.bitPos, numHits);
 
-    hitmap = Phase2ITQCore::toSensorCoordinates(hitmap);
     int adcIndex = 0;
-
-    for (int i = 0; i < HITMAP_COL; i++) {
-      for (int j = 0; j < HITMAP_ROW; j++) {
-        int hitIndex = i * HITMAP_ROW + j;
-        auto [localRow, localCol] = Phase2ITChip::decodeQCoreIndex(hitIndex);
-        if (hitIndex < static_cast<int>(hitmap.size()) && hitmap[hitIndex]) {
-          auto [globalRow, globalCol] =
-              Phase2ITChip::getGlobalPixelCoordinate(chipId, state.currentCol, state.currentRow, localCol, localRow);
-          int adc = adcValues[adcIndex++];
-          detSet.push_back(PixelDigi(globalRow, globalCol, adc));
-        }
-      }
+    for (int i = 0; i < HITMAP_SIZE; i++) {
+      if (!hitmap[i])
+        continue;
+      int rocRow = i / 8;
+      int rocCol = i % 8;
+      int shiftedRow = rocRow * 2 + (rocCol % 2);
+      int shiftedCol = rocCol / 2;
+      int shiftedIndex = shiftedRow * HITMAP_COL + shiftedCol;
+      auto [localRow, localCol] = Phase2ITChip::decodeQCoreIndex(shiftedIndex);
+      auto [globalRow, globalCol] =
+          Phase2ITChip::getGlobalPixelCoordinate(chipId, state.currentCol, state.currentRow,
+                                                  localCol, localRow, keepMode_);
+      detSet.push_back(PixelDigi(globalRow, globalCol, adcValues[adcIndex++]));
     }
 
     state.previousIsLast = islast;
     state.previousCol = state.currentCol;
+    state.previousRow = state.currentRow;
     state.qcoreCount++;
   }
 
-  if (detSet.empty())
-    throw cms::Exception("BitStreamToPixelProducer") << "Empty detSet";
-
-  outputDigis.insert(detSet);
 }
 
 void BitStreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
@@ -164,12 +170,16 @@ void BitStreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup
   }
 
   // Loop over each DetSet in the input bitstream collection
+  // Accumulate every chip's hits into a single per-module detSet, then insert once
   for (const auto& detSet : *bitstreamHandle) {
     DetId tkId = detSet.id();
     uint32_t detId = tkId.rawId();
+    edm::DetSet<PixelDigi> moduleDigis(detId);
     for (const auto& chipBS : detSet) {
-      decodeBitStream(chipBS.get_bitstream(), detId, chipBS.get_rocid(), *outputPixelDigis);
+      decodeBitStream(chipBS.get_bitstream(), detId, chipBS.get_rocid(), moduleDigis);
     }
+    if (!moduleDigis.empty())
+      outputPixelDigis->insert(moduleDigis);
   }
 
   iEvent.put(std::move(outputPixelDigis));

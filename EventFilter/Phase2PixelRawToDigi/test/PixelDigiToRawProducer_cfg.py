@@ -32,7 +32,7 @@ process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(100)
+    input = cms.untracked.int32(1)
 )
 
 process.source = cms.Source("PoolSource",
@@ -88,9 +88,9 @@ process.TrackRefitter.NavigationSchool = ""
 process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
     fileName = cms.untracked.string('output_file.root'),
     outputCommands = cms.untracked.vstring(
-        #'drop *',
+        'drop *',
         #'keep FEDRawDataCollection_*_*_*',
-        #'keep *_Phase2IT*_*_*',  # Save intermediate Phase2ITChipBitStream
+        #'keep Phase2IT*_*_*_*',  # Save intermediate Phase2ITChipBitStream
         #'keep PixelDigi*_*_*_*'
     )
 )
@@ -98,9 +98,9 @@ process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
 process.digitisation_step = cms.Path(process.pdigi_valid)
 process.user_step = cms.Path(
     process.PixelToBitStreamProducer
-    #* process.BitStreamToRawProducer
-    #* process.RawToBitStreamProducer
-    #* process.BitStreamToPixelProducer
+    * process.BitStreamToRawProducer
+    * process.RawToBitStreamProducer
+    * process.BitStreamToPixelProducer
 )
 process.endjob_step = cms.EndPath(process.endOfProcess)
 process.output_step = cms.EndPath(process.FEVTDEBUGoutput)
