@@ -76,7 +76,7 @@ PixelToBitStreamProducer::PixelToBitStreamProducer(const edm::ParameterSet& iCon
     : src_(iConfig.getParameter<edm::InputTag>("src")),
       pixelDigiToken_(consumes(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
       tTopoToken_(esConsumes()),
-      gapMode_(parseGapMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "DROP"))),
+      gapMode_(parseGapMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "AGGREGATE"))),
       dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)) {
   produces<edm::DetSetVector<Phase2ITQCore>>();
   produces<edm::DetSetVector<Phase2ITChipBitStream>>();
