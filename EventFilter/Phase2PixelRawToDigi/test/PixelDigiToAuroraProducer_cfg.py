@@ -61,8 +61,8 @@ process.PixelToBitStreamProducer = cms.EDProducer(
 
 process.BitStreamToAuroraProducer = cms.EDProducer("BitStreamToAuroraProducer",
     Phase2ITChipBitStream = cms.InputTag("PixelToBitStreamProducer"),
-    blockSize = cms.uint32(16),
-    serviceSize = cms.uint32(50)
+    eventsPerStream = cms.uint32(16),
+    serviceBlockInterval = cms.uint32(50)
 )
 
 # Filter to only write events where the block is complete
