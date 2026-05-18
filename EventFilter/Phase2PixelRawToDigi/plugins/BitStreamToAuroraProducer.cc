@@ -116,7 +116,7 @@ void BitStreamToAuroraProducer::produce(edm::Event& iEvent, const edm::EventSetu
           concat.insert(concat.end(), chips[c][e].begin(), chips[c][e].end());
         }
 
-        // Aurora formatting 
+        // Aurora formatting
         auto blocked = phase2auroratools::apply_blocking(concat, CHIP_ID_PLACEHOLDER);
         auto padded = phase2auroratools::orphan_pad(blocked);
         auto eos = phase2auroratools::apply_eos_marker(padded);
