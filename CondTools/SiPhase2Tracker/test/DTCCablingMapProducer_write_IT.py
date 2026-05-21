@@ -39,7 +39,7 @@ process.otdtccablingmap_producer = cms.EDAnalyzer("DTCCablingMapProducer",
     ),
     csvFormat_ncolumns   = cms.uint32(20),
     csvFormat_idetid     = cms.uint32(1),    # Sensor_DetId (per-sensor key)
-    csvFormat_idtcid     = cms.uint32(17),   # DTC_CMSSW_Id
+    csvFormat_idtcid     = cms.uint32(16),   # DTC_Id
     csvFormat_igbtlinkid = cms.uint32(14),   # LpGBT_CMSSW_IdPerDTC
     csvFormat_ielinkid   = cms.uint32(0),    # not in CSV -> dummy-fill
     dummy_fill_mode      = cms.string("DUMMY_FILL_ELINK_ID"),  # gbt from CSV, elink auto
