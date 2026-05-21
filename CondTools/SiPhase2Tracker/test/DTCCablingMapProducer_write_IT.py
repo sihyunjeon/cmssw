@@ -24,8 +24,8 @@ process.PoolDBOutputService = cms.Service("PoolDBOutputService",
     )),
 )
 
-#   0  Sensor_DetId/i              7  N_Chips_Per_Module/I    13 LpGBT_Id/C
-#   1  Module_DetId/i              8  N_Channels_Per_Module/I 14 LpGBT_CMSSW_IdPerDTC/U
+#   0  Module_DetId/i              7  N_Chips_Per_Module/I    13 LpGBT_Id/C
+#   1  Sensor_DetId/i              8  N_Channels_Per_Module/I 14 LpGBT_CMSSW_IdPerDTC/U
 #   2  Module_SubType/I            9  Is_LongBarrel/O         15 MFB/I
 #   3  Module_Section/C           10  Power_Chain/I           16 DTC_Id/I
 #   4  Module_Layer/I             11  Power_Chain_Type/C      17 DTC_CMSSW_Id/U
@@ -38,7 +38,7 @@ process.otdtccablingmap_producer = cms.EDAnalyzer("DTCCablingMapProducer",
         "CondTools/SiPhase2Tracker/test/it_cabling.csv",
     ),
     csvFormat_ncolumns   = cms.uint32(20),
-    csvFormat_idetid     = cms.uint32(0),    # Sensor_DetId (per-sensor key)
+    csvFormat_idetid     = cms.uint32(1),    # Sensor_DetId (per-sensor key)
     csvFormat_idtcid     = cms.uint32(17),   # DTC_CMSSW_Id
     csvFormat_igbtlinkid = cms.uint32(14),   # LpGBT_CMSSW_IdPerDTC
     csvFormat_ielinkid   = cms.uint32(0),    # not in CSV -> dummy-fill
