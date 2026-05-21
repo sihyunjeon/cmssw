@@ -6,7 +6,6 @@ namespace {
   struct dictionary {
     TrackerDetToDTCELinkCablingMap cabmap;
     TrackerDetToDTCELinkCablingMap::ModuleInfo moduleInfo;
-    std::vector<std::vector<unsigned char>> chipToElinkTable;
 
     DTCELinkId dtcelinkid;
 
