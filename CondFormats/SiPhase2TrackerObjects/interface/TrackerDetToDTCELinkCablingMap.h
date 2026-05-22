@@ -21,6 +21,7 @@ Implementation:
 //
 //
 
+#include <map>
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
@@ -88,7 +89,7 @@ public:
 private:
   std::unordered_multimap<uint32_t, DTCELinkId> cablingMapDetIdToDTCELinkId_;
   std::unordered_map<DTCELinkId, uint32_t> cablingMapDTCELinkIdToDetId_;
-  std::unordered_map<uint32_t, ModuleInfo> moduleInfoByDetId_;
+  std::map<uint32_t, ModuleInfo> moduleInfoByDetId_;
 
   COND_SERIALIZABLE;
 };
