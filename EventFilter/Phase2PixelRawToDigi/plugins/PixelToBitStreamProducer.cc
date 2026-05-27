@@ -31,6 +31,27 @@
 #include "DataFormats/SiPixelDigi/interface/PixelDigi.h"
 #include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
+#include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+
+using namespace Phase2DAQFormatSpecification;
+
+// Inter-chip gap-pixel handling. The chip cannot physically read out pixels in the column gap (216..217) or row gap (672..681);
+// Each mode below picks how the encoder treats them:
+//   DROP      : discard them (matches real chip output) so that input PixelDigi can be fully restored
+//   KEEP      : route to a chip whose offsets give them addressable qrow/ccol values, so the decoder reconstructs the exact (row, col, adc). Lossless but non-physical.
+//   AGGREGATE : merge the gap pixel's ADC into the nearest chip-edge pixel (saturated at 15), then drop it. Models the real chip's "large pixel" charge sharing.
+//   FIXME later with proper simulation of large pixels, this needs to be rewritten
+enum class GapMode { Drop, Keep, Aggregate };
+
+namespace {
+  GapMode parseGapMode(const std::string& s) {
+    if (s == "DROP")      return GapMode::Drop;
+    if (s == "KEEP")      return GapMode::Keep;
+    if (s == "AGGREGATE") return GapMode::Aggregate;
+    throw cms::Exception("PixelToBitStreamProducer")
+        << "handleGapPixels must be one of DROP/KEEP/AGGREGATE, got '" << s << "'";
+  }
+}
 
 class PixelToBitStreamProducer : public edm::stream::EDProducer<> {
 public:
@@ -41,110 +62,123 @@ private:
   void produce(edm::Event&, const edm::EventSetup&) override;
 
   const edm::InputTag src_;
-  const edm::EDGetTokenT<edm::DetSetVector<PixelDigi>> pixelDigi_token_;
+  const edm::EDGetTokenT<edm::DetSetVector<PixelDigi>> pixelDigiToken_;
   const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> tTopoToken_;
+  const GapMode gapMode_;
+  // Drop the per-hit 4-bit ToT field (RD53B "Drop ToT" / binary readout mode).
+  // Default false = ToTs included.
+  const bool dropTot_;
   typedef math::XYZPointD Point;
   typedef std::vector<Point> PointCollection;
 };
 
 PixelToBitStreamProducer::PixelToBitStreamProducer(const edm::ParameterSet& iConfig)
     : src_(iConfig.getParameter<edm::InputTag>("src")),
-      pixelDigi_token_(consumes(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
-      tTopoToken_(esConsumes()) {
+      pixelDigiToken_(consumes(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
+      tTopoToken_(esConsumes()),
+      gapMode_(parseGapMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "AGGREGATE"))),
+      dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)) {
   produces<edm::DetSetVector<Phase2ITQCore>>();
   produces<edm::DetSetVector<Phase2ITChipBitStream>>();
 }
 
 namespace {
-  // Dimension for 2 chips module = 672 X 434 = 672 X (216 + 1 + 216 + 1)
-  // Dimension for 4 chips module = 1354 X 434 = (672 + 5 + 672 + 5) X (216 + 1 + 216 + 1)
-  // Spacing 1 in column and 5 in row is introduced for each chip in between
-  // if neighboring chip exists
-  constexpr int kQCoresInChipRow = (672);
-  constexpr int kQCoresInChipColumn = (216);
-  constexpr int kQCoresInChipRowGap = (5);
-  constexpr int kQCoresInChipColumnGap = (10);
-}  // namespace
-
-void updateHitCoordinatesForLargePixels(Phase2ITDigiHit& hit) {
-  /*
-        In-place modification of Hit coordinates to take into account large pixels
-        Hits corresponding to large pixels are remapped so they lie on the boundary of the chip
-        Note that this operation can produce multiple hits with the same row/column coordinates
-        Duplicates get removed later on
-    */
-
-  // Current values before remapping
-  int row = hit.row();
-  int col = hit.col();
-
-  // Values after remapping
-  int updated_row = 0;
-  int updated_col = 0;
-
-  // Remapping of the row coordinate
-  if (row < kQCoresInChipRow) {
-    updated_row = row;
-  } else if (row < (kQCoresInChipRow + kQCoresInChipRowGap)) {
-    updated_row = kQCoresInChipRow - 1;
-  }  // This will be ignored for 2 chips module
-  else if (row < (kQCoresInChipRow + 2 * kQCoresInChipRowGap)) {
-    updated_row = kQCoresInChipRow;
-  } else {
-    updated_row = (hit.row() - 2 * kQCoresInChipRowGap);
-  }
-
-  // Remapping of the column coordinate
-  if (col < kQCoresInChipColumn) {
-    updated_col = col;
-  } else if (col < kQCoresInChipColumn + kQCoresInChipColumnGap) {
-    updated_col = kQCoresInChipColumn - kQCoresInChipColumnGap;
-  } else if (col < (kQCoresInChipColumn + 2 * kQCoresInChipColumn)) {
-    updated_col = kQCoresInChipColumn;
-  } else {
-    updated_col = (hit.col() - 2 * kQCoresInChipColumnGap);
-  }
-
-  hit.set_row(updated_row);
-  hit.set_col(updated_col);
+  // Module-coordinate geometry (single source of truth lives in Phase2ITChip.h).
+  // Dimension for 1 chip module (PXB Layer1, 3dim) = 672 X 216
+  // Dimension for 2 chips module = 672 X 434 = 672 X (216 + 2 + 216)
+  // Dimension for 4 chips module = 1354 X 434 = (672 + 10 + 672) X (216 + 2 + 216)
+  constexpr int kRowsPerChip     = Phase2ITChip::kRowsPerChip;      // 672
+  constexpr int kColsPerChip     = Phase2ITChip::kColsPerChip;      // 216
+  constexpr int kLargePixelNRows = Phase2ITChip::kLargePixelNRows;  // 10
+  constexpr int kLargePixelNCols = Phase2ITChip::kLargePixelNCols;  // 2
 }
 
-void adjustEdges(std::vector<Phase2ITDigiHit> hitList) {
-  /*
-        In-place modification of Hit coordinates to take into account large pixels
-    */
-  std::for_each(hitList.begin(), hitList.end(), &updateHitCoordinatesForLargePixels);
+bool isInGapRegion(const Phase2ITDigiHit& hit) {
+  int r = hit.row();
+  int c = hit.col();
+  bool rowInGap = (r >= kRowsPerChip) && (r < kRowsPerChip + kLargePixelNRows);
+  bool colInGap = (c >= kColsPerChip) && (c < kColsPerChip + kLargePixelNCols);
+  return rowInGap || colInGap;
 }
 
-std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitList, uint32_t detId = 0) {
-  // Split the hit list by read out chip
-  std::array<std::vector<Phase2ITDigiHit>, 4> hits_per_chip;
+// Merge gap-pixel ADCs into the nearest chip-edge pixel, then drop them.
+// Models the real chip's "large pixel" charge sharing: a hit in the gap shares charge with the chip-edge pixel it's bonded to.
+std::vector<Phase2ITDigiHit> aggregateGap(const std::vector<Phase2ITDigiHit>& hitList) {
+  // Routing rule: gap col 216 -> col 215, col 217 -> col 218; row 672..676
+  // -> row 671, row 677..681 -> row 682. Corner gap uses both.
+  auto edgeCol = [](int c) {
+    if (c == kColsPerChip)     return kColsPerChip - 1;
+    if (c == kColsPerChip + 1) return kColsPerChip + kLargePixelNCols;
+    return c;
+  };
+  auto edgeRow = [](int r) {
+    if (r >= kRowsPerChip && r < kRowsPerChip + kLargePixelNRows / 2)
+      return kRowsPerChip - 1;
+    if (r >= kRowsPerChip + kLargePixelNRows / 2 && r < kRowsPerChip + kLargePixelNRows)
+      return kRowsPerChip + kLargePixelNRows;
+    return r;
+  };
+  std::map<std::pair<int, int>, int> adcByPos;   // position -> accumulated ADC
+  for (const auto& h : hitList) {
+    int r = edgeRow(h.row());
+    int c = edgeCol(h.col());
+    auto& a = adcByPos[{r, c}];
+    a = std::min(15, a + h.adc());                 // saturate at 4-bit max
+  }
+  std::vector<Phase2ITDigiHit> out;
+  out.reserve(adcByPos.size());
+  for (auto& kv : adcByPos)
+    out.emplace_back(kv.first.first, kv.first.second, kv.second);
+  return out;
+}
+
+// Split a module-coordinate hit list into per-chip lists in chip-relative coordinates.
+// The chip boundary depends on the gap mode: standard geometry uses physical chip extents, 
+// KEEP uses the gap-midline geometry so every pixel (including pixels in gaps) belongs to one chip in order to not drop those .
+std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitList,
+                                      GapMode mode, uint32_t detId = 0) {
+  const bool keep = (mode == GapMode::Keep);
+  const int rowsPerChip     = keep ? Phase2ITChip::kRowsPerChipKeep     : kRowsPerChip;
+  const int largePixelNRows = keep ? Phase2ITChip::kLargePixelNRowsKeep : kLargePixelNRows;
+  const int colsPerChip     = keep ? Phase2ITChip::kColsPerChipKeep     : kColsPerChip;
+  const int largePixelNCols = keep ? Phase2ITChip::kLargePixelNColsKeep : kLargePixelNCols;
+
+  std::array<std::vector<Phase2ITDigiHit>, CHIPS_PER_MODULE> hitsPerChip;
   for (auto hit : hitList) {
-    int chip_index = (hit.col() < kQCoresInChipColumn) ? 0 : 1;
-    if (hit.row() >= kQCoresInChipRow) {
-      chip_index += 2;
-    }
-    hits_per_chip[chip_index].push_back(hit);
+    int chipIndex = (hit.col() < colsPerChip) ? 0 : 1;
+    if (hit.row() >= rowsPerChip) chipIndex += 2;
+    int rowOffset = (chipIndex >= 2)     ? (rowsPerChip + largePixelNRows) : 0;
+    int colOffset = (chipIndex % 2 == 1) ? (colsPerChip + largePixelNCols) : 0;
+    hit.set_row(hit.row() - rowOffset);
+    hit.set_col(hit.col() - colOffset);
+    hitsPerChip[chipIndex].push_back(hit);
   }
 
-  // Generate Phase2ITChip objects from the hit lists
   std::vector<Phase2ITChip> chips;
-  chips.reserve(4);
-  for (int chip_index = 0; chip_index < 4; chip_index++) {
-    chips.push_back(Phase2ITChip(chip_index, hits_per_chip[chip_index], detId));
+  chips.reserve(CHIPS_PER_MODULE);
+  for (int chipIndex = 0; chipIndex < CHIPS_PER_MODULE; chipIndex++)
+    chips.emplace_back(chipIndex, hitsPerChip[chipIndex], detId);
+  return chips;
+}
+
+std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, GapMode mode, uint32_t detId = 0) {
+  switch (mode) {
+    case GapMode::Drop:
+      // Discard gap-region hits entirely.
+      hitList.erase(std::remove_if(hitList.begin(), hitList.end(), &isInGapRegion), hitList.end());
+      break;
+    case GapMode::Keep:
+      // Leave gap pixels in the list.
+      break;
+    case GapMode::Aggregate:
+      // Merge gap-pixel ADCs into the nearest chip-edge pixel.
+      hitList = aggregateGap(hitList);
+      break;
   }
-
-  return chips;
+  return splitByChip(hitList, mode, detId);
 }
 
-std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, uint32_t detId = 0) {
-  adjustEdges(hitList);
-  std::vector<Phase2ITChip> chips = splitByChip(hitList, detId);
 
-  return chips;
-}
-
-// ------------ method called to produce the data  ------------
 void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   using namespace edm;
   using namespace std;
@@ -155,51 +189,49 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
 
   auto const& tTopo = iSetup.getData(tTopoToken_);
 
-  auto pixelDigiHandle = iEvent.getHandle(pixelDigi_token_);
+  auto pixelDigiHandle = iEvent.getHandle(pixelDigiToken_);
   const edm::DetSetVector<PixelDigi>& pixelDigi = *pixelDigiHandle;
   for (const auto& theDigis : pixelDigi) {
     DetId tkId = theDigis.id;
     std::vector<Phase2ITDigiHit> hitlist;
     std::vector<int> id;
-
     if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
-      int layer_num = tTopo.pxbLayer(tkId.rawId());
-      int ladder_num = tTopo.pxbLadder(tkId.rawId());
-      int module_num = tTopo.pxbModule(tkId.rawId());
-      id = {tkId.subdetId(), layer_num, ladder_num, module_num};
+      int layerNum = tTopo.pxbLayer(tkId.rawId());
+      int ladderNum = tTopo.pxbLadder(tkId.rawId());
+      int moduleNum = tTopo.pxbModule(tkId.rawId());
+      id = {tkId.subdetId(), layerNum, ladderNum, moduleNum};
     } else if (tkId.subdetId() == PixelSubdetector::PixelEndcap) {
-      int module_num = tTopo.pxfModule(tkId());
-      int disk_num = tTopo.pxfDisk(tkId());
-      int blade_num = tTopo.pxfBlade(tkId());
-      int panel_num = tTopo.pxfPanel(tkId());
-      int side_num = tTopo.pxfSide(tkId());
-      id = {tkId.subdetId(), module_num, disk_num, blade_num, panel_num, side_num};
+      int moduleNum = tTopo.pxfModule(tkId());
+      int diskNum = tTopo.pxfDisk(tkId());
+      int bladeNum = tTopo.pxfBlade(tkId());
+      int panelNum = tTopo.pxfPanel(tkId());
+      int sideNum = tTopo.pxfSide(tkId());
+      id = {tkId.subdetId(), moduleNum, diskNum, bladeNum, panelNum, sideNum};
     }
 
     for (const auto& digi : theDigis) {
       hitlist.emplace_back(digi.row(), digi.column(), digi.adc());
     }
-
-    std::vector<Phase2ITChip> chips = processHits(std::move(hitlist), tkId.rawId());
+    std::vector<Phase2ITChip> chips = processHits(std::move(hitlist),
+                                                   gapMode_,
+                                                   tkId.rawId());
 
     DetSet<Phase2ITQCore> DetSetQCores(tkId);
     DetSet<Phase2ITChipBitStream> DetSetBitStream(tkId);
 
     for (size_t i = 0; i < chips.size(); i++) {
       Phase2ITChip chip = chips[i];
-      std::vector<Phase2ITQCore> qcores = chip.get_organized_QCores();
+      std::vector<Phase2ITQCore> qcores = chip.getOrganizedQCores();
       for (auto& qcore : qcores) {
         DetSetQCores.push_back(qcore);
       }
-      Phase2ITChipBitStream aChipBitStream(i, chip.get_chip_code());
-
+      Phase2ITChipBitStream aChipBitStream(i, chip.getChipCode(dropTot_));
       DetSetBitStream.push_back(aChipBitStream);
     }
 
     aBitStreamVector->insert(DetSetBitStream);
     aQCoreVector->insert(DetSetQCores);
   }
-
   iEvent.put(std::move(aQCoreVector));
   iEvent.put(std::move(aBitStreamVector));
 }
