@@ -5,6 +5,9 @@ __init__.py
 #*#
 *~
 *.pb
+*.root
+*.db
+*.csv
 
 # ignore partially applied patches and their backup
 *.rej
@@ -21,3 +24,4 @@ __init__.py
 
 #ignore mac specific file
 .DS_Store
+EventFilter/Phase2PixelRawToDigi/test/log
