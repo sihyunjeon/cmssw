@@ -17,6 +17,9 @@
 #include "FWCore/Utilities/interface/InputTag.h"
 #include "FWCore/Utilities/interface/Transition.h"
 
+#include <string>
+#include <vector>
+
 class Dummy : public DQMEDAnalyzer {
 public:
   explicit Dummy(const edm::ParameterSet& iConfig);
@@ -29,6 +32,8 @@ public:
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
 private:
+  void bookDTCHistos(DQMStore::IBooker& ibooker);
+
   const edm::EDGetTokenT<FEDRawDataCollection> fedRawToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap,
                         TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
@@ -38,7 +43,21 @@ private:
 
   const TrackerDetToDTCELinkCablingMap* cablingMap_ = nullptr;
 
-  MonitorElement* meFedSize_ = nullptr;
+  // dtcIds_ / nDTCs_ are populated from the cabling map in dqmBeginRun.
+  int nDTCs_ = 36;
+  int nslinksPerDTC_ = 16;
+  std::vector<int> dtcIds_;
+
+  // Simple histograms
+  MonitorElement* me_fedSize_         = nullptr;  // FED payload (bytes)
+  MonitorElement* me_slinkOccupancy_  = nullptr;  // occupancy across all SLinks
+
+  // Per-DTC: 16 SLink bins, <occupancy> with across-event RMS error bars
+  std::vector<MonitorElement*> mes_slinkOccupancyPerDTC_;
+
+  // Cross-DTC overview + 2D heatmap
+  MonitorElement* me_slinkOccupancyByDTC_ = nullptr;
+  MonitorElement* me_slinkOccupancyMap_   = nullptr;
 };
 
 Dummy::Dummy(const edm::ParameterSet& iConfig)
@@ -53,30 +72,82 @@ Dummy::Dummy(const edm::ParameterSet& iConfig)
 }
 
 void Dummy::dqmBeginRun(const edm::Run&, const edm::EventSetup& iSetup) {
-  // cablingMap_ read here, probably only need this for getting known dtcs?
-  // fed id is 0-575, but keep in mind that you have to count the number of dtcs instead of using dtc id directly
-  // dtc id is 11..19, 21..29, .., 41..49
-  // should we map 11->0, 12->1, .., 19->8, 21->0, ..? and vice versa so that we draw slink occ per dtc
-  // 16 x 36 = 576
   cablingMap_ = &iSetup.getData(cablingMapToken_);
+
+  // Populate dtcIds_ from the cabling map (replace hard-coded list)
+  auto known = cablingMap_->getKnownDTCIdsWithIndex();   // vector<pair<index, dtcId>>
+  dtcIds_.assign(known.size(), 0);
+  for (const auto& [idx, dtcId] : known) dtcIds_[idx] = dtcId;
+  nDTCs_ = dtcIds_.size();
 }
 
 void Dummy::bookHistograms(DQMStore::IBooker& ibooker,
                            edm::Run const&,
                            edm::EventSetup const&) {
   ibooker.setCurrentFolder(folder_);
-  // Only have the whole fed here
-  meFedSize_ = ibooker.book1D("fedSize",
-                              "FED payload size;bytes;FED entries",
-                              200, 0., 16000.);
+
+  me_fedSize_ = ibooker.book1D("fedSize",
+                               "FED payload size;bytes;FED entries",
+                               200, 0., 16000.);
+
+  me_slinkOccupancy_ = ibooker.book1D("slinkOccupancy",
+                                       "SLink occupancy;occupancy;SLink entries",
+                                       150, 0., 1.5);
+
+  bookDTCHistos(ibooker);
+
+  // Cross-DTC overview: 1 bin per DTC, <occupancy> with across-event RMS error bars
+  me_slinkOccupancyByDTC_ = ibooker.bookProfile(
+      "slinkOccupancyByDTC",
+      "Mean SLink occupancy by DTC;DTC index;<occupancy>",
+      nDTCs_, -0.5, nDTCs_ - 0.5,
+      0., 1.5);
+
+  // 2D heatmap of all 576 SLinks in (DTC index, SLink index)
+  me_slinkOccupancyMap_ = ibooker.bookProfile2D(
+      "slinkOccupancyMap",
+      "Mean SLink occupancy;DTC index;SLink index;<occupancy>",
+      nDTCs_, -0.5, nDTCs_ - 0.5,
+      nslinksPerDTC_, -0.5, nslinksPerDTC_ - 0.5,
+      0., 1.5);
+}
+
+void Dummy::bookDTCHistos(DQMStore::IBooker& ibooker) {
+  mes_slinkOccupancyPerDTC_.resize(nDTCs_, nullptr);
+
+  for (int i = 0; i < nDTCs_; i++) {
+    mes_slinkOccupancyPerDTC_[i] = ibooker.bookProfile(
+        ("slinkOccupancyPerDTC_" + std::to_string(dtcIds_[i])).c_str(),
+        ("Mean SLink occupancy, DTC " + std::to_string(dtcIds_[i]) +
+         ";SLink index;<occupancy>").c_str(),
+        nslinksPerDTC_, -0.5, nslinksPerDTC_ - 0.5,
+        0., 1.5);
+  }
 }
 
 void Dummy::analyze(const edm::Event& iEvent, const edm::EventSetup&) {
   edm::Handle<FEDRawDataCollection> raw;
   iEvent.getByToken(fedRawToken_, raw);
   if (!raw.isValid()) return;
+
+  const double trigger_rate    = 750.0e3;   // Hz
+  const double slink_bandwidth = 25.0e9;    // bits/s
+
   for (int fid = firstFed_; fid < firstFed_ + nFeds_; ++fid) {
-    meFedSize_->Fill(static_cast<double>(raw->FEDData(fid).size()));
+    const size_t bytes = raw->FEDData(fid).size();
+    me_fedSize_->Fill(static_cast<double>(bytes));
+
+    const int dtcIdx  = fid / nslinksPerDTC_;
+    const int slinkId = fid % nslinksPerDTC_;
+    if (dtcIdx >= nDTCs_) continue;
+
+    const double occupancy =
+        (static_cast<double>(bytes) * 8.0 * trigger_rate) / slink_bandwidth;
+
+    me_slinkOccupancy_->Fill(occupancy);
+    mes_slinkOccupancyPerDTC_[dtcIdx]->Fill(slinkId, occupancy);
+    me_slinkOccupancyByDTC_->Fill(dtcIdx, occupancy);
+    me_slinkOccupancyMap_->Fill(dtcIdx, slinkId, occupancy);
   }
 }
 
