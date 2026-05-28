@@ -79,7 +79,7 @@ process.Analyzer = cms.EDAnalyzer("RawAnalyzer",
     fedRawDataCollection = cms.InputTag("Packer")
 )
 process.Unpacker = cms.EDProducer("RawToClusterProducer",
-    fedRawDataCollection = cms.InputTag("Packer")
+    fedDataBuffer = cms.InputTag("Packer")
 )
 
 process.out = cms.OutputModule("PoolOutputModule",
