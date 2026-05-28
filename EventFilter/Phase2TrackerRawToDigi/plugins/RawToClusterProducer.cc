@@ -134,9 +134,15 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
       if (fedData.size() > 0) {
         const unsigned char* dataPtr = fedData.data();
 
+        // look for the BOE magic word in the S-link header
+        bool isBOE = (static_cast<uint8_t>(dataPtr[SLINK_HEADER_BYTES-1]) == SLINK_BOE) ? true : false;
+        if (!isBOE)
+            edm::LogWarning("RawToClusterProducer") 
+                << "WARNING: Couldn't find BOE in the S-Link Header " ;
+
         // read the header
         std::vector<uint32_t> headerWords;
-        for (size_t i = 0; i < HEADER_N_LINES * N_BYTES_PER_WORD;
+        for (size_t i = SLINK_HEADER_BYTES; i < HEADER_N_LINES * N_BYTES_PER_WORD + SLINK_HEADER_BYTES;
              i += N_BYTES_PER_WORD)  // Read 4 bytes (32 bits) at a time
         {
           // Extract 4 bytes (32 bits) and pack them into a uint32_t word
@@ -147,7 +153,7 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
         // read the offsets: each 32 bit word contains two offset words of 16 bit each
         std::vector<uint32_t> offsetWords;
         size_t nOffsetsLines = OFFSET_BITS * CICs_PER_SLINK / N_BITS_PER_WORD;
-        size_t initByte = HEADER_N_LINES * N_BYTES_PER_WORD;
+        size_t initByte = SLINK_HEADER_BYTES + HEADER_N_LINES * N_BYTES_PER_WORD;
         size_t endByte =
             (nOffsetsLines - 1) * N_BYTES_PER_WORD + initByte;  // -1 because we only need the starting i of the line
 
@@ -195,7 +201,7 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
           }
 
           // find the channel offset
-          int initial_offset = (HEADER_N_LINES + MODULES_PER_SLINK) * N_BYTES_PER_WORD;
+          int initial_offset = initByte + nOffsetsLines * N_BYTES_PER_WORD;
           int idx = initial_offset + theOffsets.getOffsetForChannel(iChannel) * N_BYTES_PER_WORD;
 
           // get the channel header and unpack it

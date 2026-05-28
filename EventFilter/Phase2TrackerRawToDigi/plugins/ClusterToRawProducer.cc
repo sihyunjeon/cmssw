@@ -87,7 +87,12 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
       std::vector<Word32Bits> daq_packet;
       std::vector<Word32Bits> offset_map(CICs_PER_SLINK / 2, Word32Bits(0));
 
-      daq_packet.reserve(4);
+      daq_packet.reserve(8);
+      for (int i = 0; i < 3; ++i) {
+        daq_packet.push_back(Word32Bits(0));
+      }
+      daq_packet.push_back(Word32Bits(SLINK_BOE));
+
 for (int i = 0; i < 4; ++i) {
         daq_packet.push_back(Word32Bits(DTC_DAQ_HEADER));
       }
