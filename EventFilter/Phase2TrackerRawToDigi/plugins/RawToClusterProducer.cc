@@ -130,7 +130,7 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
       auto const& fedData = rawDataBuffer.fragmentData(totID);
       
       if (fedData.size() > 0) {
-           auto dataPtr = fedData.payload(slink_header_size, slink_trailer_size);
+        auto dataPtr = fedData.payload(slink_header_size, slink_trailer_size);
 
         // read the header
         std::vector<uint32_t> headerWords;
