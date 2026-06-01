@@ -97,8 +97,20 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
       // Compute the source ID (equivalent to the old FED ID)
       uint64_t source_id = static_cast<uint64_t>(slink_id + SLINKS_PER_DTC * (dtc_id - 1) + TRACKER_HEADER);
 
+      Word32Bits header_first_word;
+      try {
+        auto link_to_module_association = cablingMap.dtcELinkIdToDetId(DTCELinkId(dtc_id, index_first, 0));
+        const DetId& det_id = link_to_module_association->second;
+        if (trackerGeometry.getDetectorType(det_id) == TrackerGeometry::ModuleType::Ph2SS)
+          header_first_word = Word32Bits(MODULE_TYPE_2S << (N_BITS_PER_WORD - MODULE_TYPE_BITS));
+        else 
+          header_first_word = Word32Bits(MODULE_TYPE_PS << (N_BITS_PER_WORD - MODULE_TYPE_BITS));
+      } catch (const cms::Exception& e) {
+        header_first_word = Word32Bits(DTC_DAQ_HEADER);
+      }      
       daq_packet.reserve(4);
-      for (int i = 0; i < 4; ++i) {
+      daq_packet.push_back(header_first_word);
+      for (int i = 0; i < 3; ++i) {
         daq_packet.push_back(Word32Bits(DTC_DAQ_HEADER));
       }
       std::vector<Word32Bits> payload;
@@ -223,8 +235,6 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
 
   // pad again total size to 16byte boundary (not sure if needed)
   size_t paddedTotalSize = (totalSize + 15) & ~static_cast<size_t>(15);
-  std::cout << "totalSize  = " << totalSize << std::endl;
-  std::cout << "paddedTotalSize  = " << paddedTotalSize << std::endl;
 
   // Create the RawDataBuffer and add each slink fragment as a source
   auto rawDataBuffer = std::make_unique<RawDataBuffer>(paddedTotalSize);

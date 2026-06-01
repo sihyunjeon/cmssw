@@ -192,6 +192,9 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
             continue;
           }
 
+          if (theHeader.is2S() != is2SModule)
+            edm::LogError("RawToClusterProducer") << "ERROR: Header for channel " << iChannel << " expects a different type of module";
+
           // find the channel offset
           int initial_offset = initByte + nOffsetsLines * N_BYTES_PER_WORD;
           int idx = initial_offset + theOffsets.getOffsetForChannel(iChannel) * N_BYTES_PER_WORD;

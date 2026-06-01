@@ -49,6 +49,10 @@ namespace Phase2DAQFormatSpecification {
   static const int SS_CLUSTER_WORD_MASK = 0x3FFF;
   static const int PX_CLUSTER_WORD_MASK = 0x1FFFF;
 
+  static const int MODULE_TYPE_2S = 0xC4;
+  static const int MODULE_TYPE_PS = 0xC5;
+  static const int MODULE_TYPE_BITS = 8;
+
   typedef std::bitset<32> Word32Bits;
 
 };  // namespace Phase2DAQFormatSpecification
