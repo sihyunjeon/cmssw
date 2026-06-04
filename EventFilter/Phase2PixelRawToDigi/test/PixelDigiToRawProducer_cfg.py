@@ -89,7 +89,7 @@ process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
     fileName = cms.untracked.string('output_file.root'),
     outputCommands = cms.untracked.vstring(
         'drop *',
-        #'keep FEDRawDataCollection_*_*_*',
+        #'keep RawDataBuffer_*_*_*',
         #'keep Phase2IT*_*_*_*',  # Save intermediate Phase2ITChipBitStream
         #'keep PixelDigi*_*_*_*'
     )
