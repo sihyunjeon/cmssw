@@ -15,7 +15,7 @@ process.load('SimGeneral.HepPDTESSource.pythiapdt_cfi')
 process.load('FWCore.MessageService.MessageLogger_cfi')
 process.load('Configuration.EventContent.EventContent_cff')
 process.load('SimGeneral.MixingModule.mixNoPU_cfi')
-process.load("Configuration.Geometry.GeometryExtendedRun4D102Reco_cff")
+process.load("Configuration.Geometry.GeometryExtendedRun4D112Reco_cff")
 process.load('Configuration.StandardSequences.MagneticField_cff')
 process.load('Configuration.StandardSequences.Digi_cff')
 process.load('Configuration.StandardSequences.SimL1Emulator_cff')
@@ -32,11 +32,11 @@ process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(1)
+    input = cms.untracked.int32(20)
 )
 
 process.source = cms.Source("PoolSource",
-    fileNames = cms.untracked.vstring("root://cmseos.fnal.gov:1094//eos/uscms/store/user/laceyd/3be594c4-9067-4ee7-b2c7-39f8894328e2.root")
+    fileNames = cms.untracked.vstring("root://cms-xrd-global.cern.ch//store/relval/CMSSW_14_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_140X_mcRun4_realistic_v3_SpecialRV296_Run4D112-v1/2590000/b1caa2db-9810-4d64-bc7c-f02d1dbe652d.root")
 )
 
 process.load("CondCore.CondDB.CondDB_cfi")
@@ -89,7 +89,7 @@ process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
     fileName = cms.untracked.string('output_file.root'),
     outputCommands = cms.untracked.vstring(
         'drop *',
-        #'keep RawDataBuffer_*_*_*',
+        'keep RawDataBuffer_*_*_*',
         #'keep Phase2IT*_*_*_*',  # Save intermediate Phase2ITChipBitStream
         #'keep PixelDigi*_*_*_*'
     )
