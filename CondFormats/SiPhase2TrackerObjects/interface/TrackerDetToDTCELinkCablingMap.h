@@ -45,13 +45,20 @@ public:
   /// Returns true if the cabling map has a record corresponding to an eLink identified by the given DTCELinkId
   bool knowsDetId(uint32_t) const;
 
+  /// Return all DetIds associated with a given DTCId
+  std::vector<uint32_t> getAllDetIdsForDTCId(unsigned int dtcId) const;
+
   // IMPORTANT: The following information is not stored, to preserve space in memory.
   // As these vectors are generated each time the functions are called, you are encouraged to
   // either cache the results or avoid calling them in hot loops.
   // NOTE: This vectors are unsorted
 
-  /// Returns a vector containing all elink DTCELinkId nown to the map
+  /// Returns a vector containing all elink DTCELinkId known to the map
   std::vector<DTCELinkId> getKnownDTCELinkIds() const;
+
+  /// Returns a vector containing all DTCIds (unique) known to the map
+  std::vector<unsigned int> getKnownDTCIds() const;
+  std::vector<std::pair<unsigned int, unsigned int>> getKnownDTCIdsWithIndex() const;
 
   /// Returns a vector containing all detector DetId known to the map
   std::vector<uint32_t> getKnownDetIds() const;
