@@ -47,12 +47,13 @@ namespace Phase2AuroraPacker {
       throw cms::Exception("Phase2AuroraPacker") << "applyBlocking: chipId must be in [-1, 3], got " << chipId;
 
     std::vector<bool> newStream;
-    int streamSize = stream.size();
-    newStream.reserve(streamSize + (streamSize % 60) * 3);
+    const int streamSize = stream.size();
 
     std::vector<bool> binaryChipId = intToBinary(chipId, AURORA_CHIP_ID_BITS);
 
-    const int step = AURORA_BLOCK_BODY_BITS - AURORA_NS_BITS - (chipId >= 0 ? AURORA_CHIP_ID_BITS : 0);
+    const int headerBits = AURORA_NS_BITS + (chipId >= 0 ? AURORA_CHIP_ID_BITS : 0);
+    const int step = AURORA_BLOCK_BODY_BITS - headerBits;
+    newStream.reserve(streamSize + (streamSize / step + 1) * headerBits);
 
     const int lastIndex = streamSize / step;
     for (int index = 0; index <= lastIndex; ++index) {
