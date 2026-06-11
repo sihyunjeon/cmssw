@@ -1,10 +1,15 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      BitStreamToAuroraProducer
-// Description: Pack NE events of per-chip RD53 bit-streams into Aurora-format
+// Description: Pack NE events of per-chip RD53 bit-streams into Aurora format
+//              and emit one Phase2ITAuroraBitStream per elink of the module.
+//              Per-chip Aurora chain: apply_blocking -> orphan_pad -> EoS ->
+//              header_blocks -> service_blocks.
+//
 // Author: Si Hyun Jeon, shjeon@cern.ch
 //
 
+#include <array>
 #include <map>
 #include <vector>
 #include <cstdint>
@@ -22,6 +27,14 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITAuroraBitStream.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2AuroraPacker.h"
+#include "EventFilter/Phase2PixelRawToDigi/interface/ELinkChipMap.h"
+#include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
+#include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
+#include "FWCore/Utilities/interface/ESGetToken.h"
+#include "FWCore/Utilities/interface/Transition.h"
+
+
+
 
 class BitStreamToAuroraProducer : public edm::one::EDProducer<> {
 public:
@@ -33,17 +46,21 @@ public:
 
 private:
   const edm::EDGetTokenT<edm::DetSetVector<Phase2ITChipBitStream>> ITChipBitStreamToken_;
+  const edm::ESGetToken<TrackerDetToDTCELinkCablingMap,
+                        TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   const unsigned int eventsPerStream_;       // NE: events per stream group
   const unsigned int serviceBlockInterval_;  // ND: data blocks per Aurora service block
   unsigned int eventCount_;
 
-  // detId -> chip -> per-event chip bit streams, accumulated across NE events
+  // detId -> chip -> per-event RD53 chip bit streams, accumulated across NE events
   std::map<uint32_t, std::vector<std::vector<std::vector<bool>>>> buffer_;
 };
 
 BitStreamToAuroraProducer::BitStreamToAuroraProducer(const edm::ParameterSet& iConfig)
     : ITChipBitStreamToken_(consumes<edm::DetSetVector<Phase2ITChipBitStream>>(
           iConfig.getParameter<edm::InputTag>("Phase2ITChipBitStream"))),
+      cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap,
+                                  TrackerDetToDTCELinkCablingMapRcd>()),
       eventsPerStream_(iConfig.getParameter<unsigned int>("eventsPerStream")),
       serviceBlockInterval_(iConfig.getParameter<unsigned int>("serviceBlockInterval")),
       eventCount_(0) {
@@ -67,10 +84,8 @@ void BitStreamToAuroraProducer::fillDescriptions(edm::ConfigurationDescriptions&
   desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("Phase2ITQCoreProducer"));
   using Phase2DAQFormatSpecification::AURORA_EVENTS_PER_STREAM_DEFAULT;
   using Phase2DAQFormatSpecification::AURORA_SERVICE_BLOCK_INTERVAL_DEFAULT;
-  desc.add<unsigned int>("eventsPerStream",
-                         AURORA_EVENTS_PER_STREAM_DEFAULT);  // NE, Number of streamed events, configurable 1..64
-  desc.add<unsigned int>("serviceBlockInterval",
-                         AURORA_SERVICE_BLOCK_INTERVAL_DEFAULT);  // ND, Aurora service block, configurable 1..256
+  desc.add<unsigned int>("eventsPerStream", AURORA_EVENTS_PER_STREAM_DEFAULT);             // NE, 1..64
+  desc.add<unsigned int>("serviceBlockInterval", AURORA_SERVICE_BLOCK_INTERVAL_DEFAULT);   // ND, 1..256
   descriptions.add("BitStreamToAuroraProducer", desc);
 }
 
@@ -98,32 +113,63 @@ void BitStreamToAuroraProducer::produce(edm::Event& iEvent, const edm::EventSetu
   const bool complete = (eventCount_ % eventsPerStream_ == 0);
 
   if (complete) {
-    // FIXME chip id place holder should be later replaced once cabling map db file is fully ready
-    constexpr int CHIP_ID_PLACEHOLDER = 1;
-    constexpr int EVENT_ID_PLACEHOLDER = 1;
+    const auto& cablingMap = iSetup.getData(cablingMapToken_);
+
+    constexpr int EVENT_ID_PLACEHOLDER = 1;  // TODO: drive from iEvent.id().event() / NE-group base
 
     std::vector<edm::DetSet<Phase2ITAuroraBitStream>> detsets;
     for (auto& [detId, chips] : buffer_) {
-      edm::DetSet<Phase2ITAuroraBitStream> detset(detId);
-      for (unsigned int c = 0; c < chips.size(); c++) {
-        Phase2ITAuroraBitStream aurora(c, eventsPerStream_);
+      const auto& info = cablingMap.getModuleInfo(detId);
+      const unsigned int nChipsSeen = chips.size();
+      if (info.nChips != nChipsSeen) {
+        edm::LogWarning("BitStreamToAuroraProducer")
+            << "detId=" << detId << ": cabling nChips=" << static_cast<int>(info.nChips)
+            << " disagrees with " << nChipsSeen << " chip streams seen";
+      }
 
-        // Build the concatenated, per-event-tagged RD53 stream for this chip
+      const ELinkChipMap::ChipToElinks fanout = ELinkChipMap::resolveFanout(static_cast<int>(info.subtype));
+      const int nElinks = ELinkChipMap::numElinks(fanout);
+
+      // Per-chip Aurora chain. The chip index is used as the RD53 chip bus ID
+      // (2-bit field in every Aurora block, multi-chip mode for all modules).
+      std::vector<std::vector<bool>> chipFullBits(nChipsSeen);
+      for (unsigned int c = 0; c < nChipsSeen; ++c) {
         std::vector<bool> concat;
         for (unsigned int e = 0; e < chips[c].size(); ++e) {
-          auto tag = phase2auroratools::make_event_tag(EVENT_ID_PLACEHOLDER, (e == 0)); // e==0, 8 bits, else, 11 bits
+          auto tag = phase2auroratools::make_event_tag(EVENT_ID_PLACEHOLDER, (e == 0));
           concat.insert(concat.end(), tag.begin(), tag.end());
           concat.insert(concat.end(), chips[c][e].begin(), chips[c][e].end());
         }
-
-        // Aurora formatting
-        auto blocked = phase2auroratools::apply_blocking(concat, CHIP_ID_PLACEHOLDER);
-        auto padded = phase2auroratools::orphan_pad(blocked);
-        auto eos = phase2auroratools::apply_eos_marker(padded);
+	// TODO for now we are applying the chip id blockings by default although it might be not needed for some elinks!!!
+        auto blocked  = phase2auroratools::apply_blocking(concat, static_cast<int>(c));
+        auto padded   = phase2auroratools::orphan_pad(blocked);
+        auto eos      = phase2auroratools::apply_eos_marker(padded);
         auto headered = phase2auroratools::apply_header_blocks(eos);
-        auto full = phase2auroratools::apply_service_blocks(headered, serviceBlockInterval_);
+        auto full     = phase2auroratools::apply_service_blocks(headered, serviceBlockInterval_);
+        chipFullBits[c] = std::move(full);
+      }
 
-        aurora.addEventBitStream(std::vector<bool>(full.size(), false));
+      std::vector<std::vector<bool>> elinkBits(nElinks);
+      for (unsigned int c = 0; c < nChipsSeen; ++c) {
+        const std::vector<int>& chipElinks = fanout[c];
+        const size_t k = chipElinks.size();
+        const std::vector<bool>& bits = chipFullBits[c];
+        const size_t n = bits.size();
+        size_t pos = 0;
+        for (size_t i = 0; i < k; ++i) {
+          // Even split: the first (n % k) lanes get one extra bit.
+          const size_t cnt = n / k + (i < n % k ? 1 : 0);
+          auto& lane = elinkBits[chipElinks[i]];
+          lane.insert(lane.end(), bits.begin() + pos, bits.begin() + pos + cnt);
+          pos += cnt;
+        }
+      }
+
+      // One Phase2ITAuroraBitStream per elink.
+      edm::DetSet<Phase2ITAuroraBitStream> detset(detId);
+      for (int e = 0; e < nElinks; ++e) {
+        Phase2ITAuroraBitStream aurora(e, eventsPerStream_);
+        aurora.addAuroraStream(elinkBits[e]);
         detset.push_back(std::move(aurora));
       }
       detsets.push_back(std::move(detset));

@@ -25,6 +25,9 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+#include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
+#include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
+#include "FWCore/Utilities/interface/ESGetToken.h"
 
 using namespace Phase2DAQFormatSpecification;
 
@@ -43,9 +46,13 @@ private:
   void decodeBitStream(const std::vector<bool>& bitstream,
                        uint32_t detId,
                        int chipId,
+                       int subtype,
                        edm::DetSet<PixelDigi>& detSet);
 
   const edm::EDGetTokenT<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamToken_;
+  // Cabling map supplies the per-module Module_SubType that keys the ChipModuleMap
+  // chip-index convention (must match the packer).
+  const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   // Must match the dropTot setting that produced the bitstream. When true the encoded stream omits the per-hit 4-bit ToT field.
   // the decoder skips decodeADCs and emits PixelDigi.adc = 0 for every hit.
   const bool dropTot_;
@@ -67,6 +74,7 @@ namespace {
 BitStreamToPixelProducer::BitStreamToPixelProducer(const edm::ParameterSet& iConfig)
     : bitstreamToken_(consumes<edmNew::DetSetVector<Phase2ITChipBitStream>>(
           iConfig.getParameter<edm::InputTag>("phase2ItChipBitStream"))),
+      cablingMapToken_(esConsumes()),
       dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)),
       keepMode_(parseKeepMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "DROP"))) {
   produces<edm::DetSetVector<PixelDigi>>();
@@ -107,6 +115,7 @@ uint32_t BitStreamToPixelProducer::binaryToInt(const std::vector<bool>& binary, 
 void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstream,
                                                uint32_t detId,
                                                int chipId,
+                                               int subtype,
                                                edm::DetSet<PixelDigi>& detSet) {
   if (bitstream.empty()) {
     return;
@@ -148,7 +157,7 @@ void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstrea
       int shiftedIndex = shiftedRow * HITMAP_COL + shiftedCol;
       auto [localRow, localCol] = Phase2ITChip::decodeQCoreIndex(shiftedIndex);
       auto [globalRow, globalCol] =
-          Phase2ITChip::getGlobalPixelCoordinate(chipId, state.currentCol, state.currentRow,
+          Phase2ITChip::getGlobalPixelCoordinate(chipId, subtype, state.currentCol, state.currentRow,
                                                   localCol, localRow, keepMode_);
       detSet.push_back(PixelDigi(globalRow, globalCol, adcValues[adcIndex++]));
     }
@@ -169,14 +178,18 @@ void BitStreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup
     throw cms::Exception("BitStreamToPixelProducer") << "Invalid BitStream handle";
   }
 
+  auto const& cablingMap = iSetup.getData(cablingMapToken_);
+
   // Loop over each DetSet in the input bitstream collection
   // Accumulate every chip's hits into a single per-module detSet, then insert once
   for (const auto& detSet : *bitstreamHandle) {
     DetId tkId = detSet.id();
     uint32_t detId = tkId.rawId();
+    // Module_SubType keys the ChipModuleMap convention used to invert chipId -> (row, col) offset; must match what the packer used.
+    const int subtype = static_cast<int>(cablingMap.getModuleInfo(detId).subtype);
     edm::DetSet<PixelDigi> moduleDigis(detId);
     for (const auto& chipBS : detSet) {
-      decodeBitStream(chipBS.get_bitstream(), detId, chipBS.get_rocid(), moduleDigis);
+      decodeBitStream(chipBS.get_bitstream(), detId, chipBS.get_rocid(), subtype, moduleDigis);
     }
     if (!moduleDigis.empty())
       outputPixelDigis->insert(moduleDigis);

@@ -7,6 +7,7 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChip.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITDigiHit.h"
+#include "DataFormats/Phase2TrackerDigi/interface/ChipModuleMap.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
 
 using namespace Phase2DAQFormatSpecification;
@@ -34,7 +35,7 @@ std::pair<int, int> Phase2ITChip::decodeQCoreIndex(int index) {
 }
 
 std::pair<int, int> Phase2ITChip::getGlobalPixelCoordinate(
-    int chipId, int qcoreCol, int qcoreRow, int localCol, int localRow, bool keepMode) {
+    int chipId, int subtype, int qcoreCol, int qcoreRow, int localCol, int localRow, bool keepMode) {
   // DROP: Pixel hits in the gap are completely dropped from encoding.
   // AGGREGATE: Pixel hits in the gap are assigned to the boundary sensor IDs with ADCs being stacked up.
   // KEEP: Pixel hits in the gap are kept with its own sensor IDs.
@@ -43,8 +44,13 @@ std::pair<int, int> Phase2ITChip::getGlobalPixelCoordinate(
   const int largePixelNRows = keepMode ? kLargePixelNRowsKeep : kLargePixelNRows;
   const int colsPerChip     = keepMode ? kColsPerChipKeep     : kColsPerChip;
   const int largePixelNCols = keepMode ? kLargePixelNColsKeep : kLargePixelNCols;
-  int rowOffset = (chipId >= 2)     ? (rowsPerChip + largePixelNRows) : 0;
-  int colOffset = (chipId % 2 == 1) ? (colsPerChip + largePixelNCols) : 0;
+
+  // Recover the physical row/col half from (subtype, chipId) via ChipModuleMap.
+  auto q = itchip::quadrantOf(subtype, chipId);
+  const int rowHalf = (q.first  > 0) ? 1 : 0;
+  const int colHalf = (q.second > 0) ? 1 : 0;
+  int rowOffset = rowHalf ? (rowsPerChip + largePixelNRows) : 0;
+  int colOffset = colHalf ? (colsPerChip + largePixelNCols) : 0;
   int globalRow = rowOffset + qcoreRow * HITMAP_COL + localRow;
   int globalCol = colOffset + qcoreCol * HITMAP_ROW + localCol;
 
@@ -64,8 +70,7 @@ std::vector<Phase2ITQCore> linkQCores(std::vector<Phase2ITQCore> qcores) {
   }
 
   // Then set isneighbour flags. Per RD53B Sec 10.4:
-  // isneighbour=1 means the previous qrow address is current_qrow - 1 (i.e. consecutive qrows within
-  // the same ccol), so the qrow field can be omitted on the wire. 
+  // isneighbour=1 means the previous qrow address is current_qrow - 1 (i.e. consecutive qrows within the same ccol), so the qrow field can be omitted on the wire.
   // Only candidates are pairs in the same ccol (previous not islast).
   for (size_t i = 1; i < qcores.size(); i++) {
     if (!qcores[i - 1].islast() && qcores[i].getRow() == qcores[i - 1].getRow() + 1) {

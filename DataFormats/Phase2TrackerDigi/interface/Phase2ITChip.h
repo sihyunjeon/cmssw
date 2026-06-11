@@ -23,8 +23,9 @@ public:
   static int encodeQCoreIndex(int row, int col);
   static std::pair<int, int> decodeQCoreIndex(int index);
 
+  // subtype = Module_SubType; selects the ChipModuleMap chip-index convention used to recover the (row, col) offset from chipId.
   static std::pair<int, int> getGlobalPixelCoordinate(
-      int chipId, int qcoreCol, int qcoreRow, int localCol, int localRow,
+      int chipId, int subtype, int qcoreCol, int qcoreRow, int localCol, int localRow,
       bool keepMode = false);
 
   static constexpr int kColsPerROC = 54;

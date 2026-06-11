@@ -26,12 +26,16 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChip.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
+#include "DataFormats/Phase2TrackerDigi/interface/ChipModuleMap.h"
 #include "DataFormats/SiPixelCluster/interface/SiPixelCluster.h"
 #include "DataFormats/SiPixelDetId/interface/PixelSubdetector.h"
 #include "DataFormats/SiPixelDigi/interface/PixelDigi.h"
 #include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+#include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
+#include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
+#include "FWCore/Utilities/interface/ESGetToken.h"
 
 using namespace Phase2DAQFormatSpecification;
 
@@ -64,6 +68,9 @@ private:
   const edm::InputTag src_;
   const edm::EDGetTokenT<edm::DetSetVector<PixelDigi>> pixelDigiToken_;
   const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> tTopoToken_;
+  // Cabling map supplies the per-module Module_SubType that keys the ChipMap
+  // chip-index convention.
+  const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   const GapMode gapMode_;
   // Drop the per-hit 4-bit ToT field (RD53B "Drop ToT" / binary readout mode).
   // Default false = ToTs included.
@@ -76,6 +83,7 @@ PixelToBitStreamProducer::PixelToBitStreamProducer(const edm::ParameterSet& iCon
     : src_(iConfig.getParameter<edm::InputTag>("src")),
       pixelDigiToken_(consumes(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
       tTopoToken_(esConsumes()),
+      cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd>()),
       gapMode_(parseGapMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "AGGREGATE"))),
       dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)) {
   produces<edm::DetSetVector<Phase2ITQCore>>();
@@ -136,32 +144,43 @@ std::vector<Phase2ITDigiHit> aggregateGap(const std::vector<Phase2ITDigiHit>& hi
 // The chip boundary depends on the gap mode: standard geometry uses physical chip extents, 
 // KEEP uses the gap-midline geometry so every pixel (including pixels in gaps) belongs to one chip in order to not drop those .
 std::vector<Phase2ITChip> splitByChip(const std::vector<Phase2ITDigiHit>& hitList,
-                                      GapMode mode, uint32_t detId = 0) {
+                                      GapMode mode, int subtype, uint32_t detId = 0) {
   const bool keep = (mode == GapMode::Keep);
   const int rowsPerChip     = keep ? Phase2ITChip::kRowsPerChipKeep     : kRowsPerChip;
   const int largePixelNRows = keep ? Phase2ITChip::kLargePixelNRowsKeep : kLargePixelNRows;
   const int colsPerChip     = keep ? Phase2ITChip::kColsPerChipKeep     : kColsPerChip;
   const int largePixelNCols = keep ? Phase2ITChip::kLargePixelNColsKeep : kLargePixelNCols;
 
+  // Chip-index convention: ChipModuleMap quadrant table keyed by Module_SubType.
+  const int nChips     = itchip::nChips(subtype);
+  const int nChipRows = (nChips == 4) ? 2 : 1;
+  const int nChipCols = (nChips == 1) ? 1 : 2;
+
   std::array<std::vector<Phase2ITDigiHit>, CHIPS_PER_MODULE> hitsPerChip;
   for (auto hit : hitList) {
-    int chipIndex = (hit.col() < colsPerChip) ? 0 : 1;
-    if (hit.row() >= rowsPerChip) chipIndex += 2;
-    int rowOffset = (chipIndex >= 2)     ? (rowsPerChip + largePixelNRows) : 0;
-    int colOffset = (chipIndex % 2 == 1) ? (colsPerChip + largePixelNCols) : 0;
+    // Physical half along each axis (0 = low, 1 = high). The coordinate offset
+    // follows the physical half, NOT the chip index, so it stays correct under
+    // any chip-numbering convention.
+    const int rowHalf = (hit.row() >= rowsPerChip) ? 1 : 0;
+    const int colHalf = (hit.col() >= colsPerChip) ? 1 : 0;
+    auto q = itchip::gridToQuadrant(rowHalf, colHalf, nChipRows, nChipCols);
+    const int chipIndex = itchip::chipIndex(subtype, q.first, q.second);
+    const int rowOffset = rowHalf ? (rowsPerChip + largePixelNRows) : 0;
+    const int colOffset = colHalf ? (colsPerChip + largePixelNCols) : 0;
     hit.set_row(hit.row() - rowOffset);
     hit.set_col(hit.col() - colOffset);
     hitsPerChip[chipIndex].push_back(hit);
   }
 
+  // Emit exactly nChips streams (cabling-map count via Module_SubType).
   std::vector<Phase2ITChip> chips;
-  chips.reserve(CHIPS_PER_MODULE);
-  for (int chipIndex = 0; chipIndex < CHIPS_PER_MODULE; chipIndex++)
+  chips.reserve(nChips);
+  for (int chipIndex = 0; chipIndex < nChips; chipIndex++)
     chips.emplace_back(chipIndex, hitsPerChip[chipIndex], detId);
   return chips;
 }
 
-std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, GapMode mode, uint32_t detId = 0) {
+std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, GapMode mode, int subtype, uint32_t detId = 0) {
   switch (mode) {
     case GapMode::Drop:
       // Discard gap-region hits entirely.
@@ -175,7 +194,7 @@ std::vector<Phase2ITChip> processHits(std::vector<Phase2ITDigiHit> hitList, GapM
       hitList = aggregateGap(hitList);
       break;
   }
-  return splitByChip(hitList, mode, detId);
+  return splitByChip(hitList, mode, subtype, detId);
 }
 
 
@@ -188,6 +207,7 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
       make_unique<edm::DetSetVector<Phase2ITChipBitStream>>();
 
   auto const& tTopo = iSetup.getData(tTopoToken_);
+  auto const& cablingMap = iSetup.getData(cablingMapToken_);
 
   auto pixelDigiHandle = iEvent.getHandle(pixelDigiToken_);
   const edm::DetSetVector<PixelDigi>& pixelDigi = *pixelDigiHandle;
@@ -212,8 +232,11 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
     for (const auto& digi : theDigis) {
       hitlist.emplace_back(digi.row(), digi.column(), digi.adc());
     }
+    // Module_SubType from the cabling map keys the chip-index convention.
+    const int subtype = static_cast<int>(cablingMap.getModuleInfo(tkId.rawId()).subtype);
     std::vector<Phase2ITChip> chips = processHits(std::move(hitlist),
                                                    gapMode_,
+                                                   subtype,
                                                    tkId.rawId());
 
     DetSet<Phase2ITQCore> DetSetQCores(tkId);
