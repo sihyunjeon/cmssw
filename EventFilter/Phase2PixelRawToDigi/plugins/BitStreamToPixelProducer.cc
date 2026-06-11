@@ -42,12 +42,9 @@ private:
 
   uint32_t binaryToInt(const std::vector<bool>& binary, size_t& bitPos, int length);
 
-  // Decode a single chip's bitstream and append its PixelDigi objects to an accumulating per-module detSet. 
-  void decodeBitStream(const std::vector<bool>& bitstream,
-                       uint32_t detId,
-                       int chipId,
-                       int subtype,
-                       edm::DetSet<PixelDigi>& detSet);
+  // Decode a single chip's bitstream and append its PixelDigi objects to an accumulating per-module detSet.
+  void decodeBitStream(
+      const std::vector<bool>& bitstream, uint32_t detId, int chipId, int subtype, edm::DetSet<PixelDigi>& detSet);
 
   const edm::EDGetTokenT<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamToken_;
   // Cabling map supplies the per-module Module_SubType that keys the ChipModuleMap
@@ -64,12 +61,14 @@ private:
 
 namespace {
   bool parseKeepMode(const std::string& s) {
-    if (s == "DROP" || s == "AGGREGATE") return false;
-    if (s == "KEEP")                     return true;
+    if (s == "DROP" || s == "AGGREGATE")
+      return false;
+    if (s == "KEEP")
+      return true;
     throw cms::Exception("BitStreamToPixelProducer")
         << "handleGapPixels must be one of DROP/KEEP/AGGREGATE, got '" << s << "'";
   }
-}
+}  // namespace
 
 BitStreamToPixelProducer::BitStreamToPixelProducer(const edm::ParameterSet& iConfig)
     : bitstreamToken_(consumes<edmNew::DetSetVector<Phase2ITChipBitStream>>(
@@ -112,11 +111,8 @@ uint32_t BitStreamToPixelProducer::binaryToInt(const std::vector<bool>& binary, 
   return result;
 }
 
-void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstream,
-                                               uint32_t detId,
-                                               int chipId,
-                                               int subtype,
-                                               edm::DetSet<PixelDigi>& detSet) {
+void BitStreamToPixelProducer::decodeBitStream(
+    const std::vector<bool>& bitstream, uint32_t detId, int chipId, int subtype, edm::DetSet<PixelDigi>& detSet) {
   if (bitstream.empty()) {
     return;
   }
@@ -143,8 +139,7 @@ void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstrea
     // In dropTot mode the encoder skipped the ToT bits.
     // emit adc=0 for every hit otherwise read 4 bits per hit as the ToT/ADC value.
     std::vector<int> adcValues =
-        dropTot_ ? std::vector<int>(numHits, 0)
-                 : Phase2ITQCore::decodeADCs(bitstream, state.bitPos, numHits);
+        dropTot_ ? std::vector<int>(numHits, 0) : Phase2ITQCore::decodeADCs(bitstream, state.bitPos, numHits);
 
     int adcIndex = 0;
     for (int i = 0; i < HITMAP_SIZE; i++) {
@@ -156,9 +151,8 @@ void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstrea
       int shiftedCol = rocCol / 2;
       int shiftedIndex = shiftedRow * HITMAP_COL + shiftedCol;
       auto [localRow, localCol] = Phase2ITChip::decodeQCoreIndex(shiftedIndex);
-      auto [globalRow, globalCol] =
-          Phase2ITChip::getGlobalPixelCoordinate(chipId, subtype, state.currentCol, state.currentRow,
-                                                  localCol, localRow, keepMode_);
+      auto [globalRow, globalCol] = Phase2ITChip::getGlobalPixelCoordinate(
+          chipId, subtype, state.currentCol, state.currentRow, localCol, localRow, keepMode_);
       detSet.push_back(PixelDigi(globalRow, globalCol, adcValues[adcIndex++]));
     }
 
@@ -167,7 +161,6 @@ void BitStreamToPixelProducer::decodeBitStream(const std::vector<bool>& bitstrea
     state.previousRow = state.currentRow;
     state.qcoreCount++;
   }
-
 }
 
 void BitStreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {

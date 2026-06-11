@@ -48,8 +48,10 @@ private:
 
   bool verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const;
   int findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const;
-  std::vector<bool> extractBitStream(
-      const unsigned char* dataPtr, int startWord, int bitstreamSize, int fedSizeInWords) const;
+  std::vector<bool> extractBitStream(const unsigned char* dataPtr,
+                                     int startWord,
+                                     int bitstreamSize,
+                                     int fedSizeInWords) const;
 
   void processFED(const unsigned char* dataPtr,
                   int fedSizeInWords,
@@ -177,8 +179,8 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
 
     // End of this module's data = start of the next module (or the trailer for
     // the last module). Chips are only read within [moduleStartWord, moduleEndWord).
-    int moduleEndWord = (modIdx + 1 < numModules) ? (dataBlockStart + static_cast<int>(moduleOffsets[modIdx + 1]))
-                                                  : trailerStart;
+    int moduleEndWord =
+        (modIdx + 1 < numModules) ? (dataBlockStart + static_cast<int>(moduleOffsets[modIdx + 1])) : trailerStart;
     if (moduleEndWord > fedSizeInWords)
       moduleEndWord = fedSizeInWords;
 
@@ -201,8 +203,8 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
       // Reconstruct bitstream length in bits.
       //   endBit == 0  -> last word is full or chip is empty: size = sizeWords * 32
       //   endBit  > 0  -> last word holds endBit real bits:   size = (sizeWords - 1) * 32 + endBit
-      unsigned int bitstreamSize = (endBit == 0) ? (sizeWords * BITS_PER_WORD)
-                                                 : ((sizeWords - 1) * BITS_PER_WORD + endBit);
+      unsigned int bitstreamSize =
+          (endBit == 0) ? (sizeWords * BITS_PER_WORD) : ((sizeWords - 1) * BITS_PER_WORD + endBit);
 
       std::vector<bool> bitstream = extractBitStream(dataPtr, chipCursor + 1, bitstreamSize, fedSizeInWords);
 
@@ -226,10 +228,8 @@ std::string RawToBitStreamProducer::getBitString(const std::vector<bool>& bits, 
 
 uint32_t RawToBitStreamProducer::readWord(const unsigned char* dataPtr, int wordIdx) const {
   int byteIdx = wordIdx * 4;
-  return (static_cast<uint32_t>(dataPtr[byteIdx])     << 24) |
-         (static_cast<uint32_t>(dataPtr[byteIdx + 1]) << 16) |
-         (static_cast<uint32_t>(dataPtr[byteIdx + 2]) <<  8) |
-          static_cast<uint32_t>(dataPtr[byteIdx + 3]);
+  return (static_cast<uint32_t>(dataPtr[byteIdx]) << 24) | (static_cast<uint32_t>(dataPtr[byteIdx + 1]) << 16) |
+         (static_cast<uint32_t>(dataPtr[byteIdx + 2]) << 8) | static_cast<uint32_t>(dataPtr[byteIdx + 3]);
 }
 
 std::string RawToBitStreamProducer::wordToHexString(uint32_t word) const {

@@ -5,7 +5,7 @@
 namespace {
 
   // Chip -> elink fan-out, keyed by Module_SubType alone (the subtype uniquely determines N_ELinks).
-  // The chip index follows the per-subtype chip -> quadrant order defined in itchip::CHIP_QUADRANT, which differs between detector sections
+  // The chip index follows the per-subtype chip -> quadrant order defined in ChipModuleMap::CHIP_QUADRANT, which differs between detector sections
   // (e.g. TFPX R3/R4 are Y-flipped with respect to TBPX).
   // Each row below is written in that subtype's own chip order.
   const std::map<int, ELinkChipMap::ChipToElinks> kFanoutByType = {

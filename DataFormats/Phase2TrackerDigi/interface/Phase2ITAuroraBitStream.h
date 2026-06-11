@@ -17,8 +17,8 @@ public:
   const bool operator<(const Phase2ITAuroraBitStream& other) { return chipId_ < other.chipId_; }
 
 private:
-  int chipId_;                                   // Chip index within the module
-  int eventsPerStream_;                          // NE: events per stream group
+  int chipId_;                                    // Chip index within the module
+  int eventsPerStream_;                           // NE: events per stream group
   std::vector<std::vector<bool>> auroraStreams_;  // full Aurora bits per stream group
 };
 #endif  // DataFormats_Phase2TrackerDigi_Phase2ITAuroraBitStream_H

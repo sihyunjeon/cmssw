@@ -1,12 +1,7 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
-// Class:      Phase2ITElinkOccupancyAnalyzer
-// Description: Dump the per-elink Aurora wire sizes produced by
-//              BitStreamToAuroraProducer into a flat TTree (one row per
-//              (stream group, module, elink)), together with the module's
-//              cabling-map ModuleInfo (section/layer/ring/subtype) so the
-//              occupancy can be plotted per layout without re-reading
-//              geometry. Keeps the job output minimal: no EDM file needed.
+// Class:      Phase2ITElinkAnalyzer
+// Description: Dump the per-elink Aurora wire sizes produced by BitStreamToAuroraProducer into a flat TTree
 //
 // Author: Si Hyun Jeon, shjeon@cern.ch
 
@@ -31,10 +26,10 @@
 
 #include "TTree.h"
 
-class Phase2ITElinkOccupancyAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources> {
+class Phase2ITElinkAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedResources> {
 public:
-  explicit Phase2ITElinkOccupancyAnalyzer(const edm::ParameterSet&);
-  ~Phase2ITElinkOccupancyAnalyzer() override = default;
+  explicit Phase2ITElinkAnalyzer(const edm::ParameterSet&);
+  ~Phase2ITElinkAnalyzer() override = default;
 
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
   void analyze(const edm::Event&, const edm::EventSetup&) override;
@@ -44,20 +39,20 @@ private:
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
 
   TTree* tree_ = nullptr;
-  Int_t b_group_ = 0;     // NE-stream-group counter (increments per filled product)
-  Int_t b_ne_ = 0;        // events per stream group
-  UInt_t b_detid_ = 0;    // module DetId
-  Int_t b_elink_ = 0;     // elink index within the module (0..nElinks-1)
-  Int_t b_bits_ = 0;      // Aurora wire size of this elink for this group [bits]
-  Int_t b_section_ = 0;   // ModuleInfo.section (TBPX/TFPX/TEPX)
-  Int_t b_layer_ = 0;     // ModuleInfo.layer
-  Int_t b_ring_ = 0;      // ModuleInfo.ring
-  Int_t b_subtype_ = 0;   // ModuleInfo.subtype
+  Int_t b_group_ = 0;    // NE-stream-group counter
+  Int_t b_ne_ = 0;       // events per stream group
+  UInt_t b_detid_ = 0;   // module DetId
+  Int_t b_elink_ = 0;    // elink index within the module (0..nElinks-1)
+  Int_t b_bits_ = 0;     // Aurora wire size of this elink for this group [bits]
+  Int_t b_section_ = 0;  // ModuleInfo.section (TBPX/TFPX/TEPX)
+  Int_t b_layer_ = 0;    // ModuleInfo.layer
+  Int_t b_ring_ = 0;     // ModuleInfo.ring
+  Int_t b_subtype_ = 0;  // ModuleInfo.subtype
 };
 
-Phase2ITElinkOccupancyAnalyzer::Phase2ITElinkOccupancyAnalyzer(const edm::ParameterSet& iConfig)
-    : auroraToken_(consumes<edm::DetSetVector<Phase2ITAuroraBitStream>>(
-          iConfig.getParameter<edm::InputTag>("auroraBitStream"))),
+Phase2ITElinkAnalyzer::Phase2ITElinkAnalyzer(const edm::ParameterSet& iConfig)
+    : auroraToken_(
+          consumes<edm::DetSetVector<Phase2ITAuroraBitStream>>(iConfig.getParameter<edm::InputTag>("auroraBitStream"))),
       cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd>()) {
   usesResource("TFileService");
   edm::Service<TFileService> fs;
@@ -73,17 +68,17 @@ Phase2ITElinkOccupancyAnalyzer::Phase2ITElinkOccupancyAnalyzer(const edm::Parame
   tree_->Branch("subtype", &b_subtype_, "subtype/I");
 }
 
-void Phase2ITElinkOccupancyAnalyzer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+void Phase2ITElinkAnalyzer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("auroraBitStream", edm::InputTag("BitStreamToAuroraProducer"));
-  descriptions.add("Phase2ITElinkOccupancyAnalyzer", desc);
+  descriptions.add("Phase2ITElinkAnalyzer", desc);
 }
 
-void Phase2ITElinkOccupancyAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void Phase2ITElinkAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
   edm::Handle<edm::DetSetVector<Phase2ITAuroraBitStream>> handle;
   iEvent.getByToken(auroraToken_, handle);
   if (!handle.isValid() || handle->empty())
-    return;  // only the group-closing events carry a filled product
+    return;
 
   const auto& cablingMap = iSetup.getData(cablingMapToken_);
 
@@ -106,4 +101,4 @@ void Phase2ITElinkOccupancyAnalyzer::analyze(const edm::Event& iEvent, const edm
   b_group_++;
 }
 
-DEFINE_FWK_MODULE(Phase2ITElinkOccupancyAnalyzer);
+DEFINE_FWK_MODULE(Phase2ITElinkAnalyzer);

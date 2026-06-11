@@ -40,14 +40,14 @@ std::pair<int, int> Phase2ITChip::getGlobalPixelCoordinate(
   // AGGREGATE: Pixel hits in the gap are assigned to the boundary sensor IDs with ADCs being stacked up.
   // KEEP: Pixel hits in the gap are kept with its own sensor IDs.
   // FIXME Most realistic scenario will be AGGREGATE mode but need to check if the ADCs are plainly being stacked up
-  const int rowsPerChip     = keepMode ? kRowsPerChipKeep     : kRowsPerChip;
+  const int rowsPerChip = keepMode ? kRowsPerChipKeep : kRowsPerChip;
   const int largePixelNRows = keepMode ? kLargePixelNRowsKeep : kLargePixelNRows;
-  const int colsPerChip     = keepMode ? kColsPerChipKeep     : kColsPerChip;
+  const int colsPerChip = keepMode ? kColsPerChipKeep : kColsPerChip;
   const int largePixelNCols = keepMode ? kLargePixelNColsKeep : kLargePixelNCols;
 
   // Recover the physical row/col half from (subtype, chipId) via ChipModuleMap.
-  auto q = itchip::quadrantOf(subtype, chipId);
-  const int rowHalf = (q.first  > 0) ? 1 : 0;
+  auto q = ChipModuleMap::quadrantOf(subtype, chipId);
+  const int rowHalf = (q.first > 0) ? 1 : 0;
   const int colHalf = (q.second > 0) ? 1 : 0;
   int rowOffset = rowHalf ? (rowsPerChip + largePixelNRows) : 0;
   int colOffset = colHalf ? (colsPerChip + largePixelNCols) : 0;
@@ -81,7 +81,7 @@ std::vector<Phase2ITQCore> linkQCores(std::vector<Phase2ITQCore> qcores) {
   return qcores;
 }
 
-//Takes in a list of hits and organizes them into the 4x4 QCores that contain them. 
+//Takes in a list of hits and organizes them into the 4x4 QCores that contain them.
 //One pass: bucket hits by qcore position, build one Phase2ITQCore per bucket.
 //std::map keeps buckets sorted by (row, col); we then sort by (col, row) which is the order linkQCores expects.
 std::vector<Phase2ITQCore> Phase2ITChip::getOrganizedQCores() {
