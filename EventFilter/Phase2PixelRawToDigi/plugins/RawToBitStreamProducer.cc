@@ -1,4 +1,4 @@
-// EDProducer that takes FEDRawData and produces ITChipBitStream
+// EDProducer that takes RawDataBuffer and produces ITChipBitStream
 // Very first step of unpacker
 
 #include <memory>
@@ -20,7 +20,8 @@
 
 #include "DataFormats/Common/interface/DetSetVectorNew.h"
 
-#include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
+#include "DataFormats/FEDRawData/interface/RawDataBuffer.h"
+#include "DataFormats/FEDRawData/interface/SLinkRocketHeaders.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/SLinkModuleMap.h"
@@ -55,7 +56,7 @@ private:
                   int fedId,
                   edmNew::DetSetVector<Phase2ITChipBitStream>& output);
 
-  const edm::EDGetTokenT<FEDRawDataCollection> fedRawDataToken_;
+  const edm::EDGetTokenT<RawDataBuffer> fedRawDataToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
 
   std::unique_ptr<SLinkModuleMap> slinkMap_;
@@ -64,7 +65,7 @@ private:
 };
 
 RawToBitStreamProducer::RawToBitStreamProducer(const edm::ParameterSet& iConfig)
-    : fedRawDataToken_(consumes<FEDRawDataCollection>(iConfig.getParameter<edm::InputTag>("fedRawDataCollection"))),
+    : fedRawDataToken_(consumes<RawDataBuffer>(iConfig.getParameter<edm::InputTag>("fedRawDataCollection"))),
       cablingMapToken_(
           esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       debug_(iConfig.getUntrackedParameter<bool>("debug", false)) {
@@ -84,17 +85,48 @@ void RawToBitStreamProducer::beginRun(const edm::Run& iRun, const edm::EventSetu
 
 void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   auto output = std::make_unique<edmNew::DetSetVector<Phase2ITChipBitStream>>();
-  edm::Handle<FEDRawDataCollection> fedRawDataCollection;
-  iEvent.getByToken(fedRawDataToken_, fedRawDataCollection);
-  if (!fedRawDataCollection.isValid()) {
-    throw cms::Exception("RawToBitStreamProducer") << "Invalid FEDRawDataCollection";
+  edm::Handle<RawDataBuffer> rawBuf;
+  iEvent.getByToken(fedRawDataToken_, rawBuf);
+  if (!rawBuf.isValid()) {
+    throw cms::Exception("RawToBitStreamProducer") << "Invalid RawDataBuffer";
   }
+
+  const unsigned int SLINK_HDR_BYTES = sizeof(SLinkRocketHeader_v3);
+  const unsigned int SLINK_TRL_BYTES = sizeof(SLinkRocketTrailer_v3);
+  const unsigned int WRAPPER_WORDS   = (SLINK_HDR_BYTES + SLINK_TRL_BYTES) / BYTES_PER_WORD;
 
   for (const auto& entry : slinkMap_->fedIdToDetIds()) {
     int fedId = entry.first;
-    const FEDRawData& fedData = fedRawDataCollection->FEDData(fedId);
-    const unsigned char* dataPtr = fedData.data();
-    int fedSizeInWords = fedData.size() / 4;
+    auto frag = rawBuf->fragmentData(static_cast<uint32_t>(fedId));
+    if (!frag.isValid()) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "Missing RawDataBuffer fragment for fed " << fedId
+          << ": cabling map lists this FED but the buffer has no source for it.";
+    }
+    auto span = frag.data();
+    const unsigned char* fragPtr = span.data();
+    uint32_t fragSize            = span.size();
+
+    // Validate SLinkRocket wrapper.
+    auto const* sh = reinterpret_cast<const SLinkRocketHeader_v3*>(fragPtr);
+    auto const* st = reinterpret_cast<const SLinkRocketTrailer_v3*>(fragPtr + fragSize - SLINK_TRL_BYTES);
+    if (!sh->verifyMarker()) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "Invalid SLinkRocket BOE for fed " << fedId;
+    }
+    if (!st->verifyMarker()) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "Invalid SLinkRocket EOE for fed " << fedId;
+    }
+    if (st->eventLenBytes() != fragSize) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "SLinkRocket trailer length mismatch for fed " << fedId
+          << ": trailer says " << st->eventLenBytes() << ", actual " << fragSize;
+    }
+
+    // Hand the IT-specific body (IT header + offsets + data + IT trailer)
+    const unsigned char* dataPtr = fragPtr + SLINK_HDR_BYTES;
+    int fedSizeInWords = static_cast<int>(fragSize / BYTES_PER_WORD) - WRAPPER_WORDS;
     processFED(dataPtr, fedSizeInWords, fedId, *output);
   }
   iEvent.put(std::move(output));

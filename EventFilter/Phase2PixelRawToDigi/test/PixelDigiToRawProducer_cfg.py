@@ -52,9 +52,18 @@ process.BitStreamToPixelProducer = cms.EDProducer('BitStreamToPixelProducer',
     phase2ItChipBitStream = cms.InputTag('RawToBitStreamProducer'),
 )
 
-process.FEVTDEBUGoutput = cms.OutputModule('PoolOutputModule',
-    fileName       = cms.untracked.string('output_file.root'),
-    outputCommands = cms.untracked.vstring('drop *'),
+process.load("RecoTracker.TrackProducer.TrackRefitters_cff")
+process.TrackRefitter.src = "generalTracks"
+process.TrackRefitter.NavigationSchool = ""
+
+process.FEVTDEBUGoutput = cms.OutputModule("PoolOutputModule",
+    fileName = cms.untracked.string('output_file.root'),
+    outputCommands = cms.untracked.vstring(
+        'drop *',
+        #'keep RawDataBuffer_*_*_*',
+        #'keep Phase2IT*_*_*_*',  # Save intermediate Phase2ITChipBitStream
+        #'keep PixelDigi*_*_*_*'
+    )
 )
 
 process.user_step = cms.Path(

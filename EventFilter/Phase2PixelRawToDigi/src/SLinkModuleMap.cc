@@ -17,22 +17,24 @@ SLinkModuleMap::SLinkModuleMap(const TrackerDetToDTCELinkCablingMap& cablingMap)
     auto detIds = cablingMap.getAllDetIdsForDTCId(dtcId);
     std::sort(detIds.begin(), detIds.end());
 
+    // Round-robin distribution of a DTC's modules across its S-Links.
+    // Module i (in sorted detId order) goes to S-Link (i % SLINKS_PER_DTC).
     int total = static_cast<int>(detIds.size());
+
+    // Pre-reserve per FED vectors.
     int base = total / SLINKS_PER_DTC;
     int remainder = total % SLINKS_PER_DTC;
-
-    int moduleIndex = 0;
     for (int slinkId = 0; slinkId < SLINKS_PER_DTC; ++slinkId) {
-      int modulesForThisSlink = base + ((slinkId < remainder) ? 1 : 0);
-
       int fedId = static_cast<int>(dtcIndex) * SLINKS_PER_DTC + slinkId;
-      auto& vec = fedIdToDetIds_[fedId];
-      vec.reserve(modulesForThisSlink);
-      for (int i = 0; i < modulesForThisSlink; ++i) {
-        uint32_t detId = detIds[moduleIndex++];
-        vec.push_back(detId);
-        detIdToFedId_[detId] = fedId;
-      }
+      fedIdToDetIds_[fedId].reserve(base + ((slinkId < remainder) ? 1 : 0));
+    }
+
+    for (int i = 0; i < total; ++i) {
+      int slinkId = i % SLINKS_PER_DTC;
+      int fedId = static_cast<int>(dtcIndex) * SLINKS_PER_DTC + slinkId;
+      uint32_t detId = detIds[i];
+      fedIdToDetIds_[fedId].push_back(detId);
+      detIdToFedId_[detId] = fedId;
     }
   }
 }
