@@ -55,6 +55,14 @@ namespace Phase2DAQFormatSpecification {
   static const int MODULE_TYPE_PS = 0xC5;
   static const int MODULE_TYPE_BITS = 8;
 
+  static const int TRAILER_ENDED_BITS = 1;
+  static const int HEADER_VER_MAJ_BITS = 3;
+  static const int HEADER_VER_MIN_BITS = 5;
+  static const int HEADER_MODE_BITS = 3;
+  static const int HEADER_ED_BITS = 1;
+  static const int HEADER_RESERVED_BITS = 8;
+  static const int HEADER_COREID_BITS = 4;
+
   typedef std::bitset<32> Word32Bits;
 
 };  // namespace Phase2DAQFormatSpecification

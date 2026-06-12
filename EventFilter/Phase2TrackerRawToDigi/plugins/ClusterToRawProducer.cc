@@ -220,7 +220,7 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
             (is_2S_module ? MODULE_TYPE_2S : MODULE_TYPE_PS) << (N_BITS_PER_WORD - MODULE_TYPE_BITS)
         );
       else
-        trailer_first_word = Word32Bits(DTC_DAQ_HEADER);
+        trailer_first_word = Word32Bits(0);
       daq_packet.push_back(trailer_first_word);
       for (int i = 0; i < TRAILER_N_LINES - 1; ++i) {
         daq_packet.push_back(Word32Bits(DTC_DAQ_HEADER));
