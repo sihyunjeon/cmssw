@@ -153,7 +153,7 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
         for (size_t i = initByte; i <= endByte; i += N_BYTES_PER_WORD)  // Read 4 bytes (32 bits) at a time
           offsetWords.push_back(readLine(dataPtr, i));
         theOffsets.setValue(offsetWords);
-
+        
         // now read the payload (channel header + clusters)
         // all channel headers should be there, even if 0 clusters are found
         // the loop is not on the actual channel number, as in the ClusterToRaw conversion each channel is split by CIC0_CIC1
@@ -332,7 +332,9 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
         
         // read the tracker trailer
         std::vector<uint32_t> trailerWords;
-        for (size_t i = 0; i < TRAILER_N_LINES * N_BYTES_PER_WORD;
+          
+        size_t tracker_trailer_index = dataPtr.size() - TRAILER_N_LINES * N_BYTES_PER_WORD;
+        for (size_t i = tracker_trailer_index; i < tracker_trailer_index + TRAILER_N_LINES * N_BYTES_PER_WORD;
              i += N_BYTES_PER_WORD)  // Read 4 bytes (32 bits) at a time
         {
           // Extract 4 bytes (32 bits) and pack them into a uint32_t word
