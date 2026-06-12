@@ -71,9 +71,7 @@ protected:
   std::string blockName() const override { return "TrackerTrailer"; }
 
   void setSpecificValue() override {
-    std::cout << std::bitset<32>(values_[0]) << std::endl;
     endED_ = (values_[0]) & ((1u << TRAILER_ENDED_BITS) - 1);
-    std::cout << "set ended to " << endED_ << std::endl;
   }
 
 private:
