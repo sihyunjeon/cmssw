@@ -97,24 +97,29 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
       // Compute the source ID (equivalent to the old FED ID)
       uint64_t source_id = static_cast<uint64_t>(slink_id + SLINKS_PER_DTC * (dtc_id - 1) + TRACKER_HEADER);
 
+      bool is_2S_module = false;
+      bool is_unknown_type = false;
+
+      // add the tracker header
       Word32Bits header_first_word;
       try {
         auto link_to_module_association = cablingMap.dtcELinkIdToDetId(DTCELinkId(dtc_id, index_first, 0));
         const DetId& det_id = link_to_module_association->second;
-        if (trackerGeometry.getDetectorType(det_id) == TrackerGeometry::ModuleType::Ph2SS)
-          header_first_word = Word32Bits(MODULE_TYPE_2S << (N_BITS_PER_WORD - MODULE_TYPE_BITS));
-        else 
-          header_first_word = Word32Bits(MODULE_TYPE_PS << (N_BITS_PER_WORD - MODULE_TYPE_BITS));
+        is_2S_module = (trackerGeometry.getDetectorType(det_id) == TrackerGeometry::ModuleType::Ph2SS);
+        header_first_word = Word32Bits(
+            (is_2S_module ? MODULE_TYPE_2S : MODULE_TYPE_PS) << (N_BITS_PER_WORD - MODULE_TYPE_BITS)
+        );
       } catch (const cms::Exception& e) {
+        is_unknown_type = true;
         header_first_word = Word32Bits(DTC_DAQ_HEADER);
       }      
-      daq_packet.reserve(4);
+      daq_packet.reserve(HEADER_N_LINES);
       daq_packet.push_back(header_first_word);
-      for (int i = 0; i < 3; ++i) {
+      for (int i = 0; i < HEADER_N_LINES - 1; ++i) {
         daq_packet.push_back(Word32Bits(DTC_DAQ_HEADER));
       }
+      
       std::vector<Word32Bits> payload;
-
       unsigned int offset_in_32b_words = 0;
 
       for (int module_id = index_first; module_id < index_last; module_id++) {
@@ -189,7 +194,7 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
         daq_packet.push_back(offset_map[i]);
       }
       // add two reserved lines after the offset section as in the OT data format doc
-      for (int i = 0; i < 2; ++i) {
+      for (int i = 0; i < RESERVED_N_LINES; ++i) {
         daq_packet.push_back(Word32Bits(0));
       }
 
@@ -205,6 +210,20 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
       // Add the payload to the daq_packet
       for (std::size_t i = 0; i < payload.size(); i++) {
         daq_packet.push_back(payload[i]);
+      }
+
+      // Add the tracker trailer
+      daq_packet.reserve(TRAILER_N_LINES);
+      Word32Bits trailer_first_word;
+      if (!is_unknown_type)
+        trailer_first_word = Word32Bits(
+            (is_2S_module ? MODULE_TYPE_2S : MODULE_TYPE_PS) << (N_BITS_PER_WORD - MODULE_TYPE_BITS)
+        );
+      else
+        trailer_first_word = Word32Bits(DTC_DAQ_HEADER);
+      daq_packet.push_back(trailer_first_word);
+      for (int i = 0; i < TRAILER_N_LINES - 1; ++i) {
+        daq_packet.push_back(Word32Bits(DTC_DAQ_HEADER));
       }
 
       // compute the overall fragment size = S-Link header + DAQ data + S-Link trailer

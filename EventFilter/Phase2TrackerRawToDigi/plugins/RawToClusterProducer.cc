@@ -24,7 +24,7 @@
 #include "Geometry/CommonTopologies/interface/PixelTopology.h"
 #include <unordered_map>
 
-#include "EventFilter/Phase2TrackerRawToDigi/interface/TrackerHeader.h"
+#include "EventFilter/Phase2TrackerRawToDigi/interface/TrackerBlock.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/ChannelsOffset.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/Phase2TrackerSpecifications.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/Phase2DAQFormatSpecification.h"
@@ -119,6 +119,7 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
   auto slink_trailer_size = sizeof(SLinkRocketTrailer_v3);
 
   TrackerHeader theHeader;
+  TrackerTrailer theTrailer;
   ChannelsOffset theOffsets;
 
   // Read one entire DTC (#dtcID), as per the producer logic
@@ -328,6 +329,19 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
           }
 
         }  // end loop on channels for this dtc
+        
+        // read the tracker trailer
+        std::vector<uint32_t> trailerWords;
+        for (size_t i = 0; i < TRAILER_N_LINES * N_BYTES_PER_WORD;
+             i += N_BYTES_PER_WORD)  // Read 4 bytes (32 bits) at a time
+        {
+          // Extract 4 bytes (32 bits) and pack them into a uint32_t word
+          trailerWords.push_back(readLine(dataPtr, i));
+        }
+        theTrailer.setValue(trailerWords);
+        if (theTrailer.is2S() != theHeader.is2S())
+          edm::LogError("RawToClusterProducer") << "ERROR: Header and trailer expect different types of modules";
+
       }  // end fed data size > 0
     }  // end loop on 4 slink of this dtc
   }  // end loop on dtcs
