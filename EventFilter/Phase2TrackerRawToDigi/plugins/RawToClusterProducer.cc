@@ -14,7 +14,8 @@
 #include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
 #include "DataFormats/Common/interface/DetSetVectorNew.h"
 #include "DataFormats/Common/interface/Handle.h"
-#include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
+#include "DataFormats/FEDRawData/interface/RawDataBuffer.h"
+#include "DataFormats/FEDRawData/interface/SLinkRocketHeaders.h"
 #include "DataFormats/Phase2TrackerCluster/interface/Phase2TrackerCluster1D.h"
 #include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
@@ -23,7 +24,7 @@
 #include "Geometry/CommonTopologies/interface/PixelTopology.h"
 #include <unordered_map>
 
-#include "EventFilter/Phase2TrackerRawToDigi/interface/TrackerHeader.h"
+#include "EventFilter/Phase2TrackerRawToDigi/interface/TrackerBlock.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/ChannelsOffset.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/Phase2TrackerSpecifications.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/Phase2DAQFormatSpecification.h"
@@ -40,7 +41,8 @@ public:
   void beginRun(const edm::Run&, const edm::EventSetup&) override;
 
   int getLineIndex(int channelIdx, unsigned int iline);
-  uint32_t readLine(const unsigned char* dataPtr, int lineIdx);
+  uint32_t readLine(std::span<const unsigned char> dataPtr, int lineIdx);
+
   void readPayload(std::vector<uint32_t>& clusterWords,
                    std::vector<uint32_t>& lines,
                    int numClusters,
@@ -61,7 +63,7 @@ public:
 private:
   void produce(edm::Event&, const edm::EventSetup&) override;
 
-  const edm::EDGetTokenT<FEDRawDataCollection> fedRawDataToken_;
+  const edm::EDGetTokenT<RawDataBuffer> rawDataBufferToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   const edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> trackerGeometryToken_;
   const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> trackerTopologyToken_;
@@ -74,7 +76,7 @@ private:
 };
 
 RawToClusterProducer::RawToClusterProducer(const edm::ParameterSet& iConfig)
-    : fedRawDataToken_(consumes<FEDRawDataCollection>(iConfig.getParameter<edm::InputTag>("fedRawDataCollection"))),
+    : rawDataBufferToken_(consumes<RawDataBuffer>(iConfig.getParameter<edm::InputTag>("fedDataBuffer"))),
       cablingMapToken_(
           esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       trackerGeometryToken_(esConsumes<TrackerGeometry, TrackerDigiGeometryRecord, edm::Transition::BeginRun>()),
@@ -111,28 +113,25 @@ void RawToClusterProducer::beginRun(const edm::Run& iRun, const edm::EventSetup&
 void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   auto outputClusterCollection = std::make_unique<Phase2TrackerCluster1DCollectionNew>();
 
-  edm::Handle<FEDRawDataCollection> fedRawDataCollection;
-  iEvent.getByToken(fedRawDataToken_, fedRawDataCollection);
+  const auto& rawDataBuffer = iEvent.get(rawDataBufferToken_);
+
+  auto slink_header_size = sizeof(SLinkRocketHeader_v3);
+  auto slink_trailer_size = sizeof(SLinkRocketTrailer_v3);
 
   TrackerHeader theHeader;
+  TrackerTrailer theTrailer;
   ChannelsOffset theOffsets;
 
-  if (!fedRawDataCollection.isValid()) {
-    edm::LogError("RawtoClusterProducer") << "ERROR: No FEDRawDataCollection found!";
-    return;
-  }
-
   // Read one entire DTC (#dtcID), as per the producer logic
-  //     unsigned int dtcID = 180; // dtc processing 2S modules
-  //     unsigned int dtcID = 209; // dtc processing PS modules
   for (int dtcID = MIN_DTC_ID; dtcID < MAX_DTC_ID + 1; dtcID++) {
     // read the 4 slinks
     for (unsigned int iSlink = 0; iSlink < SLINKS_PER_DTC; iSlink++) {
       // as defined in the DAQProducer code
       unsigned totID = iSlink + SLINKS_PER_DTC * (dtcID - 1) + CMSSW_TRACKER_ID;
-      const FEDRawData& fedData = fedRawDataCollection->FEDData(totID);
+      auto const& fedData = rawDataBuffer.fragmentData(totID);
+      
       if (fedData.size() > 0) {
-        const unsigned char* dataPtr = fedData.data();
+        auto dataPtr = fedData.payload(slink_header_size, slink_trailer_size);
 
         // read the header
         std::vector<uint32_t> headerWords;
@@ -194,8 +193,11 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
             continue;
           }
 
+          if (theHeader.is2S() != is2SModule)
+            edm::LogError("RawToClusterProducer") << "ERROR: Header for channel " << iChannel << " expects a different type of module";
+
           // find the channel offset
-          int initial_offset = (HEADER_N_LINES + MODULES_PER_SLINK) * N_BYTES_PER_WORD;
+          int initial_offset = initByte + (nOffsetsLines + RESERVED_N_LINES) * N_BYTES_PER_WORD;
           int idx = initial_offset + theOffsets.getOffsetForChannel(iChannel) * N_BYTES_PER_WORD;
 
           // get the channel header and unpack it
@@ -327,6 +329,19 @@ void RawToClusterProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
           }
 
         }  // end loop on channels for this dtc
+        
+        // read the tracker trailer
+        std::vector<uint32_t> trailerWords;
+        for (size_t i = 0; i < TRAILER_N_LINES * N_BYTES_PER_WORD;
+             i += N_BYTES_PER_WORD)  // Read 4 bytes (32 bits) at a time
+        {
+          // Extract 4 bytes (32 bits) and pack them into a uint32_t word
+          trailerWords.push_back(readLine(dataPtr, i));
+        }
+        theTrailer.setValue(trailerWords);
+        if (theTrailer.is2S() != theHeader.is2S())
+          edm::LogError("RawToClusterProducer") << "ERROR: Header and trailer expect different types of modules";
+
       }  // end fed data size > 0
     }  // end loop on 4 slink of this dtc
   }  // end loop on dtcs
@@ -339,10 +354,11 @@ int RawToClusterProducer::getLineIndex(int channelIdx, unsigned int iline) {
   return channelIdx + N_BYTES_PER_WORD + iline * N_BYTES_PER_WORD;
 }
 
-uint32_t RawToClusterProducer::readLine(const unsigned char* dataPtr, int lineIdx) {
+uint32_t RawToClusterProducer::readLine(std::span<const unsigned char> dataPtr, int lineIdx) {
   uint32_t line = (static_cast<uint32_t>(dataPtr[lineIdx]) << 24) |
                   (static_cast<uint32_t>(dataPtr[lineIdx + 1]) << 16) |
-                  (static_cast<uint32_t>(dataPtr[lineIdx + 2]) << 8) | (static_cast<uint32_t>(dataPtr[lineIdx + 3]));
+                  (static_cast<uint32_t>(dataPtr[lineIdx + 2]) << 8) | 
+                  (static_cast<uint32_t>(dataPtr[lineIdx + 3]));
 
   return line;
 }

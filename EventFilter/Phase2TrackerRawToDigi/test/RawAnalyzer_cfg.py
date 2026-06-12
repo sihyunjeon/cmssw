@@ -25,16 +25,14 @@ process.GlobalTag = GlobalTag(process.GlobalTag, '133X_mcRun4_realistic_v1', '')
 process.maxEvents = cms.untracked.PSet(input = cms.untracked.int32(-1))
 
 process.source = cms.Source("PoolSource",
-  fileNames = cms.untracked.vstring( "file:outputFEDRawData.root")
+  fileNames = cms.untracked.vstring( "file:raw2clusters.root")
 #  fileNames = cms.untracked.vstring( "file:srecko_output_dataset.root")
 )
 
 process.Analyzer = cms.EDAnalyzer("RawAnalyzer",
 
-  # fedRawDataCollection = cms.InputTag("Packer") # RAW from running packer
-                                  
-  fedRawDataCollection = cms.InputTag("dthDAQToFEDRawData") # RAW came from Alaa's DTH to RAW converter.
-  #fedRawDataCollection = cms.InputTag("rawDataCollector") # RAW came from Srecko's DTH to RAW converter.
+  fedDataBuffer = cms.InputTag("Packer") # RAW from running packer
+  #fedDataBuffer = cms.InputTag("rawDataCollector") # RAW came from Srecko's DTH to RAW converter.
 )
 
 process.anal = cms.Path(process.Analyzer)

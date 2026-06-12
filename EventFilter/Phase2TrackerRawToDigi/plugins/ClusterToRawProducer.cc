@@ -1,4 +1,5 @@
 #include <memory>
+#include <vector>
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDProducer.h"
@@ -12,10 +13,8 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2TrackerDigi.h"
 #include "DataFormats/Phase2TrackerCluster/interface/Phase2TrackerCluster1D.h"
 
-#include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
-#include "DataFormats/FEDRawData/interface/FEDRawData.h"
-#include "DataFormats/FEDRawData/interface/FEDHeader.h"
-#include "DataFormats/FEDRawData/interface/FEDTrailer.h"
+#include "DataFormats/FEDRawData/interface/RawDataBuffer.h"
+#include "DataFormats/FEDRawData/interface/SLinkRocketHeaders.h"
 #include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
 #include "CondFormats/SiPhase2TrackerObjects/interface/DTCELinkId.h"
 #include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
@@ -46,13 +45,13 @@ private:
     data_ptr[word_index * 4 + 3] = (hex_word >> 0) & 0xFF;   // Least significant byte (bits 7-0)
   }
 };
-
+   
 ClusterToRawProducer::ClusterToRawProducer(const edm::ParameterSet& iConfig)
     : clusterCollectionToken_(
           consumes<Phase2TrackerCluster1DCollectionNew>(iConfig.getParameter<edm::InputTag>("Phase2Clusters"))),
       cablingMapToken_(esConsumes()),
       trackerGeometryToken_(esConsumes<TrackerGeometry, TrackerDigiGeometryRecord>()) {
-  produces<FEDRawDataCollection>();
+  produces<RawDataBuffer>();
 }
 
 ClusterToRawProducer::~ClusterToRawProducer() {}
@@ -71,28 +70,56 @@ void ClusterToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
   edm::Handle<Phase2TrackerCluster1DCollectionNew> clusters_handle;
   iEvent.getByToken(clusterCollectionToken_, clusters_handle);
 
-  // Create FEDRawDataCollection to store the output
-  auto fedRawDataCollection = std::make_unique<FEDRawDataCollection>();
-
   using namespace Phase2TrackerSpecifications;
   using namespace Phase2DAQFormatSpecification;
+
+  constexpr size_t slink_header_size = sizeof(SLinkRocketHeader_v3);
+  constexpr size_t slink_trailer_size = sizeof(SLinkRocketTrailer_v3);
+
+  // prepare a vector to contain all the slink fragments
+  struct SlinkFragment {
+    uint64_t source_id;
+    std::vector<unsigned char> data;
+  };
+  std::vector<SlinkFragment> allSlinkFragments;
+  allSlinkFragments.reserve((MAX_DTC_ID - MIN_DTC_ID + 1) * (MAX_SLINK_ID + 1));
+
+  size_t totalSize = 0;
 
   for (int dtc_id = MIN_DTC_ID; dtc_id < MAX_DTC_ID + 1; dtc_id++) {
     for (int slink_id = 0; slink_id < MAX_SLINK_ID + 1; slink_id++) {
       int index_first = slink_id * MODULES_PER_SLINK;
       int index_last = (slink_id + 1) * MODULES_PER_SLINK;
 
-      FEDRawData slink_daq_stream;
-
       std::vector<Word32Bits> daq_packet;
       std::vector<Word32Bits> offset_map(CICs_PER_SLINK / 2, Word32Bits(0));
 
-      daq_packet.reserve(4);
-for (int i = 0; i < 4; ++i) {
+      // Compute the source ID (equivalent to the old FED ID)
+      uint64_t source_id = static_cast<uint64_t>(slink_id + SLINKS_PER_DTC * (dtc_id - 1) + TRACKER_HEADER);
+
+      bool is_2S_module = false;
+      bool is_unknown_type = false;
+
+      // add the tracker header
+      Word32Bits header_first_word;
+      try {
+        auto link_to_module_association = cablingMap.dtcELinkIdToDetId(DTCELinkId(dtc_id, index_first, 0));
+        const DetId& det_id = link_to_module_association->second;
+        is_2S_module = (trackerGeometry.getDetectorType(det_id) == TrackerGeometry::ModuleType::Ph2SS);
+        header_first_word = Word32Bits(
+            (is_2S_module ? MODULE_TYPE_2S : MODULE_TYPE_PS) << (N_BITS_PER_WORD - MODULE_TYPE_BITS)
+        );
+      } catch (const cms::Exception& e) {
+        is_unknown_type = true;
+        header_first_word = Word32Bits(DTC_DAQ_HEADER);
+      }      
+      daq_packet.reserve(HEADER_N_LINES);
+      daq_packet.push_back(header_first_word);
+      for (int i = 0; i < HEADER_N_LINES - 1; ++i) {
         daq_packet.push_back(Word32Bits(DTC_DAQ_HEADER));
       }
+      
       std::vector<Word32Bits> payload;
-
       unsigned int offset_in_32b_words = 0;
 
       for (int module_id = index_first; module_id < index_last; module_id++) {
@@ -162,32 +189,92 @@ for (int i = 0; i < 4; ++i) {
         }
       }
 
-      // Add the offset map to the slink_daq_stream
+      // Add the offset map to the daq_packet
       for (std::size_t i = 0; i < offset_map.size(); i++) {
         daq_packet.push_back(offset_map[i]);
       }
+      // add two reserved lines after the offset section as in the OT data format doc
+      for (int i = 0; i < RESERVED_N_LINES; ++i) {
+        daq_packet.push_back(Word32Bits(0));
+      }
 
-      // Add the payload to the slink_daq_stream
+      // Pad payload to 128b 
+      size_t payload_data_bytes = payload.size() * N_BYTES_PER_WORD;
+      size_t padded_payload_bytes = (payload_data_bytes + 15) & ~static_cast<size_t>(15);  // pad to 16-byte boundary, required by RawDataBuffer
+      size_t padding_bytes = padded_payload_bytes - payload_data_bytes;
+      size_t padding_words = padding_bytes / N_BYTES_PER_WORD;
+      for (size_t i = 0; i < padding_words; ++i) {
+        payload.push_back(Word32Bits(0));
+      }
+        
+      // Add the payload to the daq_packet
       for (std::size_t i = 0; i < payload.size(); i++) {
         daq_packet.push_back(payload[i]);
       }
 
-      slink_daq_stream.resize(daq_packet.size() * N_BYTES_PER_WORD,
-                              N_BYTES_PER_WORD);  // Resize the buffer to fit all 32-bit words
-      unsigned char* data_ptr = slink_daq_stream.data();
-
-      for (size_t word_index = 0; word_index < daq_packet.size(); ++word_index) {
-        insertHexWordAt(data_ptr, word_index, (daq_packet[word_index].to_ulong()));
+      // Add the tracker trailer
+      daq_packet.reserve(TRAILER_N_LINES);
+      Word32Bits trailer_first_word;
+      if (!is_unknown_type)
+        trailer_first_word = Word32Bits(
+            (is_2S_module ? MODULE_TYPE_2S : MODULE_TYPE_PS) << (N_BITS_PER_WORD - MODULE_TYPE_BITS)
+        );
+      else
+        trailer_first_word = Word32Bits(DTC_DAQ_HEADER);
+      daq_packet.push_back(trailer_first_word);
+      for (int i = 0; i < TRAILER_N_LINES - 1; ++i) {
+        daq_packet.push_back(Word32Bits(DTC_DAQ_HEADER));
       }
 
-      size_t actual_used_bytes = daq_packet.size() * N_BYTES_PER_WORD;  // Total size used
-      slink_daq_stream.resize(actual_used_bytes, N_BYTES_PER_WORD);
+      // compute the overall fragment size = S-Link header + DAQ data + S-Link trailer
+      size_t daq_data_bytes = daq_packet.size() * N_BYTES_PER_WORD;
+      size_t fragment_bytes = slink_header_size + daq_data_bytes + slink_trailer_size;
 
-      fedRawDataCollection.get()->FEDData(slink_id + SLINKS_PER_DTC * (dtc_id - 1) + TRACKER_HEADER) = slink_daq_stream;
+      std::vector<unsigned char> slink_bytes(fragment_bytes, 0);
+      unsigned char* buffer = slink_bytes.data();
+
+      // S-Link header first
+      // following vars are tmp set as in 
+      // https://github.com/cms-sw/cmssw/blob/2f70a0116630c1586a2a26ffb4b7d256bb8f4b36/DataFormats/FEDRawData/test/TestWriteRawDataBuffer.cc#L36
+      uint16_t l1a_types = 1;  //set provisionally to 1, to be revised later
+      uint8_t l1a_phys = 0;
+      uint8_t emu_status = 2;  //set 2 indicating fragment generated by DTH (emulator)
+      new ((void*)buffer) SLinkRocketHeader_v3(
+          source_id, l1a_types, l1a_phys, emu_status, static_cast<uint64_t>(eventId_));
+
+      // insert tracker data
+      unsigned char* daq_data_ptr = buffer + slink_header_size;
+      for (size_t word_index = 0; word_index < daq_packet.size(); ++word_index) {
+        insertHexWordAt(daq_data_ptr, word_index, (daq_packet[word_index].to_ulong()));
+      }
+
+      // S-Link trailer at the end
+      // following vars are tmp set as in 
+      // https://github.com/cms-sw/cmssw/blob/2f70a0116630c1586a2a26ffb4b7d256bb8f4b36/DataFormats/FEDRawData/test/TestWriteRawDataBuffer.cc#L36
+      uint16_t slt_status = 0;  
+      uint16_t crc = 0;
+      uint32_t orbit_id = 0x3989;
+      uint16_t bx_id = 2200;
+        //set 2 indicating fragment generated by DTH (emulator)
+      new ((void*)(buffer + slink_header_size + daq_data_bytes)) SLinkRocketTrailer_v3(
+           slt_status, crc, orbit_id, bx_id, fragment_bytes >> SLR_WORD_NUM_BYTES_SHIFT, 0);
+
+      totalSize += fragment_bytes;  
+      allSlinkFragments.push_back({source_id, std::move(slink_bytes)});
     }
   }
 
-  iEvent.put(std::move(fedRawDataCollection));
+  // pad again total size to 16byte boundary (not sure if needed)
+  size_t paddedTotalSize = (totalSize + 15) & ~static_cast<size_t>(15);
+
+  // Create the RawDataBuffer and add each slink fragment as a source
+  auto rawDataBuffer = std::make_unique<RawDataBuffer>(paddedTotalSize);
+
+  for (auto& fragment : allSlinkFragments) {
+    rawDataBuffer->addSource(fragment.source_id, fragment.data.data(), fragment.data.size());
+  }
+
+  iEvent.put(std::move(rawDataBuffer));
 }
 
 DEFINE_FWK_MODULE(ClusterToRawProducer);

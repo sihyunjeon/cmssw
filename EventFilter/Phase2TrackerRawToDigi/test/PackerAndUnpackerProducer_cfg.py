@@ -76,17 +76,17 @@ process.Packer = cms.EDProducer("ClusterToRawProducer",
 )
 
 process.Analyzer = cms.EDAnalyzer("RawAnalyzer",
-    fedRawDataCollection = cms.InputTag("Packer")
+    fedDataBuffer = cms.InputTag("Packer")
 )
 process.Unpacker = cms.EDProducer("RawToClusterProducer",
-    fedRawDataCollection = cms.InputTag("Packer")
+    fedDataBuffer = cms.InputTag("Packer")
 )
 
 process.out = cms.OutputModule("PoolOutputModule",
     splitLevel = cms.untracked.int32(0),
     eventAutoFlushCompressedSize = cms.untracked.int32(5242880),                              
     outputCommands = cms.untracked.vstring('drop *',
-      'keep FEDRawDataCollection_*_*_*',
+      'keep RawDataBuffer_*_*_*',
       'keep Phase2TrackerCluster1D*_*_*_*',
       'keep *_remadeSiPhase2Clusters_*_*',
       'keep *_Packer_*_*',
