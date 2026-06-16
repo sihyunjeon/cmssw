@@ -21,6 +21,7 @@ __init__.py
 # ignore folders with inputs
 1ev/
 2ev/
+slinkraw/
 
 # ignore some IDE related files
 *.xcodeproj
