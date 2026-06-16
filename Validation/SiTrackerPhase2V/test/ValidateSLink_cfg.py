@@ -38,7 +38,7 @@ process.PoolDBESSource = cms.ESSource('PoolDBESSource', process.CondDB,
 )
 process.es_prefer_local_cabling = cms.ESPrefer('PoolDBESSource', '')
 
-process.itRawDQM = cms.EDProducer('Dummy',
+process.itRawDQM = cms.EDProducer('Phase2ITValidateSLink',
     src      = cms.InputTag('BitStreamToRawProducer'),
     firstFed = cms.untracked.int32(0),
     nFeds    = cms.untracked.int32(576),
