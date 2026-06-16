@@ -21,10 +21,10 @@
 #include <string>
 #include <vector>
 
-class Dummy : public DQMEDAnalyzer {
+class Phase2ITValidateSLink: public DQMEDAnalyzer {
 public:
-  explicit Dummy(const edm::ParameterSet& iConfig);
-  ~Dummy() override = default;
+  explicit Phase2ITValidateSLink(const edm::ParameterSet& iConfig);
+  ~Phase2ITValidateSLink() override = default;
   void dqmBeginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) override;
   void analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) override;
   void bookHistograms(DQMStore::IBooker& ibooker,
@@ -65,7 +65,7 @@ private:
   MonitorElement* me_slinkOccupancyMap_   = nullptr;
 };
 
-Dummy::Dummy(const edm::ParameterSet& iConfig)
+Phase2ITValidateSLink::Phase2ITValidateSLink(const edm::ParameterSet& iConfig)
     : fedRawToken_(consumes<FEDRawDataCollection>(iConfig.getParameter<edm::InputTag>("src"))),
       cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap,
                                   TrackerDetToDTCELinkCablingMapRcd,
@@ -73,10 +73,10 @@ Dummy::Dummy(const edm::ParameterSet& iConfig)
       firstFed_(iConfig.getUntrackedParameter<int>("firstFed", 0)),
       nFeds_(iConfig.getUntrackedParameter<int>("nFeds", 576)),
       folder_(iConfig.getUntrackedParameter<std::string>("folder", "Phase2IT/RawData")) {
-  edm::LogInfo("Dummy") << ">>> Construct Dummy";
+  edm::LogInfo("Phase2ITValidateSLink") << ">>> Construct Phase2ITValidateSLink";
 }
 
-void Dummy::dqmBeginRun(const edm::Run&, const edm::EventSetup& iSetup) {
+void Phase2ITValidateSLink::dqmBeginRun(const edm::Run&, const edm::EventSetup& iSetup) {
   cablingMap_ = &iSetup.getData(cablingMapToken_);
 
   // Populate dtcIds_ from the cabling map (replace hard-coded list)
@@ -86,7 +86,7 @@ void Dummy::dqmBeginRun(const edm::Run&, const edm::EventSetup& iSetup) {
   nDTCs_ = dtcIds_.size();
 }
 
-void Dummy::bookHistograms(DQMStore::IBooker& ibooker,
+void Phase2ITValidateSLink::bookHistograms(DQMStore::IBooker& ibooker,
                            edm::Run const&,
                            edm::EventSetup const&) {
   ibooker.setCurrentFolder(folder_);
@@ -141,7 +141,7 @@ void Dummy::bookHistograms(DQMStore::IBooker& ibooker,
   me_slinkOccupancyMap_->getTH1()->SetOption("COLZ");
 }
 
-void Dummy::bookDTCHistos(DQMStore::IBooker& ibooker) {
+void Phase2ITValidateSLink::bookDTCHistos(DQMStore::IBooker& ibooker) {
   mes_slinkOccupancyPerDTC_.resize(nDTCs_, nullptr);
 
   for (int i = 0; i < nDTCs_; i++) {
@@ -154,7 +154,7 @@ void Dummy::bookDTCHistos(DQMStore::IBooker& ibooker) {
   }
 }
 
-void Dummy::analyze(const edm::Event& iEvent, const edm::EventSetup&) {
+void Phase2ITValidateSLink::analyze(const edm::Event& iEvent, const edm::EventSetup&) {
   edm::Handle<FEDRawDataCollection> raw;
   iEvent.getByToken(fedRawToken_, raw);
   if (!raw.isValid()) return;
@@ -183,13 +183,13 @@ void Dummy::analyze(const edm::Event& iEvent, const edm::EventSetup&) {
   }
 }
 
-void Dummy::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+void Phase2ITValidateSLink::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("src", edm::InputTag("BitStreamToRawProducer"));
   desc.addUntracked<int>("firstFed", 0);
   desc.addUntracked<int>("nFeds", 576);
   desc.addUntracked<std::string>("folder", "Phase2IT/RawData");
-  descriptions.add("dummy", desc);
+  descriptions.add("Phase2ITValidateSLink", desc);
 }
 
-DEFINE_FWK_MODULE(Dummy);
+DEFINE_FWK_MODULE(Phase2ITValidateSLink);
