@@ -5,7 +5,7 @@ options = VarParsing.VarParsing('analysis')
 options.register('inputDQM', 'file:output.root',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
-                 'DQM file produced by dummy.py')
+                 'DQM file produced by ValidateSLink_cfg.py')
 options.parseArguments()
 
 process = cms.Process('HARVEST')
