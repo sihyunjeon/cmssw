@@ -1,8 +1,10 @@
 #include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
 #include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
 #include "DataFormats/Common/interface/Handle.h"
-#include "DataFormats/FEDRawData/interface/FEDRawData.h"
-#include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
+// #include "DataFormats/FEDRawData/interface/FEDRawData.h"
+// #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
+#include "DataFormats/FEDRawData/interface/RawDataBuffer.h"
+#include "DataFormats/FEDRawData/interface/SLinkRocketHeaders.h"
 #include "DQMServices/Core/interface/DQMEDAnalyzer.h"
 #include "DQMServices/Core/interface/DQMStore.h"
 #include "DQMServices/Core/interface/MonitorElement.h"
@@ -35,11 +37,11 @@ public:
 private:
   void bookDTCHistos(DQMStore::IBooker& ibooker);
 
-  const edm::EDGetTokenT<FEDRawDataCollection> fedRawToken_;
+  const edm::EDGetTokenT<RawDataBuffer> rawDataToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap,
                         TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
-  const int firstFed_;
-  const int nFeds_;
+  const int firstRawData_;
+  const int nRawDatas_;
   const std::string folder_;
 
   const TrackerDetToDTCELinkCablingMap* cablingMap_ = nullptr;
@@ -51,7 +53,7 @@ private:
   static constexpr int nQuarters_ = 4;          // 36 DTCs = 4 quarters of 9
 
   // Simple histograms
-  MonitorElement* me_fedSize_         = nullptr;  // FED payload (bytes)
+  MonitorElement* me_rawDataSize_         = nullptr;  // RawData payload (bytes)
   MonitorElement* me_slinkOccupancy_  = nullptr;  // occupancy across all SLinks
 
   // Per-DTC: 16 SLink bins, <occupancy> with across-event RMS error bars
@@ -66,12 +68,12 @@ private:
 };
 
 Phase2ITValidateSLink::Phase2ITValidateSLink(const edm::ParameterSet& iConfig)
-    : fedRawToken_(consumes<FEDRawDataCollection>(iConfig.getParameter<edm::InputTag>("src"))),
+    : rawDataToken_(consumes<RawDataBuffer>(iConfig.getParameter<edm::InputTag>("src"))),
       cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap,
                                   TrackerDetToDTCELinkCablingMapRcd,
                                   edm::Transition::BeginRun>()),
-      firstFed_(iConfig.getUntrackedParameter<int>("firstFed", 0)),
-      nFeds_(iConfig.getUntrackedParameter<int>("nFeds", 576)),
+      firstRawData_(iConfig.getUntrackedParameter<int>("firstRawData", 0)),
+      nRawDatas_(iConfig.getUntrackedParameter<int>("nRawDatas", 576)),
       folder_(iConfig.getUntrackedParameter<std::string>("folder", "Phase2IT/RawData")) {
   edm::LogInfo("Phase2ITValidateSLink") << ">>> Construct Phase2ITValidateSLink";
 }
@@ -91,8 +93,8 @@ void Phase2ITValidateSLink::bookHistograms(DQMStore::IBooker& ibooker,
                            edm::EventSetup const&) {
   ibooker.setCurrentFolder(folder_);
 
-  me_fedSize_ = ibooker.book1D("fedSize",
-                               "FED payload size;bytes;FED entries",
+  me_rawDataSize_ = ibooker.book1D("rawDataSize",
+                               "RawData payload size;bytes;RawData entries",
                                200, 0., 16000.);
 
   // Coarser binning; SLink-occupancy axis runs 0 -> 1.2 (the one exception).
@@ -155,23 +157,33 @@ void Phase2ITValidateSLink::bookDTCHistos(DQMStore::IBooker& ibooker) {
 }
 
 void Phase2ITValidateSLink::analyze(const edm::Event& iEvent, const edm::EventSetup&) {
-  edm::Handle<FEDRawDataCollection> raw;
-  iEvent.getByToken(fedRawToken_, raw);
+  edm::Handle<RawDataBuffer> raw;
+  iEvent.getByToken(rawDataToken_, raw);
   if (!raw.isValid()) return;
 
   const double trigger_rate    = 750.0e3;   // Hz
   const double slink_bandwidth = 25.0e9;    // bits/s
 
-  for (int fid = firstFed_; fid < firstFed_ + nFeds_; ++fid) {
-    const size_t bytes = raw->FEDData(fid).size();
-    me_fedSize_->Fill(static_cast<double>(bytes));
+  for (int fid = firstRawData_; fid < firstRawData_ + nRawDatas_; ++fid) {
+    //const size_t bytes = raw->rawData(fid).size();
+    auto frag = raw->fragmentData(static_cast<uint32_t>(fid));
+    if (!frag.isValid()) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "Missing RawDataBuffer fragment for fed " << fid
+          << ": cabling map lists this FED but the buffer has no source for it.";
+    }
+    auto span = frag.data();
+    //const unsigned char* fragPtr = span.data();
+    uint32_t fragSize            = span.size();
+    //me_rawDataSize_->Fill(static_cast<double>(bytes));
+    me_rawDataSize_->Fill(static_cast<double>(fragSize));
 
     const int dtcIdx  = fid / nslinksPerDTC_;
     const int slinkId = fid % nslinksPerDTC_;
     if (dtcIdx >= nDTCs_) continue;
 
     const double occupancy =
-        (static_cast<double>(bytes) * 8.0 * trigger_rate) / slink_bandwidth;
+        (static_cast<double>(fragSize) * 8.0 * trigger_rate) / slink_bandwidth;
 
     me_slinkOccupancy_->Fill(occupancy);
     mes_slinkOccupancyPerDTC_[dtcIdx]->Fill(slinkId, occupancy);
@@ -186,8 +198,8 @@ void Phase2ITValidateSLink::analyze(const edm::Event& iEvent, const edm::EventSe
 void Phase2ITValidateSLink::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("src", edm::InputTag("BitStreamToRawProducer"));
-  desc.addUntracked<int>("firstFed", 0);
-  desc.addUntracked<int>("nFeds", 576);
+  desc.addUntracked<int>("firstRawData", 0);
+  desc.addUntracked<int>("nRawDatas", 576);
   desc.addUntracked<std::string>("folder", "Phase2IT/RawData");
   descriptions.add("Phase2ITValidateSLink", desc);
 }
