@@ -17,6 +17,7 @@
 #include "FWCore/Utilities/interface/InputTag.h"
 #include "FWCore/Utilities/interface/Transition.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,7 @@ private:
   int nDTCs_ = 36;
   int nslinksPerDTC_ = 16;
   std::vector<int> dtcIds_;
+  static constexpr int nQuarters_ = 4;          // 36 DTCs = 4 quarters of 9
 
   // Simple histograms
   MonitorElement* me_fedSize_         = nullptr;  // FED payload (bytes)
@@ -54,6 +56,9 @@ private:
 
   // Per-DTC: 16 SLink bins, <occupancy> with across-event RMS error bars
   std::vector<MonitorElement*> mes_slinkOccupancyPerDTC_;
+
+  // Combined occupancy distribution per detector quarter (DTC idx 0-8, 9-17, 18-26, 27-35)
+  std::vector<MonitorElement*> mes_slinkOccupancyPerQuarter_;
 
   // Cross-DTC overview + 2D heatmap
   MonitorElement* me_slinkOccupancyByDTC_ = nullptr;
@@ -90,26 +95,50 @@ void Dummy::bookHistograms(DQMStore::IBooker& ibooker,
                                "FED payload size;bytes;FED entries",
                                200, 0., 16000.);
 
+  // Coarser binning; SLink-occupancy axis runs 0 -> 1.2 (the one exception).
   me_slinkOccupancy_ = ibooker.book1D("slinkOccupancy",
-                                       "SLink occupancy;occupancy;SLink entries",
-                                       150, 0., 1.5);
+                                       "Per-Event SLink occupancy;occupancy;SLink entries",
+                                       24, 0., 1.2);
 
   bookDTCHistos(ibooker);
 
-  // Cross-DTC overview: 1 bin per DTC, <occupancy> with across-event RMS error bars
+  // Four combined occupancy distributions, one per detector quarter.
+  mes_slinkOccupancyPerQuarter_.resize(nQuarters_, nullptr);
+  for (int q = 0; q < nQuarters_; q++) {
+    const int firstIdx = q * 9;
+    const int lastIdx = std::min(q * 9 + 8, nDTCs_ - 1);
+    const int firstDtc = (firstIdx < nDTCs_) ? dtcIds_[firstIdx] : 0;
+    const int lastDtc = (lastIdx >= 0) ? dtcIds_[lastIdx] : 0;
+    mes_slinkOccupancyPerQuarter_[q] = ibooker.book1D(
+        ("slinkOccupancyQuarter_" + std::to_string(firstDtc) + "_" + std::to_string(lastDtc)).c_str(),
+        ("Per-Event SLink occupancy, DTCs " + std::to_string(firstDtc) + "-" + std::to_string(lastDtc) +
+         ";occupancy;SLink entries").c_str(),
+        50, 0., 1.0);
+  }
+
+  // Cross-DTC overview: 1 bin per DTC, <occupancy> with across-event RMS error bars.
   me_slinkOccupancyByDTC_ = ibooker.bookProfile(
       "slinkOccupancyByDTC",
-      "Mean SLink occupancy by DTC;DTC index;<occupancy>",
+      "Mean SLink occupancy by DTC;DTC;<occupancy>",
       nDTCs_, -0.5, nDTCs_ - 0.5,
-      0., 1.5);
+      0., 1.0);
 
-  // 2D heatmap of all 576 SLinks in (DTC index, SLink index)
+  // 2D heatmap of all 576 SLinks in (DTC, SLink index).
   me_slinkOccupancyMap_ = ibooker.bookProfile2D(
       "slinkOccupancyMap",
-      "Mean SLink occupancy;DTC index;SLink index;<occupancy>",
+      "Mean SLink occupancy;DTC;SLink index;<occupancy>",
       nDTCs_, -0.5, nDTCs_ - 0.5,
       nslinksPerDTC_, -0.5, nslinksPerDTC_ - 0.5,
-      0., 1.5);
+      0., 1.0);
+
+  // Label DTC axes with the real DTC numbers (11-19, 21-29, ...) instead of index.
+  for (int i = 0; i < nDTCs_; i++) {
+    me_slinkOccupancyByDTC_->setBinLabel(i + 1, std::to_string(dtcIds_[i]), 1);
+    me_slinkOccupancyMap_->setBinLabel(i + 1, std::to_string(dtcIds_[i]), 1);
+  }
+
+  // Draw the 2D map with a Z-axis colour bar by default.
+  me_slinkOccupancyMap_->getTH1()->SetOption("COLZ");
 }
 
 void Dummy::bookDTCHistos(DQMStore::IBooker& ibooker) {
@@ -121,7 +150,7 @@ void Dummy::bookDTCHistos(DQMStore::IBooker& ibooker) {
         ("Mean SLink occupancy, DTC " + std::to_string(dtcIds_[i]) +
          ";SLink index;<occupancy>").c_str(),
         nslinksPerDTC_, -0.5, nslinksPerDTC_ - 0.5,
-        0., 1.5);
+        0., 1.0);
   }
 }
 
@@ -148,6 +177,9 @@ void Dummy::analyze(const edm::Event& iEvent, const edm::EventSetup&) {
     mes_slinkOccupancyPerDTC_[dtcIdx]->Fill(slinkId, occupancy);
     me_slinkOccupancyByDTC_->Fill(dtcIdx, occupancy);
     me_slinkOccupancyMap_->Fill(dtcIdx, slinkId, occupancy);
+
+    const int quarter = dtcIdx / 9;
+    if (quarter < nQuarters_) mes_slinkOccupancyPerQuarter_[quarter]->Fill(occupancy);
   }
 }
 

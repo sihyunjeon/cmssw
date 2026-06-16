@@ -18,6 +18,10 @@ __init__.py
 /*
 !/*/
 
+# ignore folders with inputs
+1ev/
+2ev/
+
 # ignore some IDE related files
 *.xcodeproj
 .vscode
