@@ -5,7 +5,7 @@ options = VarParsing.VarParsing('analysis')
 options.register('inputFile', 'file:input.root',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
-                 'Input EDM file containing FEDRawDataCollection')
+                 'Input EDM file containing RawDataBuffer')
 options.register('outputDQM', 'output.root',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
@@ -40,8 +40,8 @@ process.es_prefer_local_cabling = cms.ESPrefer('PoolDBESSource', '')
 
 process.itRawDQM = cms.EDProducer('Phase2ITValidateSLink',
     src      = cms.InputTag('BitStreamToRawProducer'),
-    firstFed = cms.untracked.int32(0),
-    nFeds    = cms.untracked.int32(576),
+    firstRawData = cms.untracked.int32(0),
+    nRawDatas    = cms.untracked.int32(576),
     folder   = cms.untracked.string('Phase2IT/RawData'),
 )
 
