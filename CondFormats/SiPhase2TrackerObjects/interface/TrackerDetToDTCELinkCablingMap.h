@@ -31,7 +31,7 @@ Implementation:
 
 class TrackerDetToDTCELinkCablingMap {
 public:
-  /// Section ↔ uint8_t convention used by ModuleInfo::section.
+  /// Section <-> uint8_t convention used by ModuleInfo::section.
   enum class Section : uint8_t { Unknown = 0, TBPX = 1, TFPX = 2, TEPX = 3 };
 
   /// Per-module Aurora/cabling info (in addition to the per-elink mapping).
