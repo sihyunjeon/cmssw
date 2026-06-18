@@ -128,7 +128,26 @@ void TrackerDetToDTCELinkCablingMap::insert(DTCELinkId const& dtcELinkId, uint32
   cablingMapDetIdToDTCELinkId_.insert(std::make_pair(uint32_t(detId), DTCELinkId(dtcELinkId)));
 }
 
+void TrackerDetToDTCELinkCablingMap::setModuleInfo(uint32_t detId, ModuleInfo const& info) {
+  moduleInfoByDetId_[detId] = info;
+}
+
+bool TrackerDetToDTCELinkCablingMap::hasModuleInfo(uint32_t detId) const {
+  return moduleInfoByDetId_.find(detId) != moduleInfoByDetId_.end();
+}
+
+TrackerDetToDTCELinkCablingMap::ModuleInfo const& TrackerDetToDTCELinkCablingMap::getModuleInfo(uint32_t detId) const {
+  auto it = moduleInfoByDetId_.find(detId);
+  if (it == moduleInfoByDetId_.end()) {
+    throw cms::Exception(
+        "TrackerDetToDTCELinkCablingMap has been asked to return ModuleInfo for a DetId not present in the map. ")
+        << " DetId = " << detId << std::endl;
+  }
+  return it->second;
+}
+
 void TrackerDetToDTCELinkCablingMap::clear() {
   cablingMapDTCELinkIdToDetId_.clear();
   cablingMapDetIdToDTCELinkId_.clear();
+  moduleInfoByDetId_.clear();
 }

@@ -16,9 +16,12 @@ Implementation:
 //
 // Original Author:  Luigi Calligaris, SPRACE, Sao Paulo, BR
 // Created        :  Wed, 27 Feb 2019 21:41:13 GMT
+// Updated :  Si Hyun Jeon, Boston University
+// Updated :  Thu, 21 May 2026
 //
 //
 
+#include <map>
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
@@ -28,6 +31,22 @@ Implementation:
 
 class TrackerDetToDTCELinkCablingMap {
 public:
+  /// Section <-> uint8_t convention used by ModuleInfo::section.
+  enum class Section : uint8_t { Unknown = 0, TBPX = 1, TFPX = 2, TEPX = 3 };
+
+  /// Per-module Aurora/cabling info (in addition to the per-elink mapping).
+  /// Default-constructed = "unknown / not filled in this DB version".
+  struct ModuleInfo {
+    uint8_t nChips  = 0;  // chips on the module
+    uint8_t nElinks = 0;  // elinks on the module
+    uint8_t section = 0;  // see Section enum
+    uint8_t layer   = 0;  // layer/disk indexes
+    uint8_t ring    = 0;  // ring indexes
+    uint8_t subtype = 0;  // subtype of the module
+
+    COND_SERIALIZABLE;
+  };
+
   TrackerDetToDTCELinkCablingMap();
   virtual ~TrackerDetToDTCELinkCablingMap();
 
@@ -66,12 +85,18 @@ public:
   /// Inserts in the cabling map a record corresponding to the connection of an eLink identified by the given DTCELinkId to a detector identified by the given raw DetId
   void insert(DTCELinkId const&, uint32_t const);
 
+  // Set / get per-module info (one entry per DetId)
+  void setModuleInfo(uint32_t detId, ModuleInfo const& info);
+  bool hasModuleInfo(uint32_t detId) const;
+  ModuleInfo const& getModuleInfo(uint32_t detId) const;
+
   /// Clears the map
   void clear();
 
 private:
   std::unordered_multimap<uint32_t, DTCELinkId> cablingMapDetIdToDTCELinkId_;
   std::unordered_map<DTCELinkId, uint32_t> cablingMapDTCELinkIdToDetId_;
+  std::map<uint32_t, ModuleInfo> moduleInfoByDetId_;
 
   COND_SERIALIZABLE;
 };
