@@ -128,6 +128,8 @@ void Phase2ITValidateSLink::bookHistograms(DQMStore::IBooker& ibooker,
       "Mean SLink Occupancy Averaged Over DTCs;DTC;<Occupancy>",
       nDTCs_, -0.5, nDTCs_ - 0.5,
       0., 1.2);
+  me_slinkOccupancyByDTC_->getTH1()->SetMinimum(0);
+  me_slinkOccupancyByDTC_->getTH1()->SetMaximum(1.2);
 
   // 2D heatmap of all 576 SLinks in (DTC, SLink index).
   me_slinkOccupancyMap_ = ibooker.bookProfile2D(
@@ -137,6 +139,8 @@ void Phase2ITValidateSLink::bookHistograms(DQMStore::IBooker& ibooker,
       nslinksPerDTC_, -0.5, nslinksPerDTC_ - 0.5,
       0., 1.2);
   me_slinkOccupancyMap_->getTH1()->SetStats(0);   // turn off stats box for 2D TProfile
+  me_slinkOccupancyMap_->getTH1()->SetMinimum(0);
+  me_slinkOccupancyMap_->getTH1()->SetMaximum(1.2);
 
   // 2D full spectrum: occupancy distribution vs DTC (colour = entry count).
   me_slinkOccupancyVsDTC_ = ibooker.book2D(
@@ -173,6 +177,8 @@ void Phase2ITValidateSLink::bookDTCHistos(DQMStore::IBooker& ibooker) {
          ";SLink Index;<Occupancy>").c_str(),
         nslinksPerDTC_, -0.5, nslinksPerDTC_ - 0.5,
         0., 1.2);
+    mes_slinkOccupancyPerDTC_[i]->getTH1()->SetMinimum(0);
+    mes_slinkOccupancyPerDTC_[i]->getTH1()->SetMaximum(1.2);
     mes_slinkSpectrumOccupancyPerDTC_[i] = ibooker.book1D(
         ("slinkSpectrumOccupancyPerDTC_" + std::to_string(dtcIds_[i])).c_str(),
         ("Full Spectrum SLink Occupancy, DTC " + std::to_string(dtcIds_[i]) +
