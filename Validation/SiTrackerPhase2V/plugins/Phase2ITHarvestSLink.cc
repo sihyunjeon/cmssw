@@ -4,6 +4,8 @@
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "DQM/SiTrackerPhase2/interface/TrackerPhase2HarvestingUtil.h"
+#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
+#include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
 
 class SlinkOccupancyHarvester : public DQMEDHarvester {
 public:
@@ -14,7 +16,6 @@ public:
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
 private:
-  // ----------member data ---------------------------
   const edm::ParameterSet config_;
   const std::string topFolder_;
   const std::string occupancyMapName_;
@@ -44,17 +45,7 @@ void SlinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
     slinkOcc->setAxisTitle("SLink entries / nevents", 2);  // 2 = y-axis
   }
 
-  // Same per-event normalization for the four per-quarter histograms
-  for (const auto& q : {"11_19", "21_29", "31_39", "41_49"}) {
-    MonitorElement* me = igetter.get(topFolder_ + "/slinkOccupancyQuarter_" + q);
-    if (me != nullptr && nevents > 0) {
-      me->getTH1F()->Scale(1.0 / nevents);
-      me->getTH1F()->SetOption("HIST");
-      me->setAxisTitle("SLink entries / nevents", 2);
-    }
-  }
-
-  // Normalization for per-DTC full spectrum occupancy and its 2D counterpart
+  // Normalization for per-DTC full spectrum occupancy
   for (auto* me : igetter.getAllContents(topFolder_)) {
     if (me == nullptr) continue;
     if (me->getName().rfind("slinkOccupancySpectrumPerDTC_", 0) == 0 && nevents > 0) {
@@ -64,6 +55,7 @@ void SlinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
     }
   }
 
+  // Same normalization for 2D counterpart of above
   MonitorElement* occVsDTC = igetter.get(topFolder_ + "/slinkOccupancyVsDTC");
   if (occVsDTC != nullptr && nevents > 0) {
     occVsDTC->getTH2F()->Scale(1.0 / nevents);
@@ -71,7 +63,7 @@ void SlinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
     occVsDTC->setAxisTitle("SLink entries / nevents", 3);  // 3 = z-axis
   }
 
-  // New histo for event-averaged version of 1D occupancy
+  // Make new histo for event-averaged version of 1D occupancy
   ibooker.cd();
   ibooker.setCurrentFolder(topFolder_);
   MonitorElement* occAvg =
@@ -79,7 +71,7 @@ void SlinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
   if (occAvg == nullptr)
     return;
 
-  // One entry per SLink = that SLink's occupancy averaged over all events.
+  // Fill above with one entry per SLink = that SLink's occupancy averaged over all events
   for (int ix = 1; ix <= prof->GetNbinsX(); ix++) {
     for (int iy = 1; iy <= prof->GetNbinsY(); iy++) {
       if (prof->GetBinEntries(prof->GetBin(ix, iy)) > 0)
@@ -88,10 +80,7 @@ void SlinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
   }
 }
 
-#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
-#include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
 void SlinkOccupancyHarvester::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
-  // slinkOccupancyHarvester
   edm::ParameterSetDescription desc;
   desc.add<std::string>("TopFolder", "Phase2IT/RawData");
   desc.add<std::string>("OccupancyMapName", "slinkOccupancyMap");
@@ -108,5 +97,4 @@ void SlinkOccupancyHarvester::fillDescriptions(edm::ConfigurationDescriptions& d
   descriptions.add("slinkOccupancyHarvester", desc);
 }
 
-//define this as a plug-in
 DEFINE_FWK_MODULE(SlinkOccupancyHarvester);
