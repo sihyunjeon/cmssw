@@ -2,10 +2,10 @@ import FWCore.ParameterSet.Config as cms
 import FWCore.ParameterSet.VarParsing as VarParsing
 
 options = VarParsing.VarParsing('analysis')
-options.register('inputFile', 'file:input.root',
-                 VarParsing.VarParsing.multiplicity.singleton,
-                 VarParsing.VarParsing.varType.string,
-                 'Input EDM file containing RawDataBuffer')
+##options.register('inputFile', 'file:input.root',
+#                 VarParsing.VarParsing.multiplicity.singleton,
+#                 VarParsing.VarParsing.varType.string,
+#                 'Input EDM file containing RawDataBuffer')
 options.register('outputDQM', 'output.root',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
@@ -22,7 +22,14 @@ process.MessageLogger.cerr.FwkReport.reportEvery = 1
 
 process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(-1))
 process.source = cms.Source('PoolSource',
-    fileNames=cms.untracked.vstring(options.inputFile),
+    #fileNames=cms.untracked.vstring(options.inputFile),
+    fileNames=cms.untracked.vstring(
+        "root://maite.iihe.ac.be:1094//pnfs/iihe/cms/store/user/shjeon/tmp/output_file1.root",
+        "root://maite.iihe.ac.be:1094//pnfs/iihe/cms/store/user/shjeon/tmp/output_file2.root",
+        "root://maite.iihe.ac.be:1094//pnfs/iihe/cms/store/user/shjeon/tmp/output_file3.root",
+        "root://maite.iihe.ac.be:1094//pnfs/iihe/cms/store/user/shjeon/tmp/output_file4.root",
+        "root://maite.iihe.ac.be:1094//pnfs/iihe/cms/store/user/shjeon/tmp/output_file5.root",
+    ),
 )
 
 process.load('DQMServices.Core.DQMStore_cfi')
