@@ -72,7 +72,7 @@ private:
 Phase2ITValidateELink::Phase2ITValidateELink(const edm::ParameterSet& iConfig)
     : auroraToken_(
           consumes<edm::DetSetVector<Phase2ITAuroraBitStream>>(iConfig.getParameter<edm::InputTag>("auroraBitStream"))),
-      cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd>()),
+      cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       //?firstFed_(iConfig.getUntrackedParameter<int>("firstFed", 0)),
       //?nFeds_(iConfig.getUntrackedParameter<int>("nFeds", 576)),
       folder_(iConfig.getUntrackedParameter<std::string>("folder", "Phase2IT/RawData")) {

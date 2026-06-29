@@ -2,7 +2,7 @@ import FWCore.ParameterSet.Config as cms
 import FWCore.ParameterSet.VarParsing as VarParsing
 
 options = VarParsing.VarParsing('analysis')
-options.register('inputFile', 'file:input.root',
+options.register('inputFile', 'file:elink_input.root',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
                  'Input EDM file containing Phase2ITAuroraBitStream')
@@ -39,7 +39,7 @@ process.PoolDBESSource = cms.ESSource('PoolDBESSource', process.CondDB,
 process.es_prefer_local_cabling = cms.ESPrefer('PoolDBESSource', '')
 
 process.itRawDQM = cms.EDProducer('Phase2ITValidateELink',
-    src      = cms.InputTag('BitStreamToRawProducer'),
+    auroraBitStream      = cms.InputTag('BitStreamToRawProducer'),
     #?firstFed = cms.untracked.int32(0),
     #?nFeds    = cms.untracked.int32(576),
     folder   = cms.untracked.string('Phase2IT/RawData'),
