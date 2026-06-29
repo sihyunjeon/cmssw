@@ -2,7 +2,7 @@ import FWCore.ParameterSet.Config as cms
 import FWCore.ParameterSet.VarParsing as VarParsing
 
 options = VarParsing.VarParsing('analysis')
-##options.register('inputFile', 'file:input.root',
+##options.register('inputFile', 'file:slink_input.root',
 #                 VarParsing.VarParsing.multiplicity.singleton,
 #                 VarParsing.VarParsing.varType.string,
 #                 'Input EDM file containing RawDataBuffer')
