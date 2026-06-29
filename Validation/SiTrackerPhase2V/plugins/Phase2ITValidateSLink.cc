@@ -160,7 +160,7 @@ void Phase2ITValidateSLink::bookDTCHistos(DQMStore::IBooker& ibooker) {
   }
 }
 
-void Phase2ITValidateSLink::analyze(const edm::Event& iEvent, const edm::EventSetup&) {
+void Phase2ITValidateSLink::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
   edm::Handle<RawDataBuffer> raw;
   iEvent.getByToken(rawDataToken_, raw);
   if (!raw.isValid()) return;
