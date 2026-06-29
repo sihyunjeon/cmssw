@@ -1,4 +1,4 @@
-// EDProducer that takes FEDRawData and produces ITChipBitStream
+// EDProducer that takes RawDataBuffer and produces ITChipBitStream
 // Very first step of unpacker
 
 #include <memory>
@@ -20,7 +20,8 @@
 
 #include "DataFormats/Common/interface/DetSetVectorNew.h"
 
-#include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
+#include "DataFormats/FEDRawData/interface/RawDataBuffer.h"
+#include "DataFormats/FEDRawData/interface/SLinkRocketHeaders.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/SLinkModuleMap.h"
@@ -47,15 +48,17 @@ private:
 
   bool verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const;
   int findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const;
-  std::vector<bool> extractBitStream(
-      const unsigned char* dataPtr, int startWord, int bitstreamSize, int fedSizeInWords) const;
+  std::vector<bool> extractBitStream(const unsigned char* dataPtr,
+                                     int startWord,
+                                     int bitstreamSize,
+                                     int fedSizeInWords) const;
 
   void processFED(const unsigned char* dataPtr,
                   int fedSizeInWords,
                   int fedId,
                   edmNew::DetSetVector<Phase2ITChipBitStream>& output);
 
-  const edm::EDGetTokenT<FEDRawDataCollection> fedRawDataToken_;
+  const edm::EDGetTokenT<RawDataBuffer> fedRawDataToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
 
   std::unique_ptr<SLinkModuleMap> slinkMap_;
@@ -64,7 +67,7 @@ private:
 };
 
 RawToBitStreamProducer::RawToBitStreamProducer(const edm::ParameterSet& iConfig)
-    : fedRawDataToken_(consumes<FEDRawDataCollection>(iConfig.getParameter<edm::InputTag>("fedRawDataCollection"))),
+    : fedRawDataToken_(consumes<RawDataBuffer>(iConfig.getParameter<edm::InputTag>("fedRawDataCollection"))),
       cablingMapToken_(
           esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       debug_(iConfig.getUntrackedParameter<bool>("debug", false)) {
@@ -84,17 +87,48 @@ void RawToBitStreamProducer::beginRun(const edm::Run& iRun, const edm::EventSetu
 
 void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   auto output = std::make_unique<edmNew::DetSetVector<Phase2ITChipBitStream>>();
-  edm::Handle<FEDRawDataCollection> fedRawDataCollection;
-  iEvent.getByToken(fedRawDataToken_, fedRawDataCollection);
-  if (!fedRawDataCollection.isValid()) {
-    throw cms::Exception("RawToBitStreamProducer") << "Invalid FEDRawDataCollection";
+  edm::Handle<RawDataBuffer> rawBuf;
+  iEvent.getByToken(fedRawDataToken_, rawBuf);
+  if (!rawBuf.isValid()) {
+    throw cms::Exception("RawToBitStreamProducer") << "Invalid RawDataBuffer";
   }
+
+  const unsigned int SLINK_HDR_BYTES = sizeof(SLinkRocketHeader_v3);
+  const unsigned int SLINK_TRL_BYTES = sizeof(SLinkRocketTrailer_v3);
+  const unsigned int WRAPPER_WORDS   = (SLINK_HDR_BYTES + SLINK_TRL_BYTES) / BYTES_PER_WORD;
 
   for (const auto& entry : slinkMap_->fedIdToDetIds()) {
     int fedId = entry.first;
-    const FEDRawData& fedData = fedRawDataCollection->FEDData(fedId);
-    const unsigned char* dataPtr = fedData.data();
-    int fedSizeInWords = fedData.size() / 4;
+    auto frag = rawBuf->fragmentData(static_cast<uint32_t>(fedId));
+    if (!frag.isValid()) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "Missing RawDataBuffer fragment for fed " << fedId
+          << ": cabling map lists this FED but the buffer has no source for it.";
+    }
+    auto span = frag.data();
+    const unsigned char* fragPtr = span.data();
+    uint32_t fragSize            = span.size();
+
+    // Validate SLinkRocket wrapper.
+    auto const* sh = reinterpret_cast<const SLinkRocketHeader_v3*>(fragPtr);
+    auto const* st = reinterpret_cast<const SLinkRocketTrailer_v3*>(fragPtr + fragSize - SLINK_TRL_BYTES);
+    if (!sh->verifyMarker()) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "Invalid SLinkRocket BOE for fed " << fedId;
+    }
+    if (!st->verifyMarker()) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "Invalid SLinkRocket EOE for fed " << fedId;
+    }
+    if (st->eventLenBytes() != fragSize) {
+      throw cms::Exception("RawToBitStreamProducer")
+          << "SLinkRocket trailer length mismatch for fed " << fedId
+          << ": trailer says " << st->eventLenBytes() << ", actual " << fragSize;
+    }
+
+    // Hand the IT-specific body (IT header + offsets + data + IT trailer)
+    const unsigned char* dataPtr = fragPtr + SLINK_HDR_BYTES;
+    int fedSizeInWords = static_cast<int>(fragSize / BYTES_PER_WORD) - WRAPPER_WORDS;
     processFED(dataPtr, fedSizeInWords, fedId, *output);
   }
   iEvent.put(std::move(output));
@@ -129,7 +163,9 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
   int paddingWords = paddingBits / BITS_PER_WORD;
   int dataBlockStart = offsetStart + numModules + paddingWords;
 
-  // Block 3: walk each module, then walk CHIPS_PER_MODULE chips inside it.
+  // Block 3: walk each module, reading chips until the next module's offset.
+  // The chip count per module is variable (1, 2 or 4); the 128-bit module-end
+  // padding (zero words) ends the walk early via the magic check.
   for (int modIdx = 0; modIdx < numModules; modIdx++) {
     uint32_t detId = detIds[modIdx];
     int moduleStartWord = dataBlockStart + moduleOffsets[modIdx];
@@ -141,17 +177,17 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
       continue;
     }
 
+    // End of this module's data = start of the next module (or the trailer for
+    // the last module). Chips are only read within [moduleStartWord, moduleEndWord).
+    int moduleEndWord =
+        (modIdx + 1 < numModules) ? (dataBlockStart + static_cast<int>(moduleOffsets[modIdx + 1])) : trailerStart;
+    if (moduleEndWord > fedSizeInWords)
+      moduleEndWord = fedSizeInWords;
+
     edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller filler(output, detId);
 
     int chipCursor = moduleStartWord;
-    for (int chipId = 0; chipId < CHIPS_PER_MODULE; chipId++) {
-      if (chipCursor >= fedSizeInWords) {
-        edm::LogWarning("RawToBitStreamProducer")
-            << "Chip cursor past FED end: detId=" << detId << " chip=" << chipId << " cursor=" << chipCursor
-            << " fedSize=" << fedSizeInWords << ". Stopping module.";
-        break;
-      }
-
+    for (int chipId = 0; chipCursor < moduleEndWord; chipId++) {
       uint32_t chipHeader = readWord(dataPtr, chipCursor);
 
       uint32_t magic = (chipHeader >> 28) & 0xF;
@@ -159,18 +195,16 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
       uint32_t endBit = (chipHeader >> 16) & 0x1F;
       uint32_t sizeWords = chipHeader & 0xFFFF;
 
-      if (magic != CHIP_HEADER_MAGIC) {
-        edm::LogWarning("RawToBitStreamProducer")
-            << "Invalid chip header magic " << wordToHexString(chipHeader) << " at word " << chipCursor
-            << " (detId=" << detId << " chip=" << chipId << "), skipping rest of module";
+      // A non-magic word inside the module bound is the 128-bit end padding:
+      // the module's chips are exhausted, so stop here (not an error).
+      if (magic != CHIP_HEADER_MAGIC)
         break;
-      }
 
       // Reconstruct bitstream length in bits.
       //   endBit == 0  -> last word is full or chip is empty: size = sizeWords * 32
       //   endBit  > 0  -> last word holds endBit real bits:   size = (sizeWords - 1) * 32 + endBit
-      unsigned int bitstreamSize = (endBit == 0) ? (sizeWords * BITS_PER_WORD)
-                                                 : ((sizeWords - 1) * BITS_PER_WORD + endBit);
+      unsigned int bitstreamSize =
+          (endBit == 0) ? (sizeWords * BITS_PER_WORD) : ((sizeWords - 1) * BITS_PER_WORD + endBit);
 
       std::vector<bool> bitstream = extractBitStream(dataPtr, chipCursor + 1, bitstreamSize, fedSizeInWords);
 
@@ -194,10 +228,8 @@ std::string RawToBitStreamProducer::getBitString(const std::vector<bool>& bits, 
 
 uint32_t RawToBitStreamProducer::readWord(const unsigned char* dataPtr, int wordIdx) const {
   int byteIdx = wordIdx * 4;
-  return (static_cast<uint32_t>(dataPtr[byteIdx])     << 24) |
-         (static_cast<uint32_t>(dataPtr[byteIdx + 1]) << 16) |
-         (static_cast<uint32_t>(dataPtr[byteIdx + 2]) <<  8) |
-          static_cast<uint32_t>(dataPtr[byteIdx + 3]);
+  return (static_cast<uint32_t>(dataPtr[byteIdx]) << 24) | (static_cast<uint32_t>(dataPtr[byteIdx + 1]) << 16) |
+         (static_cast<uint32_t>(dataPtr[byteIdx + 2]) << 8) | static_cast<uint32_t>(dataPtr[byteIdx + 3]);
 }
 
 std::string RawToBitStreamProducer::wordToHexString(uint32_t word) const {

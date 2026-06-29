@@ -12,7 +12,7 @@ namespace {
   std::vector<bool> encPairBits(bool a, bool b) {
     if (!a && !b)
       return std::vector<bool>();
-    if (!a && b) // "01 -> 0" substitue
+    if (!a && b)  // "01 -> 0" substitue
       return std::vector<bool>({false});
     if (a && !b)
       return std::vector<bool>({true, false});
@@ -66,7 +66,7 @@ namespace {
     if (pos >= bits.size())
       return {false, false};
     bool first = bits[pos++];
-    if (!first) // "0 -> 01" substitute
+    if (!first)  // "0 -> 01" substitute
       return {false, true};
     if (pos >= bits.size())
       return {true, false};
@@ -126,11 +126,9 @@ Phase2ITQCore::Phase2ITQCore(int rocid,
 //Takes a hitmap in sensor coordinates in 4x4 and converts it to readout chip coordinates with 2x8
 template <typename T>
 std::vector<T> Phase2ITQCore::toRocCoordinates(const std::vector<T>& inputMap) {
-
   std::vector<T> rocCoord(16);
 
   for (size_t i = 0; i < inputMap.size(); i++) {
-
     int row = i / 4;
     int col = i % 4;
     int newRow;
