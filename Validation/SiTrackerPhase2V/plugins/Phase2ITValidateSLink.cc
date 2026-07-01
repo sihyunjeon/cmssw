@@ -42,6 +42,10 @@ private:
   const int nRawDatas_;
   const std::string folder_;
 
+  const double scaleTBPX_;
+  const double scaleTFPX_;
+  const double scaleTEPX_;
+
   const TrackerDetToDTCELinkCablingMap* cablingMap_ = nullptr;
 
   // dtcIds_ / nDTCs_ are populated from the cabling map in dqmBeginRun
@@ -70,6 +74,9 @@ Phase2ITValidateSLink::Phase2ITValidateSLink(const edm::ParameterSet& iConfig)
       cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap,
                                   TrackerDetToDTCELinkCablingMapRcd,
                                   edm::Transition::BeginRun>()),
+      scaleTBPX_(iConfig.getUntrackedParameter<double>("scaleTBPX", 1)),
+      scaleTFPX_(iConfig.getUntrackedParameter<double>("scaleTFPX", 1)),
+      scaleTEPX_(iConfig.getUntrackedParameter<double>("scaleTEPX", 1)),
       firstRawData_(iConfig.getUntrackedParameter<int>("firstRawData", 0)),
       nRawDatas_(iConfig.getUntrackedParameter<int>("nRawDatas", 576)),
       folder_(iConfig.getUntrackedParameter<std::string>("folder", "Phase2IT/RawData")) {
@@ -160,7 +167,7 @@ void Phase2ITValidateSLink::bookDTCHistos(DQMStore::IBooker& ibooker) {
   }
 }
 
-void Phase2ITValidateSLink::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+void Phase2ITValidateSLink::analyze(const edm::Event& iEvent, const edm::EventSetup&) {
   edm::Handle<RawDataBuffer> raw;
   iEvent.getByToken(rawDataToken_, raw);
   if (!raw.isValid()) return;

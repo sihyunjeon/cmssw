@@ -48,7 +48,7 @@ void SlinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
   // Normalization for per-DTC full spectrum occupancy
   for (auto* me : igetter.getAllContents(topFolder_)) {
     if (me == nullptr) continue;
-    if (me->getName().rfind("slinkOccupancySpectrumPerDTC_", 0) == 0 && nevents > 0) {
+    if (me->getName().rfind("slinkSpectrumOccupancyPerDTC_", 0) == 0 && nevents > 0) {
       me->getTH1F()->Scale(1.0 / nevents);
       me->getTH1F()->SetOption("HIST");
       me->setAxisTitle("SLink entries / nevents", 2);
