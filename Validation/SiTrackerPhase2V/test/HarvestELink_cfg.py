@@ -2,10 +2,10 @@ import FWCore.ParameterSet.Config as cms
 import FWCore.ParameterSet.VarParsing as VarParsing
 
 options = VarParsing.VarParsing('analysis')
-options.register('inputDQM', 'file:slink_output.root',
+options.register('inputDQM', 'file:elink_output.root',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
-                 'DQM file produced by ValidateSLink_cfg.py')
+                 'DQM file produced by ValidateELink_cfg.py')
 options.parseArguments()
 
 process = cms.Process('HARVEST')
@@ -19,20 +19,20 @@ process.source = cms.Source('DQMRootSource',
     fileNames=cms.untracked.vstring(options.inputDQM),
 )
 
-process.slinkOccupancyHarvester = cms.EDProducer('SlinkOccupancyHarvester',
+process.elinkOccupancyHarvester = cms.EDProducer('ElinkOccupancyHarvester',
     TopFolder        = cms.string('Phase2IT/RawData'),
-    OccupancyMapName = cms.string('slinkOccupancyMap'),
+    OccupancyMapName = cms.string('eLinkOccupancyChipMap'),
     occupancyAvg = cms.PSet(
         switch = cms.bool(True),
-        name   = cms.string('slinkOccupancyAvg'),
-        title  = cms.string('Event-Averaged SLink Occupancy;<Occupancy>;SLink entries'),
+        name   = cms.string('eLinkOccupancyAvg'),
+        title  = cms.string('Event-Averaged ELink Occupancy;<Occupancy>;ELink entries'),
         NxBins = cms.int32(60),
         xmin   = cms.double(0.),
         xmax   = cms.double(1.2),
     ),
 )
 
-process.harvest_step = cms.Path(process.slinkOccupancyHarvester)
+process.harvest_step = cms.Path(process.elinkOccupancyHarvester)
 process.dqmsave_step = cms.Path(process.DQMSaver)
 process.schedule = cms.Schedule(process.harvest_step, process.dqmsave_step)
 
