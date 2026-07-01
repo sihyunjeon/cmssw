@@ -6,7 +6,7 @@ options = VarParsing.VarParsing('analysis')
 #                 VarParsing.VarParsing.multiplicity.singleton,
 #                 VarParsing.VarParsing.varType.string,
 #                 'Input EDM file containing RawDataBuffer')
-options.register('outputDQM', 'output.root',
+options.register('outputDQM', 'slink_output.root',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
                  'DQM output ROOT file')
