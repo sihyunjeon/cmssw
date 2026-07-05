@@ -23,9 +23,9 @@ public:
   static int encodeQCoreIndex(int row, int col);
   static std::pair<int, int> decodeQCoreIndex(int index);
 
+  // subtype = Module_SubType; selects the ChipModuleMap chip-index convention used to recover the (row, col) offset from chipId.
   static std::pair<int, int> getGlobalPixelCoordinate(
-      int chipId, int qcoreCol, int qcoreRow, int localCol, int localRow,
-      bool keepMode = false);
+      int chipId, int subtype, int qcoreCol, int qcoreRow, int localCol, int localRow, bool keepMode = false);
 
   static constexpr int kColsPerROC = 54;
   static constexpr int kRowsPerChip = 672;
@@ -33,8 +33,8 @@ public:
   static constexpr int kLargePixelNRows = 10;
   static constexpr int kLargePixelNCols = 2;
   // KEEP-mode: Each chip boundary moves to the midline of the gap so that the gap is effectively none, making the pixels to be placed in one of the chips everytime.
-  static constexpr int kRowsPerChipKeep     = kRowsPerChip + kLargePixelNRows / 2;  // 677
-  static constexpr int kColsPerChipKeep     = kColsPerChip + kLargePixelNCols / 2;  // 217
+  static constexpr int kRowsPerChipKeep = kRowsPerChip + kLargePixelNRows / 2;  // 677
+  static constexpr int kColsPerChipKeep = kColsPerChip + kLargePixelNCols / 2;  // 217
   static constexpr int kLargePixelNRowsKeep = 0;
   static constexpr int kLargePixelNColsKeep = 0;
 

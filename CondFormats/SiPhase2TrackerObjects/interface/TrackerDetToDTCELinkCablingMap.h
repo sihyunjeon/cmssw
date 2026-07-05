@@ -14,10 +14,10 @@ Implementation:
 		[Notes on implementation]
 */
 //
-// Original Author:  Luigi Calligaris, SPRACE, Sao Paulo, BR
-// Created        :  Wed, 27 Feb 2019 21:41:13 GMT
-// Updated :  Si Hyun Jeon, Boston University
-// Updated :  Thu, 21 May 2026
+// Original Author :  Luigi Calligaris, SPRACE, Sao Paulo, BR
+// Created         :  Wed, 27 Feb 2019 21:41:13 GMT
+// Updated         :  Si Hyun Jeon, Boston University, Thu, 21 May 2026
+// Updated Content :  Detailed module info field for inner trackers
 //
 //
 
@@ -31,7 +31,7 @@ Implementation:
 
 class TrackerDetToDTCELinkCablingMap {
 public:
-  /// Section <-> uint8_t convention used by ModuleInfo::section.
+  /// Section : uint8_t convention used by ModuleInfo::section.
   enum class Section : uint8_t { Unknown = 0, TBPX = 1, TFPX = 2, TEPX = 3 };
 
   /// Per-module Aurora/cabling info (in addition to the per-elink mapping).
