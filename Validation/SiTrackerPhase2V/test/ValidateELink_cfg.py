@@ -47,6 +47,8 @@ process.itRawDQM = cms.EDProducer('Phase2ITValidateELink',
     scaleTFPX = cms.untracked.double(1.07),   # afterglow effect
     scaleTEPX = cms.untracked.double(1.17),   # afterglow effect AND lumi trigger
     #?nFeds    = cms.untracked.int32(576),
+    trigger_rate   = cms.untracked.double(750.0e3),   # Hz
+    elink_bandwidth   = cms.untracked.double(1.28e9),   # bits/s
     folder   = cms.untracked.string('Phase2IT/RawData'),
 )
 

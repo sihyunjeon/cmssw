@@ -6,6 +6,8 @@
 #include "DQM/SiTrackerPhase2/interface/TrackerPhase2HarvestingUtil.h"
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
+#include <algorithm>
+#include <cmath>
 
 class ElinkOccupancyHarvester : public DQMEDHarvester {
 public:
@@ -37,13 +39,13 @@ void ElinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
   TProfile2D* prof = occMap->getTProfile2D();
 
   // Event count. Unlike the SLink map (one fill per SLink per event, so bin(1,1)
-  // entries == nevents), the ELink map is filled per chip with several chips
-  // sharing one (section, subtype) cell, so nevents is read from the counter
+  // entries == nevents), the ELink map is only filled for the ELinks present in a
+  // given event, so bin entries don't track nevents; read it from the counter
   MonitorElement* nEvtME = igetter.get(topFolder_ + "/nEvents");
   const double nevents = (nEvtME != nullptr) ? nEvtME->getTH1F()->GetBinContent(1) : 0.;
 
   // Normalize the raw 1D occupancy to per-event
-  MonitorElement* elinkOcc = igetter.get(topFolder_ + "/elinkOccupancy");
+  MonitorElement* elinkOcc = igetter.get(topFolder_ + "/eLinkOccupancy");
   if (elinkOcc != nullptr && nevents > 0) {
     elinkOcc->getTH1F()->Scale(1.0 / nevents);
     elinkOcc->getTH1F()->SetOption("HIST");
@@ -84,19 +86,62 @@ void ElinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
   if (occAvg == nullptr)
     return;
 
-  // Fill above with one entry per (section, subtype) cell = that cell's occupancy averaged over all events
+  // Fill above with one entry per ELink = that ELink's occupancy averaged over all events
   for (int ix = 1; ix <= prof->GetNbinsX(); ix++) {
     for (int iy = 1; iy <= prof->GetNbinsY(); iy++) {
       if (prof->GetBinEntries(prof->GetBin(ix, iy)) > 0)
         occAvg->Fill(prof->GetBinContent(ix, iy));
     }
   }
+
+  // Occupancy on z, ELink counts per occupancy band on y
+  auto bookCountVs = [&](const std::string& srcName, const std::string& dstName, const std::string& xTitle) {
+    MonitorElement* vsSrcME = igetter.get(topFolder_ + "/" + srcName);
+    if (vsSrcME != nullptr) {
+      TH2* src = vsSrcME->getTH2F();                 // X=section/subtype, Y=occupancy, content=count/nevents
+      const int nXB = src->GetNbinsX();
+      const int nOccB = src->GetNbinsY();
+    
+      // find the tallest column so the new count-axis spans the data
+      double maxCount = 1.0;
+      for (int ix = 1; ix <= nXB; ++ix)
+        for (int iy = 1; iy <= nOccB; ++iy)
+          maxCount = std::max(maxCount, src->GetBinContent(ix, iy));
+    
+      MonitorElement* flipME = ibooker.bookProfile2D(
+          dstName.c_str(),
+          ("ELink Count per Occupancy;" + xTitle + ";ELink entries / nevents;Occupancy").c_str(),
+          nXB, -0.5, nXB - 0.5,
+          100, 0., std::ceil(maxCount) + 1.0,
+          0., 1.2);
+      TProfile2D* dst = flipME->getTProfile2D();
+      dst->SetStats(0);
+      dst->SetOption("COLZ");
+      dst->SetMinimum(0.);
+      dst->SetMaximum(1.2);
+      for (int i = 0; i < nXB; ++i)
+        dst->GetXaxis()->SetBinLabel(i + 1, src->GetXaxis()->GetBinLabel(i + 1));
+    
+      for (int ix = 1; ix <= nXB; ++ix) {
+        for (int iy = 1; iy <= nOccB; ++iy) {
+          const double count = src->GetBinContent(ix, iy);   // # ELinks (per-event) at this occupancy
+          if (count <= 0) continue;
+          const double occ = src->GetYaxis()->GetBinCenter(iy);
+          dst->Fill(ix - 1, count, occ);                     // Y=count, Z=occupancy
+        }
+      }
+    }
+  };
+
+  bookCountVs("eLinkOccupancyVsSection", "eLinkCountVsSection", "Section");
+  bookCountVs("eLinkOccupancyVsSubType", "eLinkCountVsSubType", "SubType");
+
 }
 
 void ElinkOccupancyHarvester::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<std::string>("TopFolder", "Phase2IT/RawData");
-  desc.add<std::string>("OccupancyMapName", "eLinkOccupancyChipMap");
+  desc.add<std::string>("OccupancyMapName", "eLinkOccupancyMap");
 
   edm::ParameterSetDescription psd0;
   psd0.add<std::string>("name", "eLinkOccupancyAvg");

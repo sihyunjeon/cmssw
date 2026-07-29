@@ -21,7 +21,7 @@ process.source = cms.Source('DQMRootSource',
 
 process.elinkOccupancyHarvester = cms.EDProducer('ElinkOccupancyHarvester',
     TopFolder        = cms.string('Phase2IT/RawData'),
-    OccupancyMapName = cms.string('eLinkOccupancyChipMap'),
+    OccupancyMapName = cms.string('eLinkOccupancyMap'),
     occupancyAvg = cms.PSet(
         switch = cms.bool(True),
         name   = cms.string('eLinkOccupancyAvg'),
