@@ -36,9 +36,11 @@ void SlinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
   }
   TProfile2D* prof = occMap->getTProfile2D();
 
+  MonitorElement* nEvtME = igetter.get(topFolder_ + "/nEvents");
+  const double nevents = nEvtME->getTH1F()->GetBinContent(1);
+
   // Normalize the raw 1D occupancy to per-event
   MonitorElement* slinkOcc = igetter.get(topFolder_ + "/slinkOccupancy");
-  const double nevents = prof->GetBinEntries(prof->GetBin(1, 1));
   if (slinkOcc != nullptr && nevents > 0) {
     slinkOcc->getTH1F()->Scale(1.0 / nevents);
     slinkOcc->getTH1F()->SetOption("HIST");

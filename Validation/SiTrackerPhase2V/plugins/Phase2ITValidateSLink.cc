@@ -6,7 +6,6 @@
 #include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/FEDRawData/interface/RawDataBuffer.h"
-#include "DataFormats/FEDRawData/interface/SLinkRocketHeaders.h"
 #include "DQMServices/Core/interface/DQMEDAnalyzer.h"
 #include "DQMServices/Core/interface/DQMStore.h"
 #include "DQMServices/Core/interface/MonitorElement.h"
@@ -41,8 +40,6 @@ private:
   const double scaleTBPX_;
   const double scaleTFPX_;
   const double scaleTEPX_;
-  const int firstRawData_;
-  const int nRawDatas_;
   const double trigger_rate_;
   const double slink_bandwidth_;
   const std::string folder_;
@@ -53,9 +50,9 @@ private:
   int nDTCs_ = 36;
   int nslinksPerDTC_ = 16;
   std::vector<int> dtcIds_;
-  static constexpr int nQuarters_ = 4;          // 36 DTCs = 4 quarters of 9
 
-  // Simple histogram
+  // Simple histograms
+  MonitorElement* me_nEvents_ = nullptr;          // event counter, used by the harvester for normalization
   MonitorElement* me_slinkOccupancy_  = nullptr;  // occupancy across all SLinks
 
   // Per-DTC: 16 SLink bins, <occupancy> with across-event RMS error bars
@@ -78,8 +75,6 @@ Phase2ITValidateSLink::Phase2ITValidateSLink(const edm::ParameterSet& iConfig)
       scaleTBPX_(iConfig.getUntrackedParameter<double>("scaleTBPX", 1)),
       scaleTFPX_(iConfig.getUntrackedParameter<double>("scaleTFPX", 1)),
       scaleTEPX_(iConfig.getUntrackedParameter<double>("scaleTEPX", 1)),
-      firstRawData_(iConfig.getUntrackedParameter<int>("firstRawData", 0)),
-      nRawDatas_(iConfig.getUntrackedParameter<int>("nRawDatas", 576)),
       trigger_rate_(iConfig.getUntrackedParameter<double>("trigger_rate", 750.0e3)),
       slink_bandwidth_(iConfig.getUntrackedParameter<double>("slink_bandwidth", 25.0e9)),
       folder_(iConfig.getUntrackedParameter<std::string>("folder", "Phase2IT/RawData")) {
@@ -100,6 +95,8 @@ void Phase2ITValidateSLink::bookHistograms(DQMStore::IBooker& ibooker,
                            edm::Run const&,
                            edm::EventSetup const&) {
   ibooker.setCurrentFolder(folder_);
+
+  me_nEvents_ = ibooker.book1D("nEvents", "Processed events;;Events", 1, 0., 1.);
 
   // SLink-occupancy; x axis runs 0 -> 1.2 
   me_slinkOccupancy_ = ibooker.book1D("slinkOccupancy",
@@ -175,24 +172,19 @@ void Phase2ITValidateSLink::analyze(const edm::Event& iEvent, const edm::EventSe
   iEvent.getByToken(rawDataToken_, raw);
   if (!raw.isValid()) return;
 
-  // Loop over SLink inputs
-  for (int fid = firstRawData_; fid < firstRawData_ + nRawDatas_; ++fid) {
-    auto frag = raw->fragmentData(static_cast<uint32_t>(fid));
-    if (!frag.isValid()) {
-      throw cms::Exception("RawToBitStreamProducer")
-          << "Missing RawDataBuffer fragment for fed " << fid
-          << ": cabling map lists this FED but the buffer has no source for it.";
-    }
-    auto span = frag.data();
-    uint32_t fragSize            = span.size();
+  me_nEvents_->Fill(0.5);
 
-    // Decode flat FED id into (DTC, SLink-in-DTC)
+  // fedId = dtcIndex * SLINKS_PER_DTC + slinkId.
+  for (auto it = raw->map().cbegin(); it != raw->map().cend(); ++it) {
+    const int fid = static_cast<int>(it->first);
+
+    // Convert fedId into (DTC, SLink-in-DTC)
     const int dtcIdx  = fid / nslinksPerDTC_;
     const int slinkId = fid % nslinksPerDTC_;
     if (dtcIdx >= nDTCs_) continue;
 
-    const double occupancy =
-        (static_cast<double>(fragSize) * 8.0 * trigger_rate_) / slink_bandwidth_;   // * 8 converts fragSize bytes to bits
+    const double fragBits = static_cast<double>(raw->fragmentData(it).size()) * 8.0;  // bytes -> bits
+    const double occupancy = (fragBits * trigger_rate_) / slink_bandwidth_;
 
     me_slinkOccupancy_->Fill(occupancy);
     mes_slinkOccupancyPerDTC_[dtcIdx]->Fill(slinkId, occupancy);
@@ -210,8 +202,6 @@ void Phase2ITValidateSLink::fillDescriptions(edm::ConfigurationDescriptions& des
   desc.addUntracked<double>("scaleTBPX", 1);
   desc.addUntracked<double>("scaleTFPX", 1);
   desc.addUntracked<double>("scaleTEPX", 1);
-  desc.addUntracked<int>("firstRawData", 0);
-  desc.addUntracked<int>("nRawDatas", 576);
   desc.addUntracked<double>("trigger_rate", 750.0e3);
   desc.addUntracked<double>("slink_bandwidth", 25.0e9);
   desc.addUntracked<std::string>("folder", "Phase2IT/RawData");
