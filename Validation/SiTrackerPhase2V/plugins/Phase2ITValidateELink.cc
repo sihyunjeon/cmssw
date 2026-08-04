@@ -266,10 +266,10 @@ void Phase2ITValidateELink::analyze(const edm::Event& iEvent, const edm::EventSe
     auto secIt = sectionToIndex_.find(key);
     auto subIt = subTypeToIndex_.find(subtype);
     auto modIt = moduleToIndex_.find(detset.id);
-    int elinkIdx = 0;
 
     // Loop over ELinks in module
     for (const auto& aurora : detset) {           // aurora = one ELink
+      const int elinkIdx = aurora.get_elinkId();
       const int ne = aurora.get_eventsPerStream();   // this is per-elink, not per-stream
       
       double elinkBits = 0.;
@@ -285,7 +285,6 @@ void Phase2ITValidateELink::analyze(const edm::Event& iEvent, const edm::EventSe
 
       if (modIt != moduleToIndex_.end())
         me_elinkOccupancyMap_->Fill(modIt->second, elinkIdx, occupancy);
-      ++elinkIdx;
 
       if (secIt != sectionToIndex_.end()) {
         mes_elinkOccupancyPerSection_[secIt->second]->Fill(occupancy);
