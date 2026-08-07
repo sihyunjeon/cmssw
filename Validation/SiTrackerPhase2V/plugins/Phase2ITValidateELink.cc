@@ -1,6 +1,4 @@
-// This file refers to detector sections. The ones used are TBPX L1-L4, TFPX R1-R4, TEPX R1-R5.
-// The choice of these detector sections can be changed if needed.
-
+#include <algorithm>
 #include <cstdint>
 #include <set>
 #include <vector>
@@ -59,7 +57,8 @@ private:
   MonitorElement* me_elinkOccupancyBySubType_ = nullptr; // <occ> per subtype (1 bin/subtype), RMS bars
   MonitorElement* me_elinkOccupancyVsSection_ = nullptr; // full-spectrum occupancy vs section (2D)
   MonitorElement* me_elinkOccupancyVsSubType_ = nullptr; // full-spectrum occupancy vs subtype (2D)
-  MonitorElement* me_nEvents_ = nullptr;
+  // Normalization counter. The Aurora producer emits one product per NE-event stream group, not number of events.
+  MonitorElement* me_nStreamGroups_ = nullptr;
 
   static constexpr int nSections_ = 13;                        // 4 TBPX + 4 TFPX + 5 TEPX
   std::vector<MonitorElement*> mes_elinkOccupancyPerSection_;
@@ -77,6 +76,20 @@ private:
   static constexpr int maxELinksPerModule_ = 16;      // safe upper bound; surplus cells stay empty
   MonitorElement* me_elinkOccupancyMap_ = nullptr;
 
+  // Per-section quadrant 2D maps: Y = detector quadrant, X = elinks in the quadrant for each module.
+  // Sections have different elink counts, so each section map needs its own X range.
+  struct QuadSlot {
+    int sec = -1;    // section index (same 0..12 layout as sectionToIndex_)
+    int row = -1;    // quadrant row
+    int xbase = 0;   // first X slot of one module's elinks
+    int width = 0;   // nElinks for one module
+  };
+  std::map<uint32_t, QuadSlot> moduleSlot_;          // detId -> x-axis slot later split into N elinks
+  std::vector<int> quadrantVals_;                    // sorted by DTCs that are 11..19, 21..29, 31..39, and 41..49
+  std::vector<int> sectionMapNX_;                    // per detector section N bins (number of elinks in the section)
+  std::vector<MonitorElement*> mes_elinkOccupancyMapPerSection_;
+
+  static int sectionIndexOf(int section, int layer, int ring);
 };
 
 Phase2ITValidateELink::Phase2ITValidateELink(const edm::ParameterSet& iConfig)
@@ -92,21 +105,61 @@ Phase2ITValidateELink::Phase2ITValidateELink(const edm::ParameterSet& iConfig)
       edm::LogInfo("Phase2ITValidateELink") << ">>> Construct Phase2ITValidateELink";
 }
 
+int Phase2ITValidateELink::sectionIndexOf(int section, int layer, int ring) {
+  using Section = TrackerDetToDTCELinkCablingMap::Section;
+  if (section == static_cast<int>(Section::TBPX) && layer >= 1 && layer <= 4)
+    return layer - 1;
+  if (section == static_cast<int>(Section::TFPX) && ring >= 1 && ring <= 4)
+    return 4 + (ring - 1);
+  if (section == static_cast<int>(Section::TEPX) && ring >= 1 && ring <= 5)
+    return 8 + (ring - 1);
+  return -1;
+}
+
 void Phase2ITValidateELink::dqmBeginRun(const edm::Run&, const edm::EventSetup& iSetup) {
   cablingMap_ = &iSetup.getData(cablingMapToken_);
 
   std::set<int> subtypes;
-  std::set<uint32_t> modules;                        // sorted, unique detIds with module info
+  std::set<uint32_t> modules;
+  std::set<int> quadrants;
+  std::map<int, std::map<int, std::vector<uint32_t>>> secQuadModules;
   for (uint32_t detId : cablingMap_->getKnownDetIds()) {
     if (!cablingMap_->hasModuleInfo(detId)) continue;
-    subtypes.insert(static_cast<int>(cablingMap_->getModuleInfo(detId).subtype));
+    const auto& info = cablingMap_->getModuleInfo(detId);
+    subtypes.insert(static_cast<int>(info.subtype));
     modules.insert(detId);
+
+    const int secIdx = sectionIndexOf(
+        static_cast<int>(info.section), static_cast<int>(info.layer), static_cast<int>(info.ring));
+    if (secIdx < 0) continue;
+    const int dtcId = static_cast<int>(cablingMap_->detIdToDTCELinkId(detId).first->second.dtc_id());
+    // DTC 11..19 -> 1, 21..29 -> 2, 31..39 -> 3, 41..49-> 4
+    quadrants.insert(dtcId / 10);
+    secQuadModules[secIdx][dtcId / 10].push_back(detId);
   }
-  subTypeVals_.assign(subtypes.begin(), subtypes.end());   // sorted, unique
+  subTypeVals_.assign(subtypes.begin(), subtypes.end());
 
   int m = 0;
-  for (uint32_t detId : modules) moduleToIndex_[detId] = m++;   // detId -> 0-based index
+  for (uint32_t detId : modules) moduleToIndex_[detId] = m++;
   nModules_ = m;
+
+  quadrantVals_.assign(quadrants.begin(), quadrants.end());
+  moduleSlot_.clear();
+  sectionMapNX_.assign(nSections_, 0);
+  for (auto& [secIdx, byQuad] : secQuadModules) {
+    for (auto& [decade, ids] : byQuad) {
+      std::sort(ids.begin(), ids.end());
+      const int row = static_cast<int>(
+          std::find(quadrantVals_.begin(), quadrantVals_.end(), decade) - quadrantVals_.begin());
+      int xbase = 0;
+      for (uint32_t id : ids) {
+        const int width = std::max<int>(1, cablingMap_->getModuleInfo(id).nElinks);
+        moduleSlot_[id] = QuadSlot{secIdx, row, xbase, width};
+        xbase += width;
+      }
+      sectionMapNX_[secIdx] = std::max(sectionMapNX_[secIdx], xbase);
+    }
+  }
 }
 
 void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker,
@@ -114,16 +167,15 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker,
                            edm::EventSetup const&) {
   ibooker.setCurrentFolder(folder_);
 
-  me_nEvents_ = ibooker.book1D("nEvents", "Processed events;;Events", 1, 0., 1.);
+  me_nStreamGroups_ = ibooker.book1D("nStreamGroups", "Processed NE stream groups;;Stream groups", 1, 0., 1.);
 
   me_elinkOccupancy_ = ibooker.book1D("eLinkOccupancy",
-                                      "Full Spectrum ELink Occupancy;Occupancy;Per-event ELink entries",
-                                      60, 0., 1.2);
+                                      "Full Spectrum ELink Occupancy;Occupancy;ELink entries per stream group",
+                                      70, 0., 1.4);
 
   bookSectionHistos(ibooker);
   bookSubTypeHistos(ibooker);
 
-  // cross-region overviews + 2D maps 
   const int nSub = static_cast<int>(subTypeVals_.size());
 
   // Per-ELink occupancy map: module index x ELink-in-module. Source for the event-averaged
@@ -133,7 +185,7 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker,
       "Mean ELink Occupancy;Module Index;ELink Index;<Occupancy>",
       nModules_, -0.5, nModules_ - 0.5,
       maxELinksPerModule_, -0.5, maxELinksPerModule_ - 0.5,
-      0., 1.2);
+      0., 0.);
   me_elinkOccupancyMap_->getTH1()->SetStats(0);
 
   // Cross-section overview: 1 bin per section, <occupancy> with across-event RMS error bars
@@ -141,25 +193,25 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker,
       "eLinkOccupancyBySection",
       "Mean ELink Occupancy Averaged Over Sections;Section;<Occupancy>",
       nSections_, -0.5, nSections_ - 0.5,
-      0., 1.2);
+      0., 0.);
   me_elinkOccupancyBySection_->getTH1()->SetMinimum(0);
-  me_elinkOccupancyBySection_->getTH1()->SetMaximum(1.2);
+  me_elinkOccupancyBySection_->getTH1()->SetMaximum(1.4);
 
   // Cross-subtype overview: 1 bin per subtype, <occupancy> with across-event RMS error bars
   me_elinkOccupancyBySubType_ = ibooker.bookProfile(
       "eLinkOccupancyBySubType",
       "Mean ELink Occupancy Averaged Over SubTypes;SubType;<Occupancy>",
       nSub, -0.5, nSub - 0.5,
-      0., 1.2);
+      0., 0.);
   me_elinkOccupancyBySubType_->getTH1()->SetMinimum(0);
-  me_elinkOccupancyBySubType_->getTH1()->SetMaximum(1.2);
+  me_elinkOccupancyBySubType_->getTH1()->SetMaximum(1.4);
 
   // 2D full spectrum: occupancy distribution vs section (color = entry count)
   me_elinkOccupancyVsSection_ = ibooker.book2D(
       "eLinkOccupancyVsSection",
       "Full Spectrum ELink Occupancy;Section;Occupancy",
       nSections_, -0.5, nSections_ - 0.5,
-      60, 0., 1.2);
+      70, 0., 1.4);
   me_elinkOccupancyVsSection_->getTH1()->SetStats(0);
   me_elinkOccupancyVsSection_->getTH1()->SetOption("COLZ");
 
@@ -168,7 +220,7 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker,
       "eLinkOccupancyVsSubType",
       "Full Spectrum ELink Occupancy;SubType;Occupancy",
       nSub, -0.5, nSub - 0.5,
-      60, 0., 1.2);
+      70, 0., 1.4);
   me_elinkOccupancyVsSubType_->getTH1()->SetStats(0);
   me_elinkOccupancyVsSubType_->getTH1()->SetOption("COLZ");
 
@@ -183,6 +235,33 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker,
     me_elinkOccupancyVsSubType_->setBinLabel(j + 1, std::to_string(subTypeVals_[j]), 1);
   }
 
+  // Per-section quadrant maps
+  const int nQuad = std::max<int>(1, static_cast<int>(quadrantVals_.size()));
+  mes_elinkOccupancyMapPerSection_.assign(nSections_, nullptr);
+  for (int i = 0; i < nSections_; ++i) {
+    if (sectionMapNX_[i] <= 0) continue;
+    MonitorElement* me = ibooker.bookProfile2D(
+        ("eLinkOccupancyMapPerSection_" + sectionLabels_[i]).c_str(),
+        ("Mean ELink Occupancy, " + sectionLabels_[i] +
+         ";eLink Index;Quadrant;<Occupancy>").c_str(),
+        sectionMapNX_[i], -0.5, sectionMapNX_[i] - 0.5,
+        nQuad, -0.5, nQuad - 0.5,
+        0., 0.);
+    me->getTH1()->SetStats(0);
+    me->getTH1()->SetOption("COLZ");
+    me->getTH1()->SetMinimum(0);
+    me->getTH1()->SetMaximum(1.4);
+    for (int r = 0; r < static_cast<int>(quadrantVals_.size()); ++r)
+      me->setBinLabel(r + 1, "Q" + std::to_string(quadrantVals_[r]), 2);
+
+    for (const auto& [detId, slot] : moduleSlot_) {
+      if (slot.sec != i)
+        continue;
+      for (int e = 0; e < slot.width; ++e)
+        me->setBinLabel(slot.xbase + e + 1, std::to_string(e), 1);
+    }
+    mes_elinkOccupancyMapPerSection_[i] = me;
+  }
 }
 
 void Phase2ITValidateELink::bookSectionHistos(DQMStore::IBooker& ibooker) {
@@ -195,7 +274,7 @@ void Phase2ITValidateELink::bookSectionHistos(DQMStore::IBooker& ibooker) {
         ibooker.book1D(("eLinkOccupancyPerSection_TBPX_L" + std::to_string(L)).c_str(),
                        ("Full Spectrum ELink Occupancy, TBPX_L" + std::to_string(L) +
                         ";Occupancy;Per-event ELink entries").c_str(),
-                       60, 0., 1.2);
+                       70, 0., 1.4);
     sectionLabels_[idx] = "TBPX_L" + std::to_string(L);
     sectionToIndex_[{static_cast<int>(Section::TBPX), L}] = idx++;
   }
@@ -205,7 +284,7 @@ void Phase2ITValidateELink::bookSectionHistos(DQMStore::IBooker& ibooker) {
         ibooker.book1D(("eLinkOccupancyPerSection_TFPX_R" + std::to_string(R)).c_str(),
                        ("Full Spectrum ELink Occupancy, TFPX_R" + std::to_string(R) +
                         ";Occupancy;Per-event ELink entries").c_str(),
-                       60, 0., 1.2);
+                       70, 0., 1.4);
     sectionLabels_[idx] = "TFPX_R" + std::to_string(R);
     sectionToIndex_[{static_cast<int>(Section::TFPX), R}] = idx++;
   }
@@ -215,7 +294,7 @@ void Phase2ITValidateELink::bookSectionHistos(DQMStore::IBooker& ibooker) {
         ibooker.book1D(("eLinkOccupancyPerSection_TEPX_R" + std::to_string(R)).c_str(),
                        ("Full Spectrum ELink Occupancy, TEPX_R" + std::to_string(R) +
                         ";Occupancy;Per-event ELink entries").c_str(),
-                       60, 0., 1.2);
+                       70, 0., 1.4);
     sectionLabels_[idx] = "TEPX_R" + std::to_string(R);
     sectionToIndex_[{static_cast<int>(Section::TEPX), R}] = idx++;
   }
@@ -230,7 +309,7 @@ void Phase2ITValidateELink::bookSubTypeHistos(DQMStore::IBooker& ibooker) {
         ibooker.book1D(("eLinkOccupancyPerSubType_" + std::to_string(subTypeVals_[i])).c_str(),
                        ("Full Spectrum ELink Occupancy, SubType " + std::to_string(subTypeVals_[i]) +
                         ";Occupancy;Per-event ELink entries").c_str(),
-                       60, 0., 1.2);
+                       70, 0., 1.4);
     subTypeToIndex_[subTypeVals_[i]] = i;
   }
 
@@ -241,14 +320,12 @@ void Phase2ITValidateELink::analyze(const edm::Event& iEvent, const edm::EventSe
   iEvent.getByToken(auroraToken_, handle);
   if (!handle.isValid() || handle->empty())
     return;
-  me_nEvents_->Fill(0.5);   // placeholder fill for counts
+  me_nStreamGroups_->Fill(0.5);
 
   using Section = TrackerDetToDTCELinkCablingMap::Section;
 
   // Loop over modules
   for (const auto& detset : *handle) {
-    if (!cablingMap_->hasModuleInfo(detset.id))   // guard: getModuleInfo may throw on missing DetId
-      continue;
     const auto& info = cablingMap_->getModuleInfo(detset.id);
     const int section = static_cast<int>(info.section);
     const double sectionScale = (section == static_cast<int>(Section::TBPX)) ? scaleTBPX_
@@ -271,7 +348,7 @@ void Phase2ITValidateELink::analyze(const edm::Event& iEvent, const edm::EventSe
     for (const auto& aurora : detset) {           // aurora = one ELink
       const int elinkIdx = aurora.get_elinkId();
       const int ne = aurora.get_eventsPerStream();   // this is per-elink, not per-stream
-      
+
       double elinkBits = 0.;
       // Loop over streams in ELink
       for (const auto& stream : aurora.get_auroraStreams()) {
@@ -285,6 +362,14 @@ void Phase2ITValidateELink::analyze(const edm::Event& iEvent, const edm::EventSe
 
       if (modIt != moduleToIndex_.end())
         me_elinkOccupancyMap_->Fill(modIt->second, elinkIdx, occupancy);
+
+      // Per-section quadrant map
+      auto slotIt = moduleSlot_.find(detset.id);
+      if (slotIt != moduleSlot_.end() && elinkIdx >= 0 && elinkIdx < slotIt->second.width &&
+          mes_elinkOccupancyMapPerSection_[slotIt->second.sec] != nullptr) {
+        const QuadSlot& slot = slotIt->second;
+        mes_elinkOccupancyMapPerSection_[slot.sec]->Fill(slot.xbase + elinkIdx, slot.row, occupancy);
+      }
 
       if (secIt != sectionToIndex_.end()) {
         mes_elinkOccupancyPerSection_[secIt->second]->Fill(occupancy);

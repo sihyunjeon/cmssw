@@ -38,43 +38,44 @@ void ElinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
   }
   TProfile2D* prof = occMap->getTProfile2D();
 
-  // Event count. Unlike the SLink map (one fill per SLink per event, so bin(1,1)
-  // entries == nevents), the ELink map is only filled for the ELinks present in a
-  // given event, so bin entries don't track nevents; read it from the counter
-  MonitorElement* nEvtME = igetter.get(topFolder_ + "/nEvents");
-  const double nevents = (nEvtME != nullptr) ? nEvtME->getTH1F()->GetBinContent(1) : 0.;
+  MonitorElement* nGroupME = igetter.get(topFolder_ + "/nStreamGroups");
+  const double nGroups = (nGroupME != nullptr) ? nGroupME->getTH1F()->GetBinContent(1) : 0.;
+  if (nGroups <= 0) {
+    edm::LogWarning("ElinkOccupancyHarvester")
+        << "nStreamGroups missing or empty in " << topFolder_ << "; skipping all normalization.";
+  }
 
-  // Normalize the raw 1D occupancy to per-event
+  // Normalize the raw 1D occupancy to per stream group
   MonitorElement* elinkOcc = igetter.get(topFolder_ + "/eLinkOccupancy");
-  if (elinkOcc != nullptr && nevents > 0) {
-    elinkOcc->getTH1F()->Scale(1.0 / nevents);
+  if (elinkOcc != nullptr && nGroups > 0) {
+    elinkOcc->getTH1F()->Scale(1.0 / nGroups);
     elinkOcc->getTH1F()->SetOption("HIST");
-    elinkOcc->setAxisTitle("ELink entries / nevents", 2);  // 2 = y-axis
+    elinkOcc->setAxisTitle("ELink entries / stream group", 2);  // 2 = y-axis
   }
 
   // Normalization for per-section / per-subtype full spectrum occupancy
   for (auto* me : igetter.getAllContents(topFolder_)) {
     if (me == nullptr) continue;
-    if (me->getName().rfind("eLinkOccupancyPer", 0) == 0 && nevents > 0) {
-      me->getTH1F()->Scale(1.0 / nevents);
+    if (me->getName().rfind("eLinkOccupancyPer", 0) == 0 && nGroups > 0) {
+      me->getTH1F()->Scale(1.0 / nGroups);
       me->getTH1F()->SetOption("HIST");
-      me->setAxisTitle("ELink entries / nevents", 2);
+      me->setAxisTitle("ELink entries / stream group", 2);
     }
   }
 
   // Same normalization for 2D counterparts of above
   MonitorElement* occVsSection = igetter.get(topFolder_ + "/eLinkOccupancyVsSection");
-  if (occVsSection != nullptr && nevents > 0) {
-    occVsSection->getTH2F()->Scale(1.0 / nevents);
+  if (occVsSection != nullptr && nGroups > 0) {
+    occVsSection->getTH2F()->Scale(1.0 / nGroups);
     occVsSection->getTH2F()->SetOption("COLZ");
-    occVsSection->setAxisTitle("ELink entries / nevents", 3);  // 3 = z-axis
+    occVsSection->setAxisTitle("ELink entries / stream group", 3);  // 3 = z-axis
   }
 
   MonitorElement* occVsSubType = igetter.get(topFolder_ + "/eLinkOccupancyVsSubType");
-  if (occVsSubType != nullptr && nevents > 0) {
-    occVsSubType->getTH2F()->Scale(1.0 / nevents);
+  if (occVsSubType != nullptr && nGroups > 0) {
+    occVsSubType->getTH2F()->Scale(1.0 / nGroups);
     occVsSubType->getTH2F()->SetOption("COLZ");
-    occVsSubType->setAxisTitle("ELink entries / nevents", 3);
+    occVsSubType->setAxisTitle("ELink entries / stream group", 3);
   }
 
   ibooker.cd();
@@ -98,7 +99,7 @@ void ElinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
   auto bookCountVs = [&](const std::string& srcName, const std::string& dstName, const std::string& xTitle) {
     MonitorElement* vsSrcME = igetter.get(topFolder_ + "/" + srcName);
     if (vsSrcME != nullptr) {
-      TH2* src = vsSrcME->getTH2F();                 // X=section/subtype, Y=occupancy, content=count/nevents
+      TH2* src = vsSrcME->getTH2F();                 // X=section/subtype, Y=occupancy, content=count/nStreamGroups
       const int nXB = src->GetNbinsX();
       const int nOccB = src->GetNbinsY();
     
@@ -110,7 +111,7 @@ void ElinkOccupancyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IG
     
       MonitorElement* flipME = ibooker.bookProfile2D(
           dstName.c_str(),
-          ("ELink Count per Occupancy;" + xTitle + ";ELink entries / nevents;Occupancy").c_str(),
+          ("ELink Count per Occupancy;" + xTitle + ";ELink entries / stream group;Occupancy").c_str(),
           nXB, -0.5, nXB - 0.5,
           100, 0., std::ceil(maxCount) + 1.0,
           0., 1.2);
