@@ -15,3 +15,25 @@
   <use name="FWCore/Utilities"/>
   <flags EDM_PLUGIN="1"/>
 </library>
+
+<library file="alpaka/*.cc" name="EventFilterPhase2PixelRawToDigiPluginsPortable">
+  <use name="alpaka"/>
+  <use name="CondFormats/DataRecord"/>
+  <use name="CondFormats/SiPhase2TrackerObjects"/>
+  <use name="DataFormats/FEDRawData"/>
+  <use name="DataFormats/Phase2ITBitStreamSoA"/>
+  <use name="DataFormats/Phase2TrackerDigi"/>
+  <use name="DataFormats/SiPixelDetId"/>
+  <use name="DataFormats/SiPixelDigiSoA"/>
+  <use name="EventFilter/Phase2PixelRawToDigi"/>
+  <use name="FWCore/Framework"/>
+  <use name="FWCore/ParameterSet"/>
+  <use name="FWCore/Utilities"/>
+  <use name="Geometry/CommonDetUnit"/>
+  <use name="Geometry/Records"/>
+  <use name="Geometry/TrackerGeometryBuilder"/>
+  <use name="HeterogeneousCore/AlpakaCore"/>
+  <use name="HeterogeneousCore/AlpakaInterface"/>
+  <flags ALPAKA_BACKENDS="1"/>
+  <flags EDM_PLUGIN="1"/>
+</library>

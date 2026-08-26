@@ -1,0 +1,9 @@
+<lcgdict>
+  <class name="alpaka_cuda_async::PortableCollection<Phase2ITChipBitStreamSoA>" persistent="false"/>
+  <class name="edm::DeviceProduct<alpaka_cuda_async::PortableCollection<Phase2ITChipBitStreamSoA>>" persistent="false"/>
+  <class name="edm::Wrapper<edm::DeviceProduct<alpaka_cuda_async::PortableCollection<Phase2ITChipBitStreamSoA>>>" persistent="false"/>
+
+  <class name="alpaka_cuda_async::PortableCollection<Phase2ITRawBytesSoA>" persistent="false"/>
+  <class name="edm::DeviceProduct<alpaka_cuda_async::PortableCollection<Phase2ITRawBytesSoA>>" persistent="false"/>
+  <class name="edm::Wrapper<edm::DeviceProduct<alpaka_cuda_async::PortableCollection<Phase2ITRawBytesSoA>>>" persistent="false"/>
+</lcgdict>

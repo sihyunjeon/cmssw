@@ -1,0 +1,10 @@
+#ifndef DataFormats_Phase2ITBitStreamSoA_interface_Phase2ITChipBitStreamHost_h
+#define DataFormats_Phase2ITBitStreamSoA_interface_Phase2ITChipBitStreamHost_h
+
+#include "DataFormats/Phase2ITBitStreamSoA/interface/Phase2ITChipBitStreamSoA.h"
+#include "DataFormats/Portable/interface/PortableHostCollection.h"
+
+using Phase2ITChipBitStreamHost = PortableHostCollection<Phase2ITChipBitStreamSoA>;
+using Phase2ITRawBytesHost = PortableHostCollection<Phase2ITRawBytesSoA>;
+
+#endif  // DataFormats_Phase2ITBitStreamSoA_interface_Phase2ITChipBitStreamHost_h

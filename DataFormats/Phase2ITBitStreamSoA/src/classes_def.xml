@@ -1,0 +1,11 @@
+<lcgdict>
+  <class name="Phase2ITChipBitStreamSoA"/>
+  <class name="Phase2ITChipBitStreamSoA::View"/>
+  <class name="PortableHostCollection<Phase2ITChipBitStreamSoA>"/>
+  <class name="edm::Wrapper<PortableHostCollection<Phase2ITChipBitStreamSoA>>" splitLevel="0"/>
+
+  <class name="Phase2ITRawBytesSoA"/>
+  <class name="Phase2ITRawBytesSoA::View"/>
+  <class name="PortableHostCollection<Phase2ITRawBytesSoA>"/>
+  <class name="edm::Wrapper<PortableHostCollection<Phase2ITRawBytesSoA>>" splitLevel="0"/>
+</lcgdict>

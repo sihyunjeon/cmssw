@@ -1,0 +1,13 @@
+<library file="Phase2ITDigiCompare.cc" name="EventFilterPhase2PixelRawToDigiTestPlugins">
+  <use name="CommonTools/UtilAlgos"/>
+  <use name="DataFormats/Common"/>
+  <use name="DataFormats/SiPixelDigi"/>
+  <use name="DataFormats/SiPixelDigiSoA"/>
+  <use name="FWCore/Framework"/>
+  <use name="FWCore/MessageLogger"/>
+  <use name="FWCore/ParameterSet"/>
+  <use name="FWCore/ServiceRegistry"/>
+  <use name="root"/>
+  <use name="FWCore/Utilities"/>
+  <flags EDM_PLUGIN="1"/>
+</library>

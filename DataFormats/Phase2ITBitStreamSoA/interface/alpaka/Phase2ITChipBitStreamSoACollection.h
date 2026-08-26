@@ -1,0 +1,19 @@
+#ifndef DataFormats_Phase2ITBitStreamSoA_interface_alpaka_Phase2ITChipBitStreamSoACollection_h
+#define DataFormats_Phase2ITBitStreamSoA_interface_alpaka_Phase2ITChipBitStreamSoACollection_h
+
+#include "DataFormats/Phase2ITBitStreamSoA/interface/Phase2ITChipBitStreamHost.h"
+#include "DataFormats/Phase2ITBitStreamSoA/interface/Phase2ITChipBitStreamSoA.h"
+#include "DataFormats/Portable/interface/alpaka/PortableCollection.h"
+#include "HeterogeneousCore/AlpakaInterface/interface/config.h"
+
+namespace ALPAKA_ACCELERATOR_NAMESPACE {
+
+  using Phase2ITChipBitStreamSoACollection = PortableCollection<Phase2ITChipBitStreamSoA>;
+  using Phase2ITRawBytesSoACollection = PortableCollection<Phase2ITRawBytesSoA>;
+
+}  // namespace ALPAKA_ACCELERATOR_NAMESPACE
+
+ASSERT_DEVICE_MATCHES_HOST_COLLECTION(Phase2ITChipBitStreamSoACollection, Phase2ITChipBitStreamHost);
+ASSERT_DEVICE_MATCHES_HOST_COLLECTION(Phase2ITRawBytesSoACollection, Phase2ITRawBytesHost);
+
+#endif  // DataFormats_Phase2ITBitStreamSoA_interface_alpaka_Phase2ITChipBitStreamSoACollection_h
