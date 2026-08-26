@@ -25,6 +25,11 @@ opts.register('accelerator', 'auto', VarParsing.VarParsing.multiplicity.singleto
               VarParsing.VarParsing.varType.string,
               'auto / gpu-nvidia / gpu-amd / cpu. Anything but auto is enforced, so the '
               'job fails instead of silently falling back to another backend.')
+opts.register('timing', 0, VarParsing.VarParsing.multiplicity.singleton,
+              VarParsing.VarParsing.varType.int,
+              'drop the comparison analyzer and print the per-module TimeReport')
+opts.register('threads', 1, VarParsing.VarParsing.multiplicity.singleton,
+              VarParsing.VarParsing.varType.int, 'threads and concurrent events')
 opts.parseArguments()
 _dropTot = bool(opts.dropTot)
 from Configuration.Eras.Era_Phase2C17I13M9_cff import Phase2C17I13M9
@@ -42,7 +47,7 @@ process.MessageLogger.cerr.FwkReport.reportEvery = 1
 from Configuration.AlCa.GlobalTag import GlobalTag
 process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 
-process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(5))
+process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(opts.maxEvents if opts.maxEvents > 0 else 5))
 process.source = cms.Source('PoolSource',
     fileNames=cms.untracked.vstring(
         'root://cms-xrd-global.cern.ch//store/relval/CMSSW_14_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_140X_mcRun4_realistic_v3_SpecialRV296_Run4D112-v1/2590000/0060c957-0236-4b79-abe3-8410dec69b26.root',
@@ -104,16 +109,22 @@ process.phase2ITDigiCompare = cms.EDAnalyzer('Phase2ITDigiCompare',
 
 process.TFileService = cms.Service('TFileService', fileName=cms.string('phase2ITDigiCompare_%s%s.root' % (opts.gapMode, '_dropTot' if _dropTot else '')))
 
-process.p = cms.Path(
-    process.PixelToBitStreamProducer
-    * process.BitStreamToRawProducer
-    * process.rawToBitStreamProducer
-    * process.bitstreamToPixelProducer
-    * process.phase2ITRawToBitStream
-    * process.phase2ITBitStreamToDigi
-    * process.phase2ITDigiCompare
-)
+_chain = (process.PixelToBitStreamProducer
+          * process.BitStreamToRawProducer
+          * process.rawToBitStreamProducer
+          * process.bitstreamToPixelProducer
+          * process.phase2ITRawToBitStream
+          * process.phase2ITBitStreamToDigi)
+# The comparison walks every digi of both collections, so it would dominate any
+# timing measurement; drop it and ask for the per-module TimeReport instead.
+if opts.timing:
+    process.options.wantSummary = cms.untracked.bool(True)
+    process.MessageLogger.cerr.FwkReport.reportEvery = 100
+else:
+    _chain = _chain * process.phase2ITDigiCompare
+process.p = cms.Path(_chain)
 
-process.options.numberOfThreads = cms.untracked.uint32(1)
+process.options.numberOfThreads = cms.untracked.uint32(opts.threads)
+process.options.numberOfStreams = cms.untracked.uint32(opts.threads)
 if opts.accelerator != 'auto':
     process.options.accelerators = cms.untracked.vstring(opts.accelerator)

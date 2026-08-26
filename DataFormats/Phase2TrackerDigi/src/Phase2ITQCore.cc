@@ -1,4 +1,6 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITQCore.h"
+
+#include <array>
 #include <cmath>
 #include <vector>
 #include <functional>
@@ -76,32 +78,34 @@ namespace {
     return {true, true};
   }
 
-  // Decoding
-  std::vector<bool> decChunk(const std::vector<bool>& bits, size_t& pos, int n) {
-    std::vector<bool> result(n, false);
-    std::vector<std::pair<int, int>> active;
-    active.emplace_back(0, n);
+  // Decoding. Writes n bits into out; the tree scratch is sized for n <= 16.
+  // Kept allocation-free: this runs once per qcore row, ~1e6 times per event.
+  void decChunk(const std::vector<bool>& bits, size_t& pos, int n, bool* out) {
+    for (int i = 0; i < n; ++i)
+      out[i] = false;
+    int active[16], nActive = 0;
+    active[nActive++] = 0;
     int curSize = n;
     while (curSize > 2) {
-      int half = curSize / 2;
-      std::vector<std::pair<int, int>> nextActive;
-      nextActive.reserve(active.size() * 2);
-      for (const auto& sub : active) {
+      const int half = curSize / 2;
+      int next[16], nNext = 0;
+      for (int i = 0; i < nActive; ++i) {
         auto p = decPairBits(bits, pos);
         if (p.first)
-          nextActive.emplace_back(sub.first, half);
+          next[nNext++] = active[i];
         if (p.second)
-          nextActive.emplace_back(sub.first + half, half);
+          next[nNext++] = active[i] + half;
       }
-      active = std::move(nextActive);
+      for (int i = 0; i < nNext; ++i)
+        active[i] = next[i];
+      nActive = nNext;
       curSize = half;
     }
-    for (const auto& sub : active) {
+    for (int i = 0; i < nActive; ++i) {
       auto p = decPairBits(bits, pos);
-      result[sub.first] = p.first;
-      result[sub.first + 1] = p.second;
+      out[active[i]] = p.first;
+      out[active[i] + 1] = p.second;
     }
-    return result;
   }
 
 }  // namespace
@@ -254,27 +258,20 @@ std::vector<bool> Phase2ITQCore::encodeHitmap(const std::vector<bool>& hitmap) {
   return code;
 }
 
-std::vector<bool> Phase2ITQCore::decodeHitmap(const std::vector<bool>& bitstream, size_t& bitPos) {
-  std::vector<bool> hitmap(16, false);
+std::array<bool, 16> Phase2ITQCore::decodeHitmap(const std::vector<bool>& bitstream, size_t& bitPos) {
+  std::array<bool, 16> hitmap{};
   auto rowOr = decPairBits(bitstream, bitPos);
-  if (rowOr.first) {
-    std::vector<bool> row1 = decChunk(bitstream, bitPos, 8);
-    for (int i = 0; i < 8; ++i)
-      hitmap[i] = row1[i];
-  }
-  if (rowOr.second) {
-    std::vector<bool> row2 = decChunk(bitstream, bitPos, 8);
-    for (int i = 0; i < 8; ++i)
-      hitmap[8 + i] = row2[i];
-  }
+  if (rowOr.first)
+    decChunk(bitstream, bitPos, 8, hitmap.data());
+  if (rowOr.second)
+    decChunk(bitstream, bitPos, 8, hitmap.data() + 8);
   return hitmap;
 }
 
-std::vector<int> Phase2ITQCore::decodeADCs(const std::vector<bool>& bitstream, size_t& bitPos, int numHits) {
-  std::vector<int> adcs;
-  adcs.reserve(numHits);
-  for (int i = 0; i < numHits; i++) {
-    adcs.push_back(::binaryToInt(bitstream, bitPos, 4));
+std::array<int, 16> Phase2ITQCore::decodeADCs(const std::vector<bool>& bitstream, size_t& bitPos, int numHits) {
+  std::array<int, 16> adcs{};
+  for (int i = 0; i < numHits && i < 16; i++) {
+    adcs[i] = ::binaryToInt(bitstream, bitPos, 4);
   }
   return adcs;
 }

@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <algorithm>
+#include <array>
 #include <functional>
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
@@ -134,12 +135,13 @@ void BitStreamToPixelProducer::decodeBitStream(
       state.currentRow = binaryToInt(bitstream, state.bitPos, 8);
     }
 
-    std::vector<bool> hitmap = Phase2ITQCore::decodeHitmap(bitstream, state.bitPos);
+    std::array<bool, 16> hitmap = Phase2ITQCore::decodeHitmap(bitstream, state.bitPos);
     int numHits = std::count(hitmap.begin(), hitmap.end(), true);
     // In dropTot mode the encoder skipped the ToT bits.
     // emit adc=0 for every hit otherwise read 4 bits per hit as the ToT/ADC value.
-    std::vector<int> adcValues =
-        dropTot_ ? std::vector<int>(numHits, 0) : Phase2ITQCore::decodeADCs(bitstream, state.bitPos, numHits);
+    std::array<int, 16> adcValues{};
+    if (!dropTot_)
+      adcValues = Phase2ITQCore::decodeADCs(bitstream, state.bitPos, numHits);
 
     int adcIndex = 0;
     for (int i = 0; i < HITMAP_SIZE; i++) {

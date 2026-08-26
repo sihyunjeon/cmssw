@@ -1,5 +1,6 @@
 #ifndef DataFormats_Phase2TrackerDigi_Phase2ITQCore_H
 #define DataFormats_Phase2TrackerDigi_Phase2ITQCore_H
+#include <array>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
@@ -50,9 +51,11 @@ public:
   static std::vector<T> toRocCoordinates(const std::vector<T>& inputMap);
 
   static std::vector<bool> encodeHitmap(const std::vector<bool>& hitmap);
-  static std::vector<bool> decodeHitmap(const std::vector<bool>& bitstream, size_t& bitPos);
+  // A hitmap is always 16 entries and a qcore never holds more hits than that,
+  // so both decoders return fixed-size arrays: no allocation per qcore.
+  static std::array<bool, 16> decodeHitmap(const std::vector<bool>& bitstream, size_t& bitPos);
 
-  static std::vector<int> decodeADCs(const std::vector<bool>& bitstream, size_t& bitPos, int numHits);
+  static std::array<int, 16> decodeADCs(const std::vector<bool>& bitstream, size_t& bitPos, int numHits);
 
 private:
   std::vector<int> adcs_;  // Full array of adc values in a quarter core
