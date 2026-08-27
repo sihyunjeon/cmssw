@@ -1,12 +1,9 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITModuleMapESProducer
-// Description: Flattens the cabling map and the tracker geometry into the
-//              tables Phase2ITRawToBitStream's kernels index, once per IOV.
-//              The device copy is made by the framework.
-//
-// Author: Si Hyun Jeon, shjeon@cern.ch
-//
+// Description: Flatten the cabling map and tracker geometry into the tables the
+//              unpacking kernels index, once per IOV
+// Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <optional>
 #include <vector>

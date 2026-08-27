@@ -49,7 +49,9 @@ process.MessageLogger.cerr.FwkReport.reportEvery = 1
 from Configuration.AlCa.GlobalTag import GlobalTag
 process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 
-process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(opts.maxEvents if opts.maxEvents > 0 else 5))
+# maxEvents follows the VarParsing convention: -1, which is also the default,
+# means every event in the file. Pass a small number for quick validation runs.
+process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(opts.maxEvents))
 process.source = cms.Source('PoolSource',
     fileNames=cms.untracked.vstring(
         'root://cms-xrd-global.cern.ch//store/relval/CMSSW_14_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_140X_mcRun4_realistic_v3_SpecialRV296_Run4D112-v1/2590000/0060c957-0236-4b79-abe3-8410dec69b26.root',
@@ -98,10 +100,10 @@ process.bitstreamToPixelProducer = cms.EDProducer('BitStreamToPixelProducer',
 # once per IOV rather than on the first event.
 process.phase2ITModuleMap = cms.ESProducer('Phase2ITModuleMapESProducer@alpaka')
 
-process.phase2ITRawToBitStream = cms.EDProducer('Phase2ITRawToBitStream@alpaka',
+process.phase2ITRawToBitStream = cms.EDProducer('Phase2ITRawToBitStreamProducer@alpaka',
     fedRawDataCollection=cms.InputTag("BitStreamToRawProducer"),
 )
-process.phase2ITBitStreamToDigi = cms.EDProducer('Phase2ITBitStreamToDigi@alpaka',
+process.phase2ITBitStreamToPixel = cms.EDProducer('Phase2ITBitStreamToPixelProducer@alpaka',
     phase2ItChipBitStream=cms.InputTag("phase2ITRawToBitStream"),
     phase2ItRawBytes=cms.InputTag("phase2ITRawToBitStream"),
     dropTot=cms.untracked.bool(_dropTot),
@@ -110,7 +112,7 @@ process.phase2ITBitStreamToDigi = cms.EDProducer('Phase2ITBitStreamToDigi@alpaka
 
 process.phase2ITDigiCompare = cms.EDAnalyzer('Phase2ITDigiCompare',
     legacy=cms.InputTag('bitstreamToPixelProducer'),
-    soa=cms.InputTag('phase2ITBitStreamToDigi'),
+    soa=cms.InputTag('phase2ITBitStreamToPixel'),
 )
 
 process.TFileService = cms.Service('TFileService', fileName=cms.string('phase2ITDigiCompare_%s%s.root' % (opts.gapMode, '_dropTot' if _dropTot else '')))
@@ -120,7 +122,7 @@ _chain = (process.PixelToBitStreamProducer
           * process.rawToBitStreamProducer
           * process.bitstreamToPixelProducer
           * process.phase2ITRawToBitStream
-          * process.phase2ITBitStreamToDigi)
+          * process.phase2ITBitStreamToPixel)
 # The comparison walks every digi of both collections, so it would dominate any
 # timing measurement; drop it and ask for the per-module TimeReport instead.
 if opts.timing:

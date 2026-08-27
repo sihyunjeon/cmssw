@@ -1,12 +1,10 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
-// Class:      Phase2ITBitStreamToDigi
-// Description: Alpaka counterpart of BitStreamToPixelProducer. Decodes the
-//              per-chip bit streams left on the device by Phase2ITRawToBitStream
-//              into a SiPixelDigisSoACollection, one thread per chip.
-//
-// Author: Si Hyun Jeon, shjeon@cern.ch
-//
+// Class:      Phase2ITBitStreamToPixelProducer
+// Description: Portable counterpart of BitStreamToPixelProducer. Decodes the
+//              per-chip bit streams left on the device into SiPixelDigis,
+//              one thread per chip.
+// Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <optional>
 #include <string>
@@ -40,15 +38,15 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         return true;
       if (s == "DROP" || s == "AGGREGATE")
         return false;
-      throw cms::Exception("Phase2ITBitStreamToDigi")
+      throw cms::Exception("Phase2ITBitStreamToPixelProducer")
           << "handleGapPixels must be one of DROP/KEEP/AGGREGATE, got '" << s << "'";
     }
   }  // namespace
 
-  class Phase2ITBitStreamToDigi : public stream::SynchronizingEDProducer<> {
+  class Phase2ITBitStreamToPixelProducer : public stream::SynchronizingEDProducer<> {
   public:
-    explicit Phase2ITBitStreamToDigi(const edm::ParameterSet& iConfig);
-    ~Phase2ITBitStreamToDigi() override = default;
+    explicit Phase2ITBitStreamToPixelProducer(const edm::ParameterSet& iConfig);
+    ~Phase2ITBitStreamToPixelProducer() override = default;
 
     static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
@@ -69,7 +67,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     uint32_t nChips_ = 0;
   };
 
-  Phase2ITBitStreamToDigi::Phase2ITBitStreamToDigi(const edm::ParameterSet& iConfig)
+  Phase2ITBitStreamToPixelProducer::Phase2ITBitStreamToPixelProducer(const edm::ParameterSet& iConfig)
       : SynchronizingEDProducer(iConfig),
         chipToken_(consumes(iConfig.getParameter<edm::InputTag>("phase2ItChipBitStream"))),
         bytesToken_(consumes(iConfig.getParameter<edm::InputTag>("phase2ItRawBytes"))),
@@ -77,7 +75,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)),
         keepMode_(parseKeepMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "DROP"))) {}
 
-  void Phase2ITBitStreamToDigi::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  void Phase2ITBitStreamToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("phase2ItChipBitStream", edm::InputTag("phase2ITRawToBitStream"));
     desc.add<edm::InputTag>("phase2ItRawBytes", edm::InputTag("phase2ITRawToBitStream"));
@@ -86,7 +84,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     descriptions.addWithDefaultLabel(desc);
   }
 
-  void Phase2ITBitStreamToDigi::acquire(device::Event const& iEvent, device::EventSetup const&) {
+  void Phase2ITBitStreamToPixelProducer::acquire(device::Event const& iEvent, device::EventSetup const&) {
     auto& queue = iEvent.queue();
     const auto& chips = iEvent.get(chipToken_);
     const auto& bytes = iEvent.get(bytesToken_);
@@ -104,7 +102,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *countsH_, *countsD_);
   }
 
-  void Phase2ITBitStreamToDigi::produce(device::Event& iEvent, device::EventSetup const&) {
+  void Phase2ITBitStreamToPixelProducer::produce(device::Event& iEvent, device::EventSetup const&) {
     auto& queue = iEvent.queue();
 
     if (nChips_ == 0) {
@@ -137,4 +135,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-DEFINE_FWK_ALPAKA_MODULE(Phase2ITBitStreamToDigi);
+DEFINE_FWK_ALPAKA_MODULE(Phase2ITBitStreamToPixelProducer);

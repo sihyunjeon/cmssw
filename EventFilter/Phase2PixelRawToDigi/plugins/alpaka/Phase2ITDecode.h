@@ -3,7 +3,7 @@
 
 // Device-side primitives of the Phase-2 IT DAQ format, bit-exact with the
 // legacy RawToBitStreamProducer / BitStreamToPixelProducer / Phase2ITQCore.
-// Shared by the Phase2ITRawToBitStream / Phase2ITBitStreamToDigi kernels.
+// Shared by the Phase2ITRawToBitStreamProducer / Phase2ITBitStreamToPixelProducer kernels.
 
 #include <cstdint>
 

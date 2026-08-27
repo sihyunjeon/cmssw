@@ -1,12 +1,10 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
-// Class:      phase2it unpacking kernels
-// Description: Count/fill kernel pairs for the two device unpacking stages.
+// Class:      Phase2IT unpacking kernels
+// Description: Count and fill kernel pairs for the two device unpacking stages.
 //              Each stage decodes twice: once to size the output, once to fill
-//              it, since a kernel cannot grow its output collection.
-//
-// Author: Si Hyun Jeon, shjeon@cern.ch
-//
+//              it, since a kernel cannot grow its own output collection.
+// Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <alpaka/alpaka.hpp>
 

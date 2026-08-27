@@ -8,8 +8,8 @@
 #include "HeterogeneousCore/AlpakaInterface/interface/config.h"
 
 // Two-stage device unpacking, mirroring the legacy chain:
-//   raw  -> chip bit streams  (Phase2ITRawToBitStream)
-//   chip bit streams -> digis (Phase2ITBitStreamToDigi)
+//   raw  -> chip bit streams  (Phase2ITRawToBitStreamProducer)
+//   chip bit streams -> digis (Phase2ITBitStreamToPixelProducer)
 namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it {
 
   // Per-module lookup into the concatenated FED bodies, mirroring SLinkModuleMap, one thread per module.

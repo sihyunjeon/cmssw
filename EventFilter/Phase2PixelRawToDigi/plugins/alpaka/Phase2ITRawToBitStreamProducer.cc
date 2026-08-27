@@ -1,13 +1,10 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
-// Class:      Phase2ITRawToBitStream
-// Description: Alpaka counterpart of RawToBitStreamProducer. Copies the IT FED
-//              bodies to the device once per event and builds a per-chip index
-//              (Phase2ITChipBitStreamSoA) into that byte buffer, one thread per
-//              module. Both stay on the device for Phase2ITBitStreamToDigi.
-//
-// Author: Si Hyun Jeon, shjeon@cern.ch
-//
+// Class:      Phase2ITRawToBitStreamProducer
+// Description: Portable counterpart of RawToBitStreamProducer. Copies the IT
+//              FED bodies to the device once per event and builds a per-chip
+//              index into that byte buffer, one thread per module.
+// Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <cstring>
 #include <memory>
@@ -43,10 +40,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   using namespace Phase2DAQFormatSpecification;
 
-  class Phase2ITRawToBitStream : public stream::SynchronizingEDProducer<> {
+  class Phase2ITRawToBitStreamProducer : public stream::SynchronizingEDProducer<> {
   public:
-    explicit Phase2ITRawToBitStream(const edm::ParameterSet& iConfig);
-    ~Phase2ITRawToBitStream() override = default;
+    explicit Phase2ITRawToBitStreamProducer(const edm::ParameterSet& iConfig);
+    ~Phase2ITRawToBitStreamProducer() override = default;
 
     static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
@@ -76,7 +73,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     bool hasData_ = false;
   };
 
-  Phase2ITRawToBitStream::Phase2ITRawToBitStream(const edm::ParameterSet& iConfig)
+  Phase2ITRawToBitStreamProducer::Phase2ITRawToBitStreamProducer(const edm::ParameterSet& iConfig)
       : SynchronizingEDProducer(iConfig),
         rawToken_(consumes<RawDataBuffer>(iConfig.getParameter<edm::InputTag>("fedRawDataCollection"))),
         chipPutToken_(produces()),
@@ -84,13 +81,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         mapToken_(esConsumes()),
         mapHostToken_(esConsumes()) {}
 
-  void Phase2ITRawToBitStream::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  void Phase2ITRawToBitStreamProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("fedRawDataCollection", edm::InputTag("BitStreamToRawProducer"));
     descriptions.addWithDefaultLabel(desc);
   }
 
-  phase2it::ModuleMap Phase2ITRawToBitStream::moduleMap(const Phase2ITModuleMapDevice& esMap) const {
+  phase2it::ModuleMap Phase2ITRawToBitStreamProducer::moduleMap(const Phase2ITModuleMapDevice& esMap) const {
     auto const mods = esMap.const_view<Phase2ITModuleMapSoA>();
     auto const feds = esMap.const_view<Phase2ITFedMapSoA>();
     return {fedWordBaseD_->data(),
@@ -103,7 +100,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
             mods.metadata().size()};
   }
 
-  void Phase2ITRawToBitStream::acquire(device::Event const& iEvent, device::EventSetup const& iSetup) {
+  void Phase2ITRawToBitStreamProducer::acquire(device::Event const& iEvent, device::EventSetup const& iSetup) {
     auto& queue = iEvent.queue();
 
     // The map itself is already on the device; the host copy only tells us which
@@ -137,12 +134,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     for (int f = 0; f < nFeds; ++f) {
       auto frag = rawHandle->fragmentData(static_cast<uint32_t>(fedsH[f].fedId()));
       if (!frag.isValid())
-        throw cms::Exception("Phase2ITRawToBitStream") << "Missing RawDataBuffer fragment for fed " << fedsH[f].fedId();
+        throw cms::Exception("Phase2ITRawToBitStreamProducer") << "Missing RawDataBuffer fragment for fed " << fedsH[f].fedId();
       const auto span = frag.data();
       const auto* sh = reinterpret_cast<const SLinkRocketHeader_v3*>(span.data());
       const auto* st = reinterpret_cast<const SLinkRocketTrailer_v3*>(span.data() + span.size() - kSlrTrlBytes);
       if (!sh->verifyMarker() || !st->verifyMarker() || st->eventLenBytes() != span.size())
-        throw cms::Exception("Phase2ITRawToBitStream") << "Invalid SLinkRocket wrapper for fed " << fedsH[f].fedId();
+        throw cms::Exception("Phase2ITRawToBitStreamProducer") << "Invalid SLinkRocket wrapper for fed " << fedsH[f].fedId();
       const int32_t bodyWords =
           static_cast<int32_t>(span.size() / BYTES_PER_WORD) - (kSlrHdrBytes + kSlrTrlBytes) / BYTES_PER_WORD;
       fedWordBaseH_->data()[f] = totalWords;
@@ -167,7 +164,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *countsH_, *countsD_);
   }
 
-  void Phase2ITRawToBitStream::produce(device::Event& iEvent, device::EventSetup const& iSetup) {
+  void Phase2ITRawToBitStreamProducer::produce(device::Event& iEvent, device::EventSetup const& iSetup) {
     auto& queue = iEvent.queue();
 
     if (!hasData_) {
@@ -194,4 +191,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-DEFINE_FWK_ALPAKA_MODULE(Phase2ITRawToBitStream);
+DEFINE_FWK_ALPAKA_MODULE(Phase2ITRawToBitStreamProducer);
