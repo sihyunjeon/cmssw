@@ -27,7 +27,9 @@ opts.register('accelerator', 'auto', VarParsing.VarParsing.multiplicity.singleto
               'job fails instead of silently falling back to another backend.')
 opts.register('timing', 0, VarParsing.VarParsing.multiplicity.singleton,
               VarParsing.VarParsing.varType.int,
-              'drop the comparison analyzer and print the per-module TimeReport')
+              'drop the comparison analyzer and print the per-module TimeReport. '
+              'timing=2 keeps the analyzer, so the device-to-host transfer of the '
+              'digis is charged to the job instead of never happening.')
 opts.register('threads', 1, VarParsing.VarParsing.multiplicity.singleton,
               VarParsing.VarParsing.varType.int, 'threads and concurrent events')
 opts.parseArguments()
@@ -92,6 +94,10 @@ process.bitstreamToPixelProducer = cms.EDProducer('BitStreamToPixelProducer',
 )
 
 # Alpaka chain (explicit CPU serial backend)
+# Flattens the cabling map and geometry into the tables the kernels index,
+# once per IOV rather than on the first event.
+process.phase2ITModuleMap = cms.ESProducer('Phase2ITModuleMapESProducer@alpaka')
+
 process.phase2ITRawToBitStream = cms.EDProducer('Phase2ITRawToBitStream@alpaka',
     fedRawDataCollection=cms.InputTag("BitStreamToRawProducer"),
 )
@@ -120,7 +126,9 @@ _chain = (process.PixelToBitStreamProducer
 if opts.timing:
     process.options.wantSummary = cms.untracked.bool(True)
     process.MessageLogger.cerr.FwkReport.reportEvery = 100
-else:
+if opts.timing != 1:
+    # The analyzer consumes SiPixelDigisHost, which is what pulls the digi SoA
+    # back off the device; without it the transfer never happens at all.
     _chain = _chain * process.phase2ITDigiCompare
 process.p = cms.Path(_chain)
 

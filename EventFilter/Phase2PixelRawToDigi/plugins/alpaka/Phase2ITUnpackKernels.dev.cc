@@ -20,16 +20,16 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it {
 
   namespace {
     // Start of the FED body owning module m, inside the concatenated buffer.
-    ALPAKA_FN_ACC inline const uint8_t* fedBytes(const uint8_t* bytes, const ModuleNav& nav, int m) {
-      return bytes + nav.fedWordBase[nav.modFedIdx[m]] * 4;
+    ALPAKA_FN_ACC inline const uint8_t* fedBytes(const uint8_t* bytes, const ModuleMap& modMap, int m) {
+      return bytes + modMap.fedWordBase[modMap.modFedIdx[m]] * 4;
     }
     // Word span of module m, taken from its FED's offset block.
-    ALPAKA_FN_ACC inline ModuleSpan spanOf(const uint8_t* bytes, const ModuleNav& nav, int m) {
-      const int f = nav.modFedIdx[m];
-      return moduleSpan(fedBytes(bytes, nav, m),
-                        nav.fedSizeWords[f],
-                        nav.fedModStart[f + 1] - nav.fedModStart[f],
-                        m - nav.fedModStart[f]);
+    ALPAKA_FN_ACC inline ModuleSpan spanOf(const uint8_t* bytes, const ModuleMap& modMap, int m) {
+      const int f = modMap.modFedIdx[m];
+      return moduleSpan(fedBytes(bytes, modMap, m),
+                        modMap.fedSizeWords[f],
+                        modMap.fedModStart[f + 1] - modMap.fedModStart[f],
+                        m - modMap.fedModStart[f]);
     }
   }  // namespace
 
@@ -38,10 +38,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it {
   // FIXME chips per module is static (ModuleInfo.nChips), so this count could be
   // built once per IOV instead of every event, saving a kernel and a host sync.
   struct ChipCountKernel {
-    ALPAKA_FN_ACC void operator()(Acc1D const& acc, const uint8_t* bytes, ModuleNav nav, uint32_t* counts) const {
-      for (auto m : cms::alpakatools::uniform_elements(acc, nav.nModules)) {
+    ALPAKA_FN_ACC void operator()(Acc1D const& acc, const uint8_t* bytes, ModuleMap modMap, uint32_t* counts) const {
+      for (auto m : cms::alpakatools::uniform_elements(acc, modMap.nModules)) {
         uint32_t n = 0;
-        forEachChip(fedBytes(bytes, nav, m), spanOf(bytes, nav, m), [&](int, int, uint32_t) { ++n; });
+        forEachChip(fedBytes(bytes, modMap, m), spanOf(bytes, modMap, m), [&](int, int, uint32_t) { ++n; });
         counts[m] = n;
       }
     }
@@ -50,39 +50,39 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it {
   struct ChipFillKernel {
     ALPAKA_FN_ACC void operator()(Acc1D const& acc,
                                   const uint8_t* bytes,
-                                  ModuleNav nav,
+                                  ModuleMap modMap,
                                   const uint32_t* offsets,
                                   Phase2ITChipBitStreamSoAView chips) const {
-      for (auto m : cms::alpakatools::uniform_elements(acc, nav.nModules)) {
-        // bitOffset is relative to the whole buffer, so stage 2 needs no navigation
-        const uint8_t* fb = fedBytes(bytes, nav, m);
-        const uint32_t fedByteBase = nav.fedWordBase[nav.modFedIdx[m]] * 4;
+      for (auto m : cms::alpakatools::uniform_elements(acc, modMap.nModules)) {
+        // bitOffset is relative to the whole buffer, so stage 2 needs no module lookup
+        const uint8_t* fb = fedBytes(bytes, modMap, m);
+        const uint32_t fedByteBase = modMap.fedWordBase[modMap.modFedIdx[m]] * 4;
         uint32_t row = offsets[m];
-        forEachChip(fb, spanOf(bytes, nav, m), [&](int chipId, int payloadWord, uint32_t bitLen) {
+        forEachChip(fb, spanOf(bytes, modMap, m), [&](int chipId, int payloadWord, uint32_t bitLen) {
           auto c = chips[row++];
-          c.detId() = nav.modDetId[m];
+          c.detId() = modMap.modDetId[m];
           c.bitOffset() = (fedByteBase + payloadWord * 4) * 8;
           c.bitLen() = bitLen;
-          c.moduleId() = nav.modGeomIdx[m];
+          c.moduleId() = modMap.modGeomIdx[m];
           c.chipId() = uint8_t(chipId);
-          c.subtype() = nav.modSubtype[m];
+          c.subtype() = modMap.modSubtype[m];
         });
       }
     }
   };
 
-  void runChipCountKernel(Queue& queue, const uint8_t* bytes, const ModuleNav& nav, uint32_t* counts) {
-    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(nav.nModules, 128), 128);
-    alpaka::exec<Acc1D>(queue, wd, ChipCountKernel{}, bytes, nav, counts);
+  void runChipCountKernel(Queue& queue, const uint8_t* bytes, const ModuleMap& modMap, uint32_t* counts) {
+    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(modMap.nModules, 128), 128);
+    alpaka::exec<Acc1D>(queue, wd, ChipCountKernel{}, bytes, modMap, counts);
   }
 
   void runChipFillKernel(Queue& queue,
                          const uint8_t* bytes,
-                         const ModuleNav& nav,
+                         const ModuleMap& modMap,
                          const uint32_t* offsets,
                          Phase2ITChipBitStreamSoAView chips) {
-    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(nav.nModules, 128), 128);
-    alpaka::exec<Acc1D>(queue, wd, ChipFillKernel{}, bytes, nav, offsets, chips);
+    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(modMap.nModules, 128), 128);
+    alpaka::exec<Acc1D>(queue, wd, ChipFillKernel{}, bytes, modMap, offsets, chips);
   }
 
   // Stage 2: per-chip bit streams -> digis.

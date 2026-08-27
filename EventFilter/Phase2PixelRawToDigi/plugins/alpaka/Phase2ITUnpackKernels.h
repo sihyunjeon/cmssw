@@ -12,10 +12,10 @@
 //   chip bit streams -> digis (Phase2ITBitStreamToDigi)
 namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it {
 
-  // Per-module navigation into the concatenated FED bodies, one thread per module.
+  // Per-module lookup into the concatenated FED bodies, mirroring SLinkModuleMap, one thread per module.
   // FIXME chip stream lengths vary by ~4x, so threads in a warp finish unevenly;
   // binning chips by size before the stage 2 launch would reduce the divergence.
-  struct ModuleNav {
+  struct ModuleMap {
     const int32_t* fedWordBase;   // [nFeds] word offset of each FED body
     const int32_t* fedSizeWords;  // [nFeds]
     const int32_t* fedModStart;   // [nFeds+1] first module index of each FED
@@ -27,10 +27,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it {
   };
 
   // stage 1: count chips per module, then fill the chip index rows
-  void runChipCountKernel(Queue& queue, const uint8_t* bytes, const ModuleNav& nav, uint32_t* chipCounts);
+  void runChipCountKernel(Queue& queue, const uint8_t* bytes, const ModuleMap& modMap, uint32_t* chipCounts);
   void runChipFillKernel(Queue& queue,
                          const uint8_t* bytes,
-                         const ModuleNav& nav,
+                         const ModuleMap& modMap,
                          const uint32_t* chipOffsets,
                          Phase2ITChipBitStreamSoAView chips);
 
