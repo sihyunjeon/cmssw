@@ -41,11 +41,10 @@ public:
 private:
   void produce(edm::Event&, const edm::EventSetup&) override;
 
-  uint32_t binaryToInt(const std::vector<bool>& binary, size_t& bitPos, int length);
 
   // Decode a single chip's bitstream and append its PixelDigi objects to an accumulating per-module detSet.
   void decodeBitStream(
-      const std::vector<bool>& bitstream, uint32_t detId, int chipId, int subtype, edm::DetSet<PixelDigi>& detSet);
+      const Phase2ITChipBitStream& chipBS, uint32_t detId, int chipId, int subtype, edm::DetSet<PixelDigi>& detSet);
 
   const edm::EDGetTokenT<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamToken_;
   // Cabling map supplies the per-module Module_SubType that keys the ChipModuleMap
@@ -100,48 +99,37 @@ struct DecoderState {
   DecoderState() = default;
 };
 
-uint32_t BitStreamToPixelProducer::binaryToInt(const std::vector<bool>& binary, size_t& bitPos, int length) {
-  uint32_t result = 0;
-  for (int i = 0; i < length; i++) {
-    if (bitPos < binary.size()) {
-      result = (result << 1) | (binary[bitPos] ? 1 : 0);
-      bitPos++;
-    } else
-      break;
-  }
-  return result;
-}
-
 void BitStreamToPixelProducer::decodeBitStream(
-    const std::vector<bool>& bitstream, uint32_t detId, int chipId, int subtype, edm::DetSet<PixelDigi>& detSet) {
-  if (bitstream.empty()) {
+    const Phase2ITChipBitStream& chipBS, uint32_t detId, int chipId, int subtype, edm::DetSet<PixelDigi>& detSet) {
+  if (chipBS.nBits() == 0) {
     return;
   }
   DecoderState state;
+  Phase2ITBitReader reader(chipBS.bytes(), chipBS.nBits());
 
-  while (state.bitPos < bitstream.size()) {
+  while (!reader.atEnd()) {
     // Read a fresh ccol only at the start of a new column group (previous QCore was islast, or this is the first QCore in the chip stream). Otherwise the current QCore is in the same column as the previous one, so we keep currentCol unchanged.
     if (state.previousIsLast) {
-      state.currentCol = binaryToInt(bitstream, state.bitPos, 6);
+      state.currentCol = reader.bits(6);
     }
 
-    bool islast = bitstream[state.bitPos++];
-    bool isneighbor = bitstream[state.bitPos++];
+    bool islast = reader.next();
+    bool isneighbor = reader.next();
 
     // isneighbor=1 means the previous qrow address is current_qrow - 1, so the qrow field is omitted and we give previous + 1.
     if (isneighbor) {
       state.currentRow = state.previousRow + 1;
     } else {
-      state.currentRow = binaryToInt(bitstream, state.bitPos, 8);
+      state.currentRow = reader.bits(8);
     }
 
-    std::array<bool, 16> hitmap = Phase2ITQCore::decodeHitmap(bitstream, state.bitPos);
+    std::array<bool, 16> hitmap = Phase2ITQCore::decodeHitmap(reader);
     int numHits = std::count(hitmap.begin(), hitmap.end(), true);
     // In dropTot mode the encoder skipped the ToT bits.
     // emit adc=0 for every hit otherwise read 4 bits per hit as the ToT/ADC value.
     std::array<int, 16> adcValues{};
     if (!dropTot_)
-      adcValues = Phase2ITQCore::decodeADCs(bitstream, state.bitPos, numHits);
+      adcValues = Phase2ITQCore::decodeADCs(reader, numHits);
 
     int adcIndex = 0;
     for (int i = 0; i < HITMAP_SIZE; i++) {
@@ -184,7 +172,7 @@ void BitStreamToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup
     const int subtype = static_cast<int>(cablingMap.getModuleInfo(detId).subtype);
     edm::DetSet<PixelDigi> moduleDigis(detId);
     for (const auto& chipBS : detSet) {
-      decodeBitStream(chipBS.get_bitstream(), detId, chipBS.get_rocid(), subtype, moduleDigis);
+      decodeBitStream(chipBS, detId, chipBS.get_rocid(), subtype, moduleDigis);
     }
     if (!moduleDigis.empty())
       outputPixelDigis->insert(moduleDigis);

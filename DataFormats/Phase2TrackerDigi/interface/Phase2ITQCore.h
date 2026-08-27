@@ -1,6 +1,8 @@
 #ifndef DataFormats_Phase2TrackerDigi_Phase2ITQCore_H
 #define DataFormats_Phase2TrackerDigi_Phase2ITQCore_H
 #include <array>
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITBitBuffer.h"
+#include "DataFormats/Phase2TrackerDigi/interface/Phase2ITBitReader.h"
 #include <vector>
 #include <cstddef>
 #include <cstdint>
@@ -38,7 +40,8 @@ public:
   std::vector<bool> getHitmap();
   std::vector<int> getADCs();
   // dropTot=true skips the per-hit 4-bit ToT field entirely (binary readout mode).
-  std::vector<bool> encodeQCore(bool isNewCol, bool dropTot = false);
+  // Appends this qcore's RD53 encoding to out.
+  void encodeQCore(Phase2ITBitBuffer& out, bool isNewCol, bool dropTot = false);
 
   bool operator<(const Phase2ITQCore& other) const {
     if (ccol_ != other.ccol_)
@@ -53,9 +56,9 @@ public:
   static std::vector<bool> encodeHitmap(const std::vector<bool>& hitmap);
   // A hitmap is always 16 entries and a qcore never holds more hits than that,
   // so both decoders return fixed-size arrays: no allocation per qcore.
-  static std::array<bool, 16> decodeHitmap(const std::vector<bool>& bitstream, size_t& bitPos);
+  static std::array<bool, 16> decodeHitmap(Phase2ITBitReader& reader);
 
-  static std::array<int, 16> decodeADCs(const std::vector<bool>& bitstream, size_t& bitPos, int numHits);
+  static std::array<int, 16> decodeADCs(Phase2ITBitReader& reader, int numHits);
 
 private:
   std::vector<int> adcs_;  // Full array of adc values in a quarter core

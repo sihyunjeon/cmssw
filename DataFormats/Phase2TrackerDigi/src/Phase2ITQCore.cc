@@ -21,58 +21,90 @@ namespace {
     return std::vector<bool>({true, true});
   }
 
-  // Encoding
-  std::vector<bool> encChunk(const std::vector<bool>& chunk) {
-    int n = chunk.size();
-    std::vector<bool> result;
+  // Encoding. All three append straight into the destination: the originals
+  // built a temporary vector per node and copied it in, once per qcore and
+  // once per hit, which is ~1e7 allocations an event.
+  void appendPairBits(Phase2ITBitBuffer& out, bool a, bool b) {
+    if (!a && !b)
+      return;
+    if (!a && b) {  // "01 -> 0" substitute
+      out.push(false);
+      return;
+    }
+    out.push(true);
+    out.push(b);
+  }
+
+  // MSB-first, matching Phase2ITQCore::intToBinary.
+  void appendBits(Phase2ITBitBuffer& out, int num, int length) { out.append(num, length); }
+
+  // Walks the same split tree as before but carries offsets into chunk rather
+  // than copying each sub-range out. n is 8 here, so the scratch is ample.
+  void appendChunk(Phase2ITBitBuffer& out, const bool* chunk, int n) {
     if (n < 2)
-      return result;
-    std::vector<std::vector<bool>> active;
-    active.push_back(chunk);
+      return;
+    int active[16], nActive = 0;
+    active[nActive++] = 0;
     int curSize = n;
     while (curSize > 2) {
-      int half = curSize / 2;
-      std::vector<std::vector<bool>> nextLevel;
-      nextLevel.reserve(active.size() * 2);
-      for (const auto& c : active) {
+      const int half = curSize / 2;
+      int next[16], nNext = 0;
+      for (int i = 0; i < nActive; ++i) {
+        const int off = active[i];
         bool lh = false, rh = false;
-        for (int i = 0; i < half; ++i)
-          if (c[i]) {
+        for (int k = 0; k < half; ++k)
+          if (chunk[off + k]) {
             lh = true;
             break;
           }
-        for (int i = half; i < curSize; ++i)
-          if (c[i]) {
+        for (int k = half; k < curSize; ++k)
+          if (chunk[off + k]) {
             rh = true;
             break;
           }
-        std::vector<bool> step = encPairBits(lh, rh);
-        result.insert(result.end(), step.begin(), step.end());
+        appendPairBits(out, lh, rh);
         if (lh)
-          nextLevel.emplace_back(c.begin(), c.begin() + half);
+          next[nNext++] = off;
         if (rh)
-          nextLevel.emplace_back(c.begin() + half, c.end());
+          next[nNext++] = off + half;
       }
-      active = std::move(nextLevel);
+      for (int i = 0; i < nNext; ++i)
+        active[i] = next[i];
+      nActive = nNext;
       curSize = half;
     }
-    for (const auto& c : active) {
-      std::vector<bool> m = encPairBits(c[0], c[1]);
-      result.insert(result.end(), m.begin(), m.end());
+    for (int i = 0; i < nActive; ++i)
+      appendPairBits(out, chunk[active[i]], chunk[active[i] + 1]);
+  }
+
+  void appendHitmapBits(Phase2ITBitBuffer& out, const std::vector<bool>& hitmap) {
+    if (hitmap.size() != 16)
+      return;
+    bool bits[16];
+    for (int i = 0; i < 16; ++i)
+      bits[i] = hitmap[i];
+    bool row1Has = false, row2Has = false;
+    for (int i = 0; i < 8; ++i) {
+      row1Has = row1Has || bits[i];
+      row2Has = row2Has || bits[8 + i];
     }
-    return result;
+    appendPairBits(out, row1Has, row2Has);
+    if (row1Has)
+      appendChunk(out, bits, 8);
+    if (row2Has)
+      appendChunk(out, bits + 8, 8);
   }
 
   // Read one 2 bits from the stream.
-  std::pair<bool, bool> decPairBits(const std::vector<bool>& bits, size_t& pos) {
-    if (pos >= bits.size())
+  std::pair<bool, bool> decPairBits(Phase2ITBitReader& reader) {
+    if (reader.atEnd())
       return {false, false};
-    bool first = bits[pos++];
+    bool first = reader.next();
     if (!first)  // "0 -> 01" substitute
       return {false, true};
-    if (pos >= bits.size())
+    if (reader.atEnd())
       return {true, false};
-    bool second = bits[pos++];
+    bool second = reader.next();
     if (!second)
       return {true, false};
     return {true, true};
@@ -80,7 +112,7 @@ namespace {
 
   // Decoding. Writes n bits into out; the tree scratch is sized for n <= 16.
   // Kept allocation-free: this runs once per qcore row, ~1e6 times per event.
-  void decChunk(const std::vector<bool>& bits, size_t& pos, int n, bool* out) {
+  void decChunk(Phase2ITBitReader& reader, int n, bool* out) {
     for (int i = 0; i < n; ++i)
       out[i] = false;
     int active[16], nActive = 0;
@@ -90,7 +122,7 @@ namespace {
       const int half = curSize / 2;
       int next[16], nNext = 0;
       for (int i = 0; i < nActive; ++i) {
-        auto p = decPairBits(bits, pos);
+        auto p = decPairBits(reader);
         if (p.first)
           next[nNext++] = active[i];
         if (p.second)
@@ -102,7 +134,7 @@ namespace {
       curSize = half;
     }
     for (int i = 0; i < nActive; ++i) {
-      auto p = decPairBits(bits, pos);
+      auto p = decPairBits(reader);
       out[active[i]] = p.first;
       out[active[i] + 1] = p.second;
     }
@@ -229,83 +261,54 @@ bool Phase2ITQCore::containsHit(std::vector<bool>& hitmap) {
 //Layout: encPair(rowOr) || encChunk(row1) || encChunk(row2)
 //  row1 = hitmap[0..7], row2 = hitmap[8..15] (ROC 2x8 layout).
 std::vector<bool> Phase2ITQCore::encodeHitmap(const std::vector<bool>& hitmap) {
-  std::vector<bool> code;
-  if (hitmap.size() != 16)
-    return code;
-  std::vector<bool> row1(hitmap.begin(), hitmap.begin() + 8);
-  std::vector<bool> row2(hitmap.begin() + 8, hitmap.end());
-  bool row1Has = false, row2Has = false;
-  for (bool b : row1)
-    if (b) {
-      row1Has = true;
-      break;
-    }
-  for (bool b : row2)
-    if (b) {
-      row2Has = true;
-      break;
-    }
-  std::vector<bool> rowOr = encPairBits(row1Has, row2Has);
-  code.insert(code.end(), rowOr.begin(), rowOr.end());
-  if (row1Has) {
-    std::vector<bool> r1 = encChunk(row1);
-    code.insert(code.end(), r1.begin(), r1.end());
-  }
-  if (row2Has) {
-    std::vector<bool> r2 = encChunk(row2);
-    code.insert(code.end(), r2.begin(), r2.end());
-  }
+  Phase2ITBitBuffer buf;
+  appendHitmapBits(buf, hitmap);
+  std::vector<bool> code(buf.nBits());
+  for (uint32_t i = 0; i < buf.nBits(); ++i)
+    code[i] = (buf.bytes()[i / 8] >> (7 - i % 8)) & 1;
   return code;
 }
 
-std::array<bool, 16> Phase2ITQCore::decodeHitmap(const std::vector<bool>& bitstream, size_t& bitPos) {
+std::array<bool, 16> Phase2ITQCore::decodeHitmap(Phase2ITBitReader& reader) {
   std::array<bool, 16> hitmap{};
-  auto rowOr = decPairBits(bitstream, bitPos);
+  auto rowOr = decPairBits(reader);
   if (rowOr.first)
-    decChunk(bitstream, bitPos, 8, hitmap.data());
+    decChunk(reader, 8, hitmap.data());
   if (rowOr.second)
-    decChunk(bitstream, bitPos, 8, hitmap.data() + 8);
+    decChunk(reader, 8, hitmap.data() + 8);
   return hitmap;
 }
 
-std::array<int, 16> Phase2ITQCore::decodeADCs(const std::vector<bool>& bitstream, size_t& bitPos, int numHits) {
+std::array<int, 16> Phase2ITQCore::decodeADCs(Phase2ITBitReader& reader, int numHits) {
   std::array<int, 16> adcs{};
   for (int i = 0; i < numHits && i < 16; i++) {
-    adcs[i] = ::binaryToInt(bitstream, bitPos, 4);
+    adcs[i] = reader.bits(4);
   }
   return adcs;
 }
 
 //Returns the bit code associated with the Phase2ITQCore
-std::vector<bool> Phase2ITQCore::encodeQCore(bool isNewCol, bool dropTot) {
-  std::vector<bool> code = {};
-
+void Phase2ITQCore::encodeQCore(Phase2ITBitBuffer& code, bool isNewCol, bool dropTot) {
   if (isNewCol) {
-    std::vector<bool> colCode = intToBinary(ccol_, 6);
-    code.insert(code.end(), colCode.begin(), colCode.end());
+    appendBits(code, ccol_, 6);
   }
 
-  code.push_back(islast_);
-  code.push_back(isneighbour_);
+  code.push(islast_);
+  code.push(isneighbour_);
 
   if (!isneighbour_) {
-    std::vector<bool> rowCode = intToBinary(qcrow_, 8);
-    code.insert(code.end(), rowCode.begin(), rowCode.end());
+    appendBits(code, qcrow_, 8);
   }
 
   std::vector<bool> hitmap = getHitmap();
-  std::vector<bool> hitmapCode = encodeHitmap(hitmap);
-  code.insert(code.end(), hitmapCode.begin(), hitmapCode.end());
+  appendHitmapBits(code, hitmap);
 
   if (!dropTot) {
     std::vector<int> adcsCode = getADCs();
     for (int i = 0; i < 16; i++) {
       if (hitmap[i]) {  // only write ADC if there's a hit
-        std::vector<bool> adcCode = intToBinary(adcsCode[i], 4);
-        code.insert(code.end(), adcCode.begin(), adcCode.end());
+        appendBits(code, adcsCode[i], 4);
       }
     }
   }
-
-  return code;
 }

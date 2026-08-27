@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <vector>
+#include <cstring>
 #include <iostream>
 #include <iomanip>
 
@@ -43,12 +44,12 @@ private:
   std::string wordToHexString(uint32_t word) const;
 
   // Debugging functions for helper methods
-  std::string getBitString(const std::vector<bool>& bits, size_t start, size_t len) const;
+  std::string getBitString(const std::vector<uint8_t>& bytes, size_t nBits, size_t start, size_t len) const;
   void dumpBitStream(const std::vector<bool>& bits, size_t position) const;
 
   bool verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const;
   int findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const;
-  std::vector<bool> extractBitStream(const unsigned char* dataPtr,
+  std::vector<uint8_t> extractBitStream(const unsigned char* dataPtr,
                                      int startWord,
                                      int bitstreamSize,
                                      int fedSizeInWords) const;
@@ -206,22 +207,25 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
       unsigned int bitstreamSize =
           (endBit == 0) ? (sizeWords * BITS_PER_WORD) : ((sizeWords - 1) * BITS_PER_WORD + endBit);
 
-      std::vector<bool> bitstream = extractBitStream(dataPtr, chipCursor + 1, bitstreamSize, fedSizeInWords);
+      std::vector<uint8_t> bitstream = extractBitStream(dataPtr, chipCursor + 1, bitstreamSize, fedSizeInWords);
 
-      Phase2ITChipBitStream chipStream(chipId, bitstream);
-      filler.push_back(chipStream);
+      // extractBitStream returns empty when the payload is malformed
+      const uint32_t nBits = bitstream.empty() ? 0u : static_cast<uint32_t>(bitstreamSize);
+      Phase2ITChipBitStream chipStream(chipId, std::move(bitstream), nBits);
+      filler.push_back(std::move(chipStream));
 
       chipCursor += 1 + sizeWords;
     }
   }
 }
 
-std::string RawToBitStreamProducer::getBitString(const std::vector<bool>& bits, size_t start, size_t len) const {
+std::string RawToBitStreamProducer::getBitString(const std::vector<uint8_t>& bytes,
+                                                 size_t nBits,
+                                                 size_t start,
+                                                 size_t len) const {
   std::string result;
-  for (size_t i = 0; i < len && start + i < bits.size(); i++) {
-    result += (bits[start + i] ? "1" : "0");
-    if ((i + 1) % 8 == 0)
-      result += " ";
+  for (size_t i = start; i < start + len && i < nBits; i++) {
+    result += ((bytes[i / 8] >> (7 - i % 8)) & 1) ? '1' : '0';
   }
   return result;
 }
@@ -238,11 +242,11 @@ std::string RawToBitStreamProducer::wordToHexString(uint32_t word) const {
   return ss.str();
 }
 
-std::vector<bool> RawToBitStreamProducer::extractBitStream(const unsigned char* dataPtr,
-                                                           int startWord,
-                                                           int bitstreamSize,
-                                                           int fedSizeInWords) const {
-  std::vector<bool> bitstream;
+std::vector<uint8_t> RawToBitStreamProducer::extractBitStream(const unsigned char* dataPtr,
+                                                              int startWord,
+                                                              int bitstreamSize,
+                                                              int fedSizeInWords) const {
+  std::vector<uint8_t> bitstream;
   if (bitstreamSize <= 0)
     return bitstream;
 
@@ -258,23 +262,15 @@ std::vector<bool> RawToBitStreamProducer::extractBitStream(const unsigned char* 
     return bitstream;
   }
 
-  bitstream.reserve(bitstreamSize);
-  for (int i = 0; i < fullWords; i++) {
-    uint32_t word = readWord(dataPtr, startWord + i);
-    for (int j = 0; j < BITS_PER_WORD; j++) {
-      bool bit = (word >> (31 - j)) & 1;
-      bitstream.push_back(bit);
-    }
-  }
-  if (remainingBits > 0) {
-    uint32_t word = readWord(dataPtr, startWord + fullWords);
-    for (int j = 0; j < remainingBits; j++) {
-      bool bit = (word >> (31 - j)) & 1;
-      bitstream.push_back(bit);
-    }
-  }
+  // Phase2ITChipBitStream holds the stream packed MSB first, which is the order
+  // the bits already have in the payload, so this is a copy rather than a
+  // bit-by-bit transcription of the ~8.7e6 bits an event carries.
+  bitstream.resize((bitstreamSize + 7) / 8);
+  std::memcpy(bitstream.data(), dataPtr + startWord * BYTES_PER_WORD, bitstream.size());
+
   if (debug_)
-    std::cout << "UNPACKER: First 32 bits of extracted bitstream: " << getBitString(bitstream, 0, 32) << std::endl;
+    std::cout << "UNPACKER: First 32 bits of extracted bitstream: " << getBitString(bitstream, bitstreamSize, 0, 32)
+              << std::endl;
   return bitstream;
 }
 

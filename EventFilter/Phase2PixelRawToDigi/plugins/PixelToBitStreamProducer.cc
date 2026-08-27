@@ -254,8 +254,10 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
       for (auto& qcore : qcores) {
         DetSetQCores.push_back(qcore);
       }
-      Phase2ITChipBitStream aChipBitStream(i, chip.getChipCode(dropTot_));
-      DetSetBitStream.push_back(aChipBitStream);
+      Phase2ITBitBuffer chipCode = chip.getChipCode(dropTot_);
+      const uint32_t chipNBits = chipCode.nBits();
+      Phase2ITChipBitStream aChipBitStream(i, std::move(chipCode.bytes()), chipNBits);
+      DetSetBitStream.push_back(std::move(aChipBitStream));
     }
 
     aBitStreamVector->insert(DetSetBitStream);
