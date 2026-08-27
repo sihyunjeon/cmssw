@@ -23,7 +23,7 @@
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/SLinkModuleMap.h"
 
-using namespace Phase2DAQFormatSpecification;
+using namespace Phase2ITSpec;
 
 class BitStreamToRawProducer : public edm::one::EDProducer<edm::one::WatchRuns> {
 public:

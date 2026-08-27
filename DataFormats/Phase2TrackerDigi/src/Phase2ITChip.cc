@@ -10,7 +10,7 @@
 #include "DataFormats/Phase2TrackerDigi/interface/ChipModuleMap.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
 
-using namespace Phase2DAQFormatSpecification;
+using namespace Phase2ITSpec;
 
 Phase2ITChip::Phase2ITChip(int rocnum, const std::vector<Phase2ITDigiHit> hl, uint32_t detId) {
   hitList_ = hl;

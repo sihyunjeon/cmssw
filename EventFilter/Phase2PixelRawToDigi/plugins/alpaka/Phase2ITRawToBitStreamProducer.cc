@@ -19,6 +19,7 @@
 #include "DataFormats/Phase2ITBitStreamSoA/interface/alpaka/Phase2ITChipBitStreamSoACollection.h"
 #include "DataFormats/Phase2ITBitStreamSoA/interface/alpaka/Phase2ITModuleMapDevice.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+#include "EventFilter/Phase2PixelRawToDigi/interface/Phase2ITUnpacker.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2ITModuleMapRecord.h"
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
@@ -34,11 +35,11 @@
 #include "HeterogeneousCore/AlpakaInterface/interface/config.h"
 #include "HeterogeneousCore/AlpakaInterface/interface/memory.h"
 
-#include "Phase2ITUnpackKernels.h"
+#include "Phase2ITUnpackerKernels.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
-  using namespace Phase2DAQFormatSpecification;
+  using namespace Phase2ITSpec;
 
   class Phase2ITRawToBitStreamProducer : public stream::SynchronizingEDProducer<> {
   public:
@@ -51,7 +52,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     void produce(device::Event& iEvent, device::EventSetup const& iSetup) override;
 
   private:
-    phase2it::ModuleMap moduleMap(const Phase2ITModuleMapDevice& esMap) const;
+    Phase2ITUnpacker::ModuleMap moduleMap(const Phase2ITModuleMapDevice& esMap) const;
 
     const edm::EDGetTokenT<RawDataBuffer> rawToken_;
     const device::EDPutToken<Phase2ITChipBitStreamSoACollection> chipPutToken_;
@@ -87,7 +88,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     descriptions.addWithDefaultLabel(desc);
   }
 
-  phase2it::ModuleMap Phase2ITRawToBitStreamProducer::moduleMap(const Phase2ITModuleMapDevice& esMap) const {
+  Phase2ITUnpacker::ModuleMap Phase2ITRawToBitStreamProducer::moduleMap(const Phase2ITModuleMapDevice& esMap) const {
     auto const mods = esMap.const_view<Phase2ITModuleMapSoA>();
     auto const feds = esMap.const_view<Phase2ITFedMapSoA>();
     return {fedWordBaseD_->data(),
@@ -136,12 +137,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       if (!frag.isValid())
         throw cms::Exception("Phase2ITRawToBitStreamProducer") << "Missing RawDataBuffer fragment for fed " << fedsH[f].fedId();
       const auto span = frag.data();
-      const auto* sh = reinterpret_cast<const SLinkRocketHeader_v3*>(span.data());
-      const auto* st = reinterpret_cast<const SLinkRocketTrailer_v3*>(span.data() + span.size() - kSlrTrlBytes);
-      if (!sh->verifyMarker() || !st->verifyMarker() || st->eventLenBytes() != span.size())
-        throw cms::Exception("Phase2ITRawToBitStreamProducer") << "Invalid SLinkRocket wrapper for fed " << fedsH[f].fedId();
-      const int32_t bodyWords =
-          static_cast<int32_t>(span.size() / BYTES_PER_WORD) - (kSlrHdrBytes + kSlrTrlBytes) / BYTES_PER_WORD;
+      int bodyWords = 0;
+      ::Phase2ITUnpacker::stripSLinkWrapper(span.data(), span.size(), fedsH[f].fedId(), bodyWords);
       fedWordBaseH_->data()[f] = totalWords;
       fedSizeWordsH_->data()[f] = bodyWords;
       totalWords += bodyWords;
@@ -160,7 +157,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *fedWordBaseD_, *fedWordBaseH_);
     alpaka::memcpy(queue, *fedSizeWordsD_, *fedSizeWordsH_);
 
-    phase2it::runChipCountKernel(queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), countsD_->data());
+    Phase2ITUnpacker::runChipCountKernel(queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), countsD_->data());
     alpaka::memcpy(queue, *countsH_, *countsD_);
   }
 
@@ -181,7 +178,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *offsetsD_, *offsetsH_);
 
     Phase2ITChipBitStreamSoACollection chips(nChips, queue);
-    phase2it::runChipFillKernel(queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), offsetsD_->data(), chips.view());
+    Phase2ITUnpacker::runChipFillKernel(queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), offsetsD_->data(), chips.view());
 
     iEvent.emplace(chipPutToken_, std::move(chips));
     iEvent.emplace(bytesPutToken_, std::move(*bytesD_));

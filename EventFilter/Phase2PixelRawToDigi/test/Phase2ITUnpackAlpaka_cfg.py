@@ -95,6 +95,14 @@ process.bitstreamToPixelProducer = cms.EDProducer('BitStreamToPixelProducer',
     handleGapPixels=cms.untracked.string(opts.gapMode),
 )
 
+# Fused unpacker: raw -> digi in one step, through the same shared walk and
+# decode (Phase2ITUnpacker) as the split chain above.
+process.rawToPixelProducer = cms.EDProducer('RawToPixelProducer',
+    fedRawDataCollection=cms.InputTag('BitStreamToRawProducer'),
+    dropTot=cms.untracked.bool(_dropTot),
+    handleGapPixels=cms.untracked.string(opts.gapMode),
+)
+
 # Alpaka chain (explicit CPU serial backend)
 # Flattens the cabling map and geometry into the tables the kernels index,
 # once per IOV rather than on the first event.
@@ -114,6 +122,11 @@ process.phase2ITDigiCompare = cms.EDAnalyzer('Phase2ITDigiCompare',
     legacy=cms.InputTag('bitstreamToPixelProducer'),
     soa=cms.InputTag('phase2ITBitStreamToPixel'),
 )
+# Same comparison for the fused flow, so both CPU paths are held to the SoA digis.
+process.phase2ITFusedCompare = cms.EDAnalyzer('Phase2ITDigiCompare',
+    legacy=cms.InputTag('rawToPixelProducer'),
+    soa=cms.InputTag('phase2ITBitStreamToPixel'),
+)
 
 process.TFileService = cms.Service('TFileService', fileName=cms.string('phase2ITDigiCompare_%s%s.root' % (opts.gapMode, '_dropTot' if _dropTot else '')))
 
@@ -122,7 +135,8 @@ _chain = (process.PixelToBitStreamProducer
           * process.rawToBitStreamProducer
           * process.bitstreamToPixelProducer
           * process.phase2ITRawToBitStream
-          * process.phase2ITBitStreamToPixel)
+          * process.phase2ITBitStreamToPixel
+          * process.rawToPixelProducer)
 # The comparison walks every digi of both collections, so it would dominate any
 # timing measurement; drop it and ask for the per-module TimeReport instead.
 if opts.timing:
@@ -131,7 +145,7 @@ if opts.timing:
 if opts.timing != 1:
     # The analyzer consumes SiPixelDigisHost, which is what pulls the digi SoA
     # back off the device; without it the transfer never happens at all.
-    _chain = _chain * process.phase2ITDigiCompare
+    _chain = _chain * process.phase2ITDigiCompare * process.phase2ITFusedCompare
 process.p = cms.Path(_chain)
 
 process.options.numberOfThreads = cms.untracked.uint32(opts.threads)

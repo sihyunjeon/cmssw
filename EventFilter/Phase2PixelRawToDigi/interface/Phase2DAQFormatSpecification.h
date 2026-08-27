@@ -1,7 +1,7 @@
 #ifndef Phase2DAQFormatSpecification_H
 #define Phase2DAQFormatSpecification_H
 
-namespace Phase2DAQFormatSpecification {
+namespace Phase2ITSpec {
 
   static constexpr int SLINKS_PER_DTC = 16;
   static constexpr uint32_t CHIP_HEADER_MAGIC = 0xE;
@@ -29,6 +29,6 @@ namespace Phase2DAQFormatSpecification {
   static constexpr int AURORA_EVENTS_PER_STREAM_MIN = 1;
   static constexpr int AURORA_EVENTS_PER_STREAM_MAX = 64;
 
-};  // namespace Phase2DAQFormatSpecification
+};  // namespace Phase2ITSpec
 
 #endif

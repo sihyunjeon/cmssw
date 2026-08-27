@@ -16,7 +16,7 @@
 
 namespace Phase2AuroraPacker {
 
-  using namespace Phase2DAQFormatSpecification;
+  using namespace Phase2ITSpec;
 
   // Convert integer to binary
   inline std::vector<bool> intToBinary(int value, int length) {

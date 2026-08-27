@@ -59,7 +59,7 @@ BitStreamToAuroraProducer::BitStreamToAuroraProducer(const edm::ParameterSet& iC
       eventsPerStream_(iConfig.getParameter<unsigned int>("eventsPerStream")),
       serviceBlockInterval_(iConfig.getParameter<unsigned int>("serviceBlockInterval")),
       eventCount_(0) {
-  using namespace Phase2DAQFormatSpecification;
+  using namespace Phase2ITSpec;
   if (eventsPerStream_ < (unsigned)AURORA_EVENTS_PER_STREAM_MIN ||
       eventsPerStream_ > (unsigned)AURORA_EVENTS_PER_STREAM_MAX)
     throw cms::Exception("BitStreamToAuroraProducer")
@@ -77,8 +77,8 @@ BitStreamToAuroraProducer::BitStreamToAuroraProducer(const edm::ParameterSet& iC
 void BitStreamToAuroraProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("Phase2ITQCoreProducer"));
-  using Phase2DAQFormatSpecification::AURORA_EVENTS_PER_STREAM_DEFAULT;
-  using Phase2DAQFormatSpecification::AURORA_SERVICE_BLOCK_INTERVAL_DEFAULT;
+  using Phase2ITSpec::AURORA_EVENTS_PER_STREAM_DEFAULT;
+  using Phase2ITSpec::AURORA_SERVICE_BLOCK_INTERVAL_DEFAULT;
   desc.add<unsigned int>("eventsPerStream", AURORA_EVENTS_PER_STREAM_DEFAULT);            // NE, 1..64
   desc.add<unsigned int>("serviceBlockInterval", AURORA_SERVICE_BLOCK_INTERVAL_DEFAULT);  // ND, 1..256
   descriptions.add("BitStreamToAuroraProducer", desc);

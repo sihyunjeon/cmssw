@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-using Phase2DAQFormatSpecification::SLINKS_PER_DTC;
+using Phase2ITSpec::SLINKS_PER_DTC;
 
 SLinkModuleMap::SLinkModuleMap(const TrackerDetToDTCELinkCablingMap& cablingMap) {
   auto knownDTCIdsWithIndex = cablingMap.getKnownDTCIdsWithIndex();

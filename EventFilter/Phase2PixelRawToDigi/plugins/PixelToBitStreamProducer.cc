@@ -37,7 +37,7 @@
 #include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
 #include "FWCore/Utilities/interface/ESGetToken.h"
 
-using namespace Phase2DAQFormatSpecification;
+using namespace Phase2ITSpec;
 
 // Inter-chip gap-pixel handling. The chip cannot physically read out pixels in the column gap (216..217) or row gap (672..681);
 // Each mode below picks how the encoder treats them:

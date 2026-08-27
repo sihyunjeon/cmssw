@@ -26,7 +26,7 @@
 #include "HeterogeneousCore/AlpakaInterface/interface/config.h"
 #include "HeterogeneousCore/AlpakaInterface/interface/memory.h"
 
-#include "Phase2ITUnpackKernels.h"
+#include "Phase2ITUnpackerKernels.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
@@ -98,7 +98,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       countsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChips_);
       offsetsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChips_);
     }
-    phase2it::runDigiCountKernel(queue, bytes.const_view().byte().data(), chips.const_view(), dropTot_, countsD_->data());
+    Phase2ITUnpacker::runDigiCountKernel(queue, bytes.const_view().byte().data(), chips.const_view(), dropTot_, countsD_->data());
     alpaka::memcpy(queue, *countsH_, *countsD_);
   }
 
@@ -128,7 +128,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *offsetsD_, *offsetsH_);
 
     SiPixelDigisSoACollection digis(total, queue);
-    phase2it::runDigiFillKernel(
+    Phase2ITUnpacker::runDigiFillKernel(
         queue, bytes.const_view().byte().data(), chips.const_view(), dropTot_, keepMode_, offsetsD_->data(), digis.view());
     iEvent.emplace(digiPutToken_, std::move(digis));
   }

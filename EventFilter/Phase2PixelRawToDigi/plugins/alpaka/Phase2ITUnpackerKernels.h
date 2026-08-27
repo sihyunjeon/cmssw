@@ -1,5 +1,5 @@
-#ifndef EventFilter_Phase2PixelRawToDigi_plugins_alpaka_Phase2ITUnpackKernels_h
-#define EventFilter_Phase2PixelRawToDigi_plugins_alpaka_Phase2ITUnpackKernels_h
+#ifndef EventFilter_Phase2PixelRawToDigi_plugins_alpaka_Phase2ITUnpackerKernels_h
+#define EventFilter_Phase2PixelRawToDigi_plugins_alpaka_Phase2ITUnpackerKernels_h
 
 #include <cstdint>
 
@@ -10,7 +10,7 @@
 // Two-stage device unpacking, mirroring the legacy chain:
 //   raw  -> chip bit streams  (Phase2ITRawToBitStreamProducer)
 //   chip bit streams -> digis (Phase2ITBitStreamToPixelProducer)
-namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it {
+namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
   // Per-module lookup into the concatenated FED bodies, mirroring SLinkModuleMap, one thread per module.
   // FIXME chip stream lengths vary by ~4x, so threads in a warp finish unevenly;
@@ -45,6 +45,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it {
                          const uint32_t* offsets,
                          SiPixelDigisSoAView digis);
 
-}  // namespace ALPAKA_ACCELERATOR_NAMESPACE::phase2it
+}  // namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker
 
-#endif  // EventFilter_Phase2PixelRawToDigi_plugins_alpaka_Phase2ITUnpackKernels_h
+#endif  // EventFilter_Phase2PixelRawToDigi_plugins_alpaka_Phase2ITUnpackerKernels_h

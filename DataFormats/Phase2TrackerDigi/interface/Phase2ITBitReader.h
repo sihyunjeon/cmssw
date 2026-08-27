@@ -2,13 +2,14 @@
 #define DataFormats_Phase2TrackerDigi_Phase2ITBitReader_H
 
 #include <cstdint>
-#include <vector>
 
-// MSB-first cursor over a Phase2ITChipBitStream payload. Reads past the end
-// yield zeros, matching the clamping the bit-vector decoder did.
+// MSB-first cursor over a chip bit stream. Reads past the end yield zeros,
+// matching the clamping the bit-vector decoder did. The stream may live in a
+// Phase2ITChipBitStream's own bytes or directly in the raw FED buffer; the
+// reader does not own or copy it either way.
 class Phase2ITBitReader {
 public:
-  Phase2ITBitReader(const std::vector<uint8_t>& bytes, uint32_t nBits) : bytes_(bytes), nBits_(nBits) {}
+  Phase2ITBitReader(const uint8_t* bytes, uint32_t nBits) : bytes_(bytes), nBits_(nBits) {}
 
   bool atEnd() const { return pos_ >= nBits_; }
   uint32_t pos() const { return pos_; }
@@ -29,7 +30,7 @@ public:
   }
 
 private:
-  const std::vector<uint8_t>& bytes_;
+  const uint8_t* bytes_;
   uint32_t nBits_;
   uint32_t pos_ = 0;
 };

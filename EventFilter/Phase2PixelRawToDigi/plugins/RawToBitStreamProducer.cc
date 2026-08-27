@@ -1,11 +1,13 @@
 // EDProducer that takes RawDataBuffer and produces ITChipBitStream
-// Very first step of unpacker
+// Very first step of unpacker. The navigation lives in Phase2ITUnpacker,
+// shared with the fused RawToPixelProducer; this producer's own job is only
+// to materialise each chip's stream as a Phase2ITChipBitStream.
 
-#include <memory>
-#include <vector>
+#include <bitset>
 #include <cstring>
 #include <iostream>
-#include <iomanip>
+#include <memory>
+#include <vector>
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/stream/EDProducer.h"
@@ -20,14 +22,13 @@
 #include "CondFormats/DataRecord/interface/TrackerDetToDTCELinkCablingMapRcd.h"
 
 #include "DataFormats/Common/interface/DetSetVectorNew.h"
-
 #include "DataFormats/FEDRawData/interface/RawDataBuffer.h"
-#include "DataFormats/FEDRawData/interface/SLinkRocketHeaders.h"
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChipBitStream.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+#include "EventFilter/Phase2PixelRawToDigi/interface/Phase2ITUnpacker.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/SLinkModuleMap.h"
 
-using namespace Phase2DAQFormatSpecification;
+using namespace Phase2ITSpec;
 
 class RawToBitStreamProducer : public edm::stream::EDProducer<> {
 public:
@@ -39,20 +40,6 @@ public:
 
 private:
   void produce(edm::Event&, const edm::EventSetup&) override;
-
-  uint32_t readWord(const unsigned char* dataPtr, int wordIdx) const;
-  std::string wordToHexString(uint32_t word) const;
-
-  // Debugging functions for helper methods
-  std::string getBitString(const std::vector<uint8_t>& bytes, size_t nBits, size_t start, size_t len) const;
-  void dumpBitStream(const std::vector<bool>& bits, size_t position) const;
-
-  bool verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const;
-  int findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const;
-  std::vector<uint8_t> extractBitStream(const unsigned char* dataPtr,
-                                     int startWord,
-                                     int bitstreamSize,
-                                     int fedSizeInWords) const;
 
   void processFED(const unsigned char* dataPtr,
                   int fedSizeInWords,
@@ -94,10 +81,6 @@ void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
     throw cms::Exception("RawToBitStreamProducer") << "Invalid RawDataBuffer";
   }
 
-  const unsigned int SLINK_HDR_BYTES = sizeof(SLinkRocketHeader_v3);
-  const unsigned int SLINK_TRL_BYTES = sizeof(SLinkRocketTrailer_v3);
-  const unsigned int WRAPPER_WORDS   = (SLINK_HDR_BYTES + SLINK_TRL_BYTES) / BYTES_PER_WORD;
-
   for (const auto& entry : slinkMap_->fedIdToDetIds()) {
     int fedId = entry.first;
     auto frag = rawBuf->fragmentData(static_cast<uint32_t>(fedId));
@@ -106,30 +89,11 @@ void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
           << "Missing RawDataBuffer fragment for fed " << fedId
           << ": cabling map lists this FED but the buffer has no source for it.";
     }
-    auto span = frag.data();
-    const unsigned char* fragPtr = span.data();
-    uint32_t fragSize            = span.size();
-
-    // Validate SLinkRocket wrapper.
-    auto const* sh = reinterpret_cast<const SLinkRocketHeader_v3*>(fragPtr);
-    auto const* st = reinterpret_cast<const SLinkRocketTrailer_v3*>(fragPtr + fragSize - SLINK_TRL_BYTES);
-    if (!sh->verifyMarker()) {
-      throw cms::Exception("RawToBitStreamProducer")
-          << "Invalid SLinkRocket BOE for fed " << fedId;
-    }
-    if (!st->verifyMarker()) {
-      throw cms::Exception("RawToBitStreamProducer")
-          << "Invalid SLinkRocket EOE for fed " << fedId;
-    }
-    if (st->eventLenBytes() != fragSize) {
-      throw cms::Exception("RawToBitStreamProducer")
-          << "SLinkRocket trailer length mismatch for fed " << fedId
-          << ": trailer says " << st->eventLenBytes() << ", actual " << fragSize;
-    }
+    auto fragSpan = frag.data();
 
     // Hand the IT-specific body (IT header + offsets + data + IT trailer)
-    const unsigned char* dataPtr = fragPtr + SLINK_HDR_BYTES;
-    int fedSizeInWords = static_cast<int>(fragSize / BYTES_PER_WORD) - WRAPPER_WORDS;
+    int fedSizeInWords = 0;
+    const unsigned char* dataPtr = Phase2ITUnpacker::stripSLinkWrapper(fragSpan.data(), fragSpan.size(), fedId, fedSizeInWords);
     processFED(dataPtr, fedSizeInWords, fedId, *output);
   }
   iEvent.put(std::move(output));
@@ -140,160 +104,31 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
                                         int fedId,
                                         edmNew::DetSetVector<Phase2ITChipBitStream>& output) {
   const std::vector<uint32_t>& detIds = slinkMap_->detIdsForFedId(fedId);
-  if (!verifyHeaderTrailerPattern(dataPtr, 0)) {
+  if (!Phase2ITUnpacker::verifyHeaderTrailerPattern(dataPtr, 0)) {
     throw cms::Exception("RawToBitStreamProducer") << "Invalid header in FEDRawData";
   }
-  int trailerStart = findTrailerStart(dataPtr, fedSizeInWords);
+  int trailerStart = Phase2ITUnpacker::findTrailerStart(dataPtr, fedSizeInWords);
   if (trailerStart < 0) {
     throw cms::Exception("RawToBitStreamProducer") << "Invalid trailer in FEDRawData";
   }
 
-  int numModules = detIds.size();
-  int offsetStart = HEADER_TRAILER_LINES;
-
-  // Block 2: read N module offsets (one 32-bit word per module)
-  std::vector<uint32_t> moduleOffsets;
-  moduleOffsets.reserve(numModules);
-  for (int i = 0; i < numModules; i++) {
-    moduleOffsets.push_back(readWord(dataPtr, offsetStart + i));
-  }
-
-  // The offset block is padded to a 128-bit boundary at its end.
-  int offsetBits = numModules * BITS_PER_WORD;
-  int paddingBits = (BITS_PER_CHUNK - (offsetBits % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
-  int paddingWords = paddingBits / BITS_PER_WORD;
-  int dataBlockStart = offsetStart + numModules + paddingWords;
-
-  // Block 3: walk each module, reading chips until the next module's offset.
-  // The chip count per module is variable (1, 2 or 4); the 128-bit module-end
-  // padding (zero words) ends the walk early via the magic check.
-  for (int modIdx = 0; modIdx < numModules; modIdx++) {
-    uint32_t detId = detIds[modIdx];
-    int moduleStartWord = dataBlockStart + moduleOffsets[modIdx];
-
-    if (moduleStartWord < 0 || moduleStartWord >= fedSizeInWords) {
-      edm::LogWarning("RawToBitStreamProducer")
-          << "Module offset out of FED bounds: detId=" << detId << " moduleStartWord=" << moduleStartWord
-          << " fedSize=" << fedSizeInWords << ". Skipping module.";
-      continue;
-    }
-
-    // End of this module's data = start of the next module (or the trailer for
-    // the last module). Chips are only read within [moduleStartWord, moduleEndWord).
-    int moduleEndWord =
-        (modIdx + 1 < numModules) ? (dataBlockStart + static_cast<int>(moduleOffsets[modIdx + 1])) : trailerStart;
-    if (moduleEndWord > fedSizeInWords)
-      moduleEndWord = fedSizeInWords;
-
-    edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller filler(output, detId);
-
-    int chipCursor = moduleStartWord;
-    for (int chipId = 0; chipCursor < moduleEndWord; chipId++) {
-      uint32_t chipHeader = readWord(dataPtr, chipCursor);
-
-      uint32_t magic = (chipHeader >> 28) & 0xF;
-      // FIXME ignoring the chip error bits with Dummy for now
-      uint32_t endBit = (chipHeader >> 16) & 0x1F;
-      uint32_t sizeWords = chipHeader & 0xFFFF;
-
-      // A non-magic word inside the module bound is the 128-bit end padding:
-      // the module's chips are exhausted, so stop here (not an error).
-      if (magic != CHIP_HEADER_MAGIC)
-        break;
-
-      // Reconstruct bitstream length in bits.
-      //   endBit == 0  -> last word is full or chip is empty: size = sizeWords * 32
-      //   endBit  > 0  -> last word holds endBit real bits:   size = (sizeWords - 1) * 32 + endBit
-      unsigned int bitstreamSize =
-          (endBit == 0) ? (sizeWords * BITS_PER_WORD) : ((sizeWords - 1) * BITS_PER_WORD + endBit);
-
-      std::vector<uint8_t> bitstream = extractBitStream(dataPtr, chipCursor + 1, bitstreamSize, fedSizeInWords);
-
-      // extractBitStream returns empty when the payload is malformed
-      const uint32_t nBits = bitstream.empty() ? 0u : static_cast<uint32_t>(bitstreamSize);
-      Phase2ITChipBitStream chipStream(chipId, std::move(bitstream), nBits);
-      filler.push_back(std::move(chipStream));
-
-      chipCursor += 1 + sizeWords;
-    }
-  }
-}
-
-std::string RawToBitStreamProducer::getBitString(const std::vector<uint8_t>& bytes,
-                                                 size_t nBits,
-                                                 size_t start,
-                                                 size_t len) const {
-  std::string result;
-  for (size_t i = start; i < start + len && i < nBits; i++) {
-    result += ((bytes[i / 8] >> (7 - i % 8)) & 1) ? '1' : '0';
-  }
-  return result;
-}
-
-uint32_t RawToBitStreamProducer::readWord(const unsigned char* dataPtr, int wordIdx) const {
-  int byteIdx = wordIdx * 4;
-  return (static_cast<uint32_t>(dataPtr[byteIdx]) << 24) | (static_cast<uint32_t>(dataPtr[byteIdx + 1]) << 16) |
-         (static_cast<uint32_t>(dataPtr[byteIdx + 2]) << 8) | static_cast<uint32_t>(dataPtr[byteIdx + 3]);
-}
-
-std::string RawToBitStreamProducer::wordToHexString(uint32_t word) const {
-  std::stringstream ss;
-  ss << "0x" << std::hex << std::setw(4) << std::setfill('0') << word;
-  return ss.str();
-}
-
-std::vector<uint8_t> RawToBitStreamProducer::extractBitStream(const unsigned char* dataPtr,
-                                                              int startWord,
-                                                              int bitstreamSize,
-                                                              int fedSizeInWords) const {
-  std::vector<uint8_t> bitstream;
-  if (bitstreamSize <= 0)
-    return bitstream;
-
-  int fullWords = bitstreamSize / BITS_PER_WORD;
-  int remainingBits = bitstreamSize % BITS_PER_WORD;
-  int wordsNeeded = fullWords + (remainingBits > 0 ? 1 : 0);
-
-  // Safe guard to ignore when the bits are malformed
-  if (startWord < 0 || startWord + wordsNeeded > fedSizeInWords) {
-    edm::LogWarning("RawToBitStreamProducer")
-        << "Bitstream read out of FED bounds: startWord=" << startWord << ", needs " << wordsNeeded
-        << " words, FED size " << fedSizeInWords << " words. Returning empty bitstream.";
-    return bitstream;
-  }
-
-  // Phase2ITChipBitStream holds the stream packed MSB first, which is the order
-  // the bits already have in the payload, so this is a copy rather than a
-  // bit-by-bit transcription of the ~8.7e6 bits an event carries.
-  bitstream.resize((bitstreamSize + 7) / 8);
-  std::memcpy(bitstream.data(), dataPtr + startWord * BYTES_PER_WORD, bitstream.size());
-
-  if (debug_)
-    std::cout << "UNPACKER: First 32 bits of extracted bitstream: " << getBitString(bitstream, bitstreamSize, 0, 32)
-              << std::endl;
-  return bitstream;
-}
-
-// FIXME for now this works because we are assuming 4 lines of 0xFFFFFFFF for both headers and trailers
-// Later we have to come up with something more concrete to parse out these 4 lines
-bool RawToBitStreamProducer::verifyHeaderTrailerPattern(const unsigned char* dataPtr, int wordIdx) const {
-  for (int i = 0; i < HEADER_TRAILER_LINES; i++) {
-    uint32_t word = readWord(dataPtr, wordIdx + i);
-    if (word != HEADER_TRAILER_PATTERN) {
-      return false;
-    }
-  }
-  return true;
-}
-
-int RawToBitStreamProducer::findTrailerStart(const unsigned char* dataPtr, int fedSizeInWords) const {
-  // Start searching from the end, going backwards
-  for (int i = fedSizeInWords - HEADER_TRAILER_LINES; i >= HEADER_TRAILER_LINES; --i) {
-    if (verifyHeaderTrailerPattern(dataPtr, i)) {
-      return i;
-    }
-  }
-  return -1;  // trailer not found
+  Phase2ITUnpacker::forEachModule(
+      dataPtr, fedSizeInWords, trailerStart, detIds.size(), [&](int modIdx, Phase2ITUnpacker::ModuleSpan span) {
+        edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller filler(output, detIds[modIdx]);
+        Phase2ITUnpacker::forEachChip(dataPtr, span, fedSizeInWords, [&](int chipId, int payloadStartWord, uint32_t nBits) {
+          // The payload bytes are already packed MSB first, so materialising
+          // the chip's stream is a copy; a malformed chip (nBits 0) is kept as
+          // an empty stream.
+          std::vector<uint8_t> bitstream((nBits + 7) / 8);
+          std::memcpy(bitstream.data(), dataPtr + payloadStartWord * BYTES_PER_WORD, bitstream.size());
+          if (debug_ && nBits > 0) {
+            const std::string bits = std::bitset<32>(Phase2ITUnpacker::readWord(dataPtr, payloadStartWord)).to_string();
+            std::cout << "UNPACKER: First 32 bits of extracted bitstream: "
+                      << bits.substr(0, std::min<uint32_t>(32u, nBits)) << std::endl;
+          }
+          filler.push_back(Phase2ITChipBitStream(chipId, std::move(bitstream), nBits));
+        });
+      });
 }
 
 DEFINE_FWK_MODULE(RawToBitStreamProducer);
