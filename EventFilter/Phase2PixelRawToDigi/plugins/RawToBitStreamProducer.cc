@@ -93,7 +93,8 @@ void RawToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
 
     // Hand the IT-specific body (IT header + offsets + data + IT trailer)
     int fedSizeInWords = 0;
-    const unsigned char* dataPtr = Phase2ITUnpacker::stripSLinkWrapper(fragSpan.data(), fragSpan.size(), fedId, fedSizeInWords);
+    const unsigned char* dataPtr =
+        Phase2ITUnpacker::stripSLinkWrapper(fragSpan.data(), fragSpan.size(), fedId, fedSizeInWords);
     processFED(dataPtr, fedSizeInWords, fedId, *output);
   }
   iEvent.put(std::move(output));
@@ -115,19 +116,21 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
   Phase2ITUnpacker::forEachModule(
       dataPtr, fedSizeInWords, trailerStart, detIds.size(), [&](int modIdx, Phase2ITUnpacker::ModuleSpan span) {
         edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller filler(output, detIds[modIdx]);
-        Phase2ITUnpacker::forEachChip(dataPtr, span, fedSizeInWords, [&](int chipId, int payloadStartWord, uint32_t nBits) {
-          // The payload bytes are already packed MSB first, so materialising
-          // the chip's stream is a copy; a malformed chip (nBits 0) is kept as
-          // an empty stream.
-          std::vector<uint8_t> bitstream((nBits + 7) / 8);
-          std::memcpy(bitstream.data(), dataPtr + payloadStartWord * BYTES_PER_WORD, bitstream.size());
-          if (debug_ && nBits > 0) {
-            const std::string bits = std::bitset<32>(Phase2ITUnpacker::readWord(dataPtr, payloadStartWord)).to_string();
-            std::cout << "UNPACKER: First 32 bits of extracted bitstream: "
-                      << bits.substr(0, std::min<uint32_t>(32u, nBits)) << std::endl;
-          }
-          filler.push_back(Phase2ITChipBitStream(chipId, std::move(bitstream), nBits));
-        });
+        Phase2ITUnpacker::forEachChip(
+            dataPtr, span, fedSizeInWords, [&](int chipId, int payloadStartWord, uint32_t nBits) {
+              // The payload bytes are already packed MSB first, so materialising
+              // the chip's stream is a copy; a malformed chip (nBits 0) is kept as
+              // an empty stream.
+              std::vector<uint8_t> bitstream((nBits + 7) / 8);
+              std::memcpy(bitstream.data(), dataPtr + payloadStartWord * BYTES_PER_WORD, bitstream.size());
+              if (debug_ && nBits > 0) {
+                const std::string bits =
+                    std::bitset<32>(Phase2ITUnpacker::readWord(dataPtr, payloadStartWord)).to_string();
+                std::cout << "UNPACKER: First 32 bits of extracted bitstream: "
+                          << bits.substr(0, std::min<uint32_t>(32u, nBits)) << std::endl;
+              }
+              filler.push_back(Phase2ITChipBitStream(chipId, std::move(bitstream), nBits));
+            });
       });
 }
 

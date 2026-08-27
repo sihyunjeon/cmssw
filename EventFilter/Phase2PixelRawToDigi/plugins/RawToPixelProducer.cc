@@ -59,17 +59,17 @@ RawToPixelProducer::RawToPixelProducer(const edm::ParameterSet& iConfig)
       cablingMapBeginRunToken_(
           esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       cablingMapToken_(esConsumes()),
-      dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)),
-      keepMode_(Phase2ITUnpacker::parseKeepMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "DROP"),
-                                        "RawToPixelProducer")) {
+      dropTot_(iConfig.getParameter<bool>("dropTot")),
+      keepMode_(
+          Phase2ITUnpacker::parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"), "RawToPixelProducer")) {
   produces<edm::DetSetVector<PixelDigi>>();
 }
 
 void RawToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("fedRawDataCollection", edm::InputTag("rawDataCollector"));
-  desc.addUntracked<bool>("dropTot", false);
-  desc.addUntracked<std::string>("handleGapPixels", "DROP");
+  desc.add<bool>("dropTot", false);
+  desc.add<std::string>("handleGapPixels", "DROP");
   descriptions.add("rawToPixelProducer", desc);
 }
 
@@ -91,14 +91,14 @@ void RawToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
     int fedId = entry.first;
     auto frag = rawBuf->fragmentData(static_cast<uint32_t>(fedId));
     if (!frag.isValid()) {
-      throw cms::Exception("RawToPixelProducer")
-          << "Missing RawDataBuffer fragment for fed " << fedId
-          << ": cabling map lists this FED but the buffer has no source for it.";
+      throw cms::Exception("RawToPixelProducer") << "Missing RawDataBuffer fragment for fed " << fedId
+                                                 << ": cabling map lists this FED but the buffer has no source for it.";
     }
     auto fragSpan = frag.data();
 
     int fedSizeInWords = 0;
-    const unsigned char* dataPtr = Phase2ITUnpacker::stripSLinkWrapper(fragSpan.data(), fragSpan.size(), fedId, fedSizeInWords);
+    const unsigned char* dataPtr =
+        Phase2ITUnpacker::stripSLinkWrapper(fragSpan.data(), fragSpan.size(), fedId, fedSizeInWords);
 
     const std::vector<uint32_t>& detIds = slinkMap_->detIdsForFedId(fedId);
     if (!Phase2ITUnpacker::verifyHeaderTrailerPattern(dataPtr, 0)) {
@@ -117,14 +117,15 @@ void RawToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
           // split chain an empty module never enters the intermediate product,
           // so BitStreamToPixelProducer never looks its detId up either.
           int subtype = -1;
-          Phase2ITUnpacker::forEachChip(dataPtr, span, fedSizeInWords, [&](int chipId, int payloadStartWord, uint32_t nBits) {
-            if (subtype < 0)
-              subtype = static_cast<int>(cablingMap.getModuleInfo(detId).subtype);
-            // Decode straight out of the FED buffer: the bits are already
-            // packed MSB first, so no per-chip copy is needed.
-            Phase2ITBitReader reader(dataPtr + payloadStartWord * BYTES_PER_WORD, nBits);
-            Phase2ITUnpacker::decodeChip(reader, chipId, subtype, dropTot_, keepMode_, moduleDigis);
-          });
+          Phase2ITUnpacker::forEachChip(
+              dataPtr, span, fedSizeInWords, [&](int chipId, int payloadStartWord, uint32_t nBits) {
+                if (subtype < 0)
+                  subtype = static_cast<int>(cablingMap.getModuleInfo(detId).subtype);
+                // Decode straight out of the FED buffer: the bits are already
+                // packed MSB first, so no per-chip copy is needed.
+                Phase2ITBitReader reader(dataPtr + payloadStartWord * BYTES_PER_WORD, nBits);
+                Phase2ITUnpacker::decodeChip(reader, chipId, subtype, dropTot_, keepMode_, moduleDigis);
+              });
           if (!moduleDigis.empty())
             outputPixelDigis->insert(moduleDigis);
         });

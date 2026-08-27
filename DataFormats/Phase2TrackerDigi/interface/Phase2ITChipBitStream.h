@@ -43,7 +43,7 @@ public:
   const bool operator<(const Phase2ITChipBitStream& other) { return rocid_ < other.rocid_; }
 
 private:
-  int rocid_;                  // Chip index
+  int rocid_;                   // Chip index
   std::vector<uint8_t> bytes_;  // Chip bit stream, packed MSB first
   uint32_t nBits_;              // Significant bits in bytes_
 };

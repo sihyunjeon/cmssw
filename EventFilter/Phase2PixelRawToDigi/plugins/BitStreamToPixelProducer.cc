@@ -41,7 +41,6 @@ public:
 private:
   void produce(edm::Event&, const edm::EventSetup&) override;
 
-
   const edm::EDGetTokenT<edmNew::DetSetVector<Phase2ITChipBitStream>> bitstreamToken_;
   // Cabling map supplies the per-module Module_SubType that keys the ChipModuleMap
   // chip-index convention (must match the packer).
@@ -59,17 +58,17 @@ BitStreamToPixelProducer::BitStreamToPixelProducer(const edm::ParameterSet& iCon
     : bitstreamToken_(consumes<edmNew::DetSetVector<Phase2ITChipBitStream>>(
           iConfig.getParameter<edm::InputTag>("phase2ItChipBitStream"))),
       cablingMapToken_(esConsumes()),
-      dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)),
-      keepMode_(Phase2ITUnpacker::parseKeepMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "DROP"),
-                                        "BitStreamToPixelProducer")) {
+      dropTot_(iConfig.getParameter<bool>("dropTot")),
+      keepMode_(Phase2ITUnpacker::parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"),
+                                                "BitStreamToPixelProducer")) {
   produces<edm::DetSetVector<PixelDigi>>();
 }
 
 void BitStreamToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("phase2ItChipBitStream", edm::InputTag("rawToBitStreamProducer"));
-  desc.addUntracked<bool>("dropTot", false);
-  desc.addUntracked<std::string>("handleGapPixels", "DROP");
+  desc.add<bool>("dropTot", false);
+  desc.add<std::string>("handleGapPixels", "DROP");
   descriptions.add("bitstreamToPixelProducer", desc);
 }
 

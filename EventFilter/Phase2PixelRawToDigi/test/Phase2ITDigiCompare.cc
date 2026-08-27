@@ -31,8 +31,7 @@ public:
     hAdcLegacy_ = fs->make<TH1D>("adcLegacy", "ADC spectrum;ADC;digis", 16, -0.5, 15.5);
     hAdcSoA_ = fs->make<TH1D>("adcSoA", "ADC spectrum;ADC;digis", 16, -0.5, 15.5);
     hAdcDelta_ = fs->make<TH1D>("adcDelta", "ADC difference;alpaka #minus legacy;digis", 31, -15.5, 15.5);
-    hAdcCorr_ = fs->make<TH2D>(
-        "adcCorr", "ADC correlation;legacy ADC;alpaka ADC", 16, -0.5, 15.5, 16, -0.5, 15.5);
+    hAdcCorr_ = fs->make<TH2D>("adcCorr", "ADC correlation;legacy ADC;alpaka ADC", 16, -0.5, 15.5, 16, -0.5, 15.5);
   }
 
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
@@ -108,7 +107,7 @@ private:
   const edm::EDGetTokenT<SiPixelDigisHost> soaToken_;
   uint64_t nTotalLegacy_ = 0, nTotalSoA_ = 0, nTotalOnlyLegacy_ = 0, nTotalOnlySoA_ = 0;
   TH1D *hAdcLegacy_, *hAdcSoA_, *hAdcDelta_;
-  TH2D *hAdcCorr_;
+  TH2D* hAdcCorr_;
 };
 
 DEFINE_FWK_MODULE(Phase2ITDigiCompare);

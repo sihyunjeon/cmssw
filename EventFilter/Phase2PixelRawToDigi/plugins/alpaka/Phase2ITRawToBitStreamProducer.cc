@@ -135,7 +135,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     for (int f = 0; f < nFeds; ++f) {
       auto frag = rawHandle->fragmentData(static_cast<uint32_t>(fedsH[f].fedId()));
       if (!frag.isValid())
-        throw cms::Exception("Phase2ITRawToBitStreamProducer") << "Missing RawDataBuffer fragment for fed " << fedsH[f].fedId();
+        throw cms::Exception("Phase2ITRawToBitStreamProducer")
+            << "Missing RawDataBuffer fragment for fed " << fedsH[f].fedId();
       const auto span = frag.data();
       int bodyWords = 0;
       ::Phase2ITUnpacker::stripSLinkWrapper(span.data(), span.size(), fedsH[f].fedId(), bodyWords);
@@ -157,7 +158,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *fedWordBaseD_, *fedWordBaseH_);
     alpaka::memcpy(queue, *fedSizeWordsD_, *fedSizeWordsH_);
 
-    Phase2ITUnpacker::runChipCountKernel(queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), countsD_->data());
+    Phase2ITUnpacker::runChipCountKernel(
+        queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), countsD_->data());
     alpaka::memcpy(queue, *countsH_, *countsD_);
   }
 
@@ -178,7 +180,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *offsetsD_, *offsetsH_);
 
     Phase2ITChipBitStreamSoACollection chips(nChips, queue);
-    Phase2ITUnpacker::runChipFillKernel(queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), offsetsD_->data(), chips.view());
+    Phase2ITUnpacker::runChipFillKernel(
+        queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), offsetsD_->data(), chips.view());
 
     iEvent.emplace(chipPutToken_, std::move(chips));
     iEvent.emplace(bytesPutToken_, std::move(*bytesD_));

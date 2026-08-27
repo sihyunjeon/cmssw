@@ -7,9 +7,8 @@
 
 // The IT module map is derived from the cabling map and the tracker geometry,
 // so it is valid over the intersection of their intervals.
-class Phase2ITModuleMapRecord
-    : public edm::eventsetup::DependentRecordImplementation<
-          Phase2ITModuleMapRecord,
-          edm::mpl::Vector<TrackerDetToDTCELinkCablingMapRcd, TrackerDigiGeometryRecord>> {};
+class Phase2ITModuleMapRecord : public edm::eventsetup::DependentRecordImplementation<
+                                    Phase2ITModuleMapRecord,
+                                    edm::mpl::Vector<TrackerDetToDTCELinkCablingMapRcd, TrackerDigiGeometryRecord>> {};
 
 #endif  // EventFilter_Phase2PixelRawToDigi_interface_Phase2ITModuleMapRecord_h

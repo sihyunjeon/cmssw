@@ -83,7 +83,7 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
     // assembled and emitted with copies instead of bit at a time.
     std::vector<uint8_t> offsetBlock;  // already padded to 128-bit
     std::vector<uint8_t> dataBlock;    // already padded to 128-bit
-    unsigned int totalSize;         // bytes
+    unsigned int totalSize;            // bytes
   };
   std::vector<FedFrame> frames;
   frames.reserve(slinkMap_->fedIdToDetIds().size());
@@ -97,8 +97,8 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
   // + SLinkRocket trailer (16 B)
   const unsigned int SLINK_HDR_BYTES = sizeof(SLinkRocketHeader_v3);
   const unsigned int SLINK_TRL_BYTES = sizeof(SLinkRocketTrailer_v3);
-  const unsigned int IT_HDR_BYTES    = HEADER_TRAILER_LINES * BYTES_PER_WORD;
-  const unsigned int IT_TRL_BYTES    = HEADER_TRAILER_LINES * BYTES_PER_WORD;
+  const unsigned int IT_HDR_BYTES = HEADER_TRAILER_LINES * BYTES_PER_WORD;
+  const unsigned int IT_TRL_BYTES = HEADER_TRAILER_LINES * BYTES_PER_WORD;
 
   // Build bit blocks per FED and compute totalSize=totalRawDataBuffer.
   uint32_t totalRawDataBuffer = 0;
@@ -153,7 +153,7 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
     padToChunkBoundary(f.offsetBlock);
 
     unsigned int offsetSize = f.offsetBlock.size();
-    unsigned int dataSize   = f.dataBlock.size();
+    unsigned int dataSize = f.dataBlock.size();
     f.totalSize = SLINK_HDR_BYTES + IT_HDR_BYTES + offsetSize + dataSize + IT_TRL_BYTES + SLINK_TRL_BYTES;
     totalRawDataBuffer += f.totalSize;
     frames.push_back(std::move(f));
@@ -166,17 +166,16 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
   const auto& aux = iEvent.eventAuxiliary();
   const uint64_t eventId = aux.event();
   const uint32_t orbitId = aux.orbitNumber();
-  const uint16_t bxId    = static_cast<uint16_t>(aux.bunchCrossing());
+  const uint16_t bxId = static_cast<uint16_t>(aux.bunchCrossing());
 
   for (auto& f : frames) {
     unsigned char* buffer = raw->addSource(f.fedId, nullptr, f.totalSize);
 
     // SLinkRocket header (16 B) at the very start.
-    const uint16_t l1a_types  = 1;
-    const uint8_t  l1a_phys   = 0;
-    const uint8_t  emu_status = 2;  // DTH emulator
-    new ((void*)buffer)
-        SLinkRocketHeader_v3(static_cast<uint32_t>(f.fedId), l1a_types, l1a_phys, emu_status, eventId);
+    const uint16_t l1a_types = 1;
+    const uint8_t l1a_phys = 0;
+    const uint8_t emu_status = 2;  // DTH emulator
+    new ((void*)buffer) SLinkRocketHeader_v3(static_cast<uint32_t>(f.fedId), l1a_types, l1a_phys, emu_status, eventId);
 
     // Word index within the fragment (4-byte words) after the SLinkRocket header.
     unsigned int wordIdx = SLINK_HDR_BYTES / BYTES_PER_WORD;  // = 4
@@ -199,8 +198,8 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
 
     // SLinkRocket trailer (16 B) at the very end. event_length_wcount is the
     // fragment size in 16-byte SLinkRocket words.
-    const uint16_t status  = 0;
-    const uint16_t crc     = 0;
+    const uint16_t status = 0;
+    const uint16_t crc = 0;
     const uint16_t daq_crc = 0;
     const uint32_t evtLenWc = f.totalSize >> SLR_WORD_NUM_BYTES_SHIFT;
     new ((void*)(buffer + f.totalSize - SLINK_TRL_BYTES))
@@ -211,10 +210,10 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
 }
 
 void BitStreamToRawProducer::addWordToBuffer(unsigned char* buffer, size_t position, uint32_t word) {
-  buffer[position * 4]     = (word >> 24) & 0xFF;
+  buffer[position * 4] = (word >> 24) & 0xFF;
   buffer[position * 4 + 1] = (word >> 16) & 0xFF;
-  buffer[position * 4 + 2] = (word >>  8) & 0xFF;
-  buffer[position * 4 + 3] =  word        & 0xFF;
+  buffer[position * 4 + 2] = (word >> 8) & 0xFF;
+  buffer[position * 4 + 3] = word & 0xFF;
 }
 
 // Append a 32-bit word, big endian, to a byte vector

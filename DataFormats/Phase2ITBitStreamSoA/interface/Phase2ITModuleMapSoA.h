@@ -10,7 +10,7 @@
 // Modules are ordered FED by FED, so the modules of FED f are the rows
 // [modStart(f), modStart(f + 1)) of the module layout.
 GENERATE_SOA_LAYOUT(Phase2ITModuleMapLayout,
-                    SOA_COLUMN(uint16_t, fedIdx),   // index of the owning FED, into the FED layout
+                    SOA_COLUMN(uint16_t, fedIdx),  // index of the owning FED, into the FED layout
                     SOA_COLUMN(uint32_t, detId),
                     SOA_COLUMN(uint8_t, subtype),   // Module_SubType, keys the chip quadrant table
                     SOA_COLUMN(uint16_t, geomIdx))  // TrackerGeometry detUnit index

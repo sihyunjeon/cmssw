@@ -72,15 +72,15 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         chipToken_(consumes(iConfig.getParameter<edm::InputTag>("phase2ItChipBitStream"))),
         bytesToken_(consumes(iConfig.getParameter<edm::InputTag>("phase2ItRawBytes"))),
         digiPutToken_(produces()),
-        dropTot_(iConfig.getUntrackedParameter<bool>("dropTot", false)),
-        keepMode_(parseKeepMode(iConfig.getUntrackedParameter<std::string>("handleGapPixels", "DROP"))) {}
+        dropTot_(iConfig.getParameter<bool>("dropTot")),
+        keepMode_(parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"))) {}
 
   void Phase2ITBitStreamToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("phase2ItChipBitStream", edm::InputTag("phase2ITRawToBitStream"));
     desc.add<edm::InputTag>("phase2ItRawBytes", edm::InputTag("phase2ITRawToBitStream"));
-    desc.addUntracked<bool>("dropTot", false);
-    desc.addUntracked<std::string>("handleGapPixels", "DROP");
+    desc.add<bool>("dropTot", false);
+    desc.add<std::string>("handleGapPixels", "DROP");
     descriptions.addWithDefaultLabel(desc);
   }
 
@@ -98,7 +98,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       countsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChips_);
       offsetsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChips_);
     }
-    Phase2ITUnpacker::runDigiCountKernel(queue, bytes.const_view().byte().data(), chips.const_view(), dropTot_, countsD_->data());
+    Phase2ITUnpacker::runDigiCountKernel(
+        queue, bytes.const_view().byte().data(), chips.const_view(), dropTot_, countsD_->data());
     alpaka::memcpy(queue, *countsH_, *countsD_);
   }
 
@@ -128,8 +129,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *offsetsD_, *offsetsH_);
 
     SiPixelDigisSoACollection digis(total, queue);
-    Phase2ITUnpacker::runDigiFillKernel(
-        queue, bytes.const_view().byte().data(), chips.const_view(), dropTot_, keepMode_, offsetsD_->data(), digis.view());
+    Phase2ITUnpacker::runDigiFillKernel(queue,
+                                        bytes.const_view().byte().data(),
+                                        chips.const_view(),
+                                        dropTot_,
+                                        keepMode_,
+                                        offsetsD_->data(),
+                                        digis.view());
     iEvent.emplace(digiPutToken_, std::move(digis));
   }
 

@@ -20,7 +20,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
   // ---- device decode primitives, bit-exact with the host Phase2ITUnpacker ----
 
-
   using namespace Phase2ITSpec;
 
   ALPAKA_FN_ACC inline uint32_t readWord(const uint8_t* bytes, int wordIdx) {
@@ -160,8 +159,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   ALPAKA_FN_ACC inline ModuleSpan moduleSpan(const uint8_t* fedBytes, int fedSizeWords, int numModules, int idxInFed) {
     const int offsetStart = HEADER_TRAILER_LINES;
     const int offsetBits = numModules * BITS_PER_WORD;
-    const int padWords = ((BITS_PER_CHUNK - (offsetBits % BITS_PER_CHUNK)) % BITS_PER_CHUNK) /
-                         BITS_PER_WORD;
+    const int padWords = ((BITS_PER_CHUNK - (offsetBits % BITS_PER_CHUNK)) % BITS_PER_CHUNK) / BITS_PER_WORD;
     const int dataBlockStart = offsetStart + numModules + padWords;
     ModuleSpan s;
     s.bodyEnd = fedSizeWords;
@@ -201,9 +199,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       // A zero sizeWords with a non-zero endBit is malformed in the same way:
       // the unsigned length below would underflow to about 4e9 bits.
       const bool overrun = (sizeWords == 0 && endBit != 0) || cursor + 1 + int(sizeWords) > span.bodyEnd;
-      const uint32_t bitLen = overrun ? 0u
-                             : (endBit == 0) ? sizeWords * BITS_PER_WORD
-                                             : (sizeWords - 1) * BITS_PER_WORD + endBit;
+      const uint32_t bitLen = overrun         ? 0u
+                              : (endBit == 0) ? sizeWords * BITS_PER_WORD
+                                              : (sizeWords - 1) * BITS_PER_WORD + endBit;
       chip(chipId, cursor + 1, bitLen);
       cursor += 1 + int(sizeWords);
     }
@@ -234,7 +232,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       prevRow = int(qrow);
     }
   }
-
 
   // ---- the kernels: thread-per-module (stage 1) and thread-per-chip (stage 2) ----
 
@@ -315,9 +312,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                                   uint32_t* counts) const {
       for (auto c : cms::alpakatools::uniform_elements(acc, chips.metadata().size())) {
         uint32_t n = 0;
-        decodeChip(BitReader{bytes + (chips[c].bitOffset() >> 3), chips[c].bitLen()},
-                   dropTot,
-                   [&](int, int, int, int) { ++n; });
+        decodeChip(BitReader{bytes + (chips[c].bitOffset() >> 3), chips[c].bitLen()}, dropTot, [&](int, int, int, int) {
+          ++n;
+        });
         counts[c] = n;
       }
     }

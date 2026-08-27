@@ -61,7 +61,7 @@ namespace Phase2ITUnpacker {
       throw cms::Exception("Phase2ITUnpacker") << "Invalid SLinkRocket EOE for fed " << fedId;
     if (st->eventLenBytes() != fragSize)
       throw cms::Exception("Phase2ITUnpacker") << "SLinkRocket trailer length mismatch for fed " << fedId
-                                             << ": trailer says " << st->eventLenBytes() << ", actual " << fragSize;
+                                               << ": trailer says " << st->eventLenBytes() << ", actual " << fragSize;
     fedSizeInWords = static_cast<int>(fragSize / BYTES_PER_WORD) - (kSlinkHdrBytes + kSlinkTrlBytes) / BYTES_PER_WORD;
     return fragPtr + kSlinkHdrBytes;
   }
@@ -113,9 +113,9 @@ namespace Phase2ITUnpacker {
     for (int modIdx = 0; modIdx < numModules; modIdx++) {
       const int moduleStartWord = dataBlockStart + static_cast<int>(readWord(dataPtr, offsetStart + modIdx));
       if (moduleStartWord < 0 || moduleStartWord >= fedSizeInWords) {
-        edm::LogWarning("Phase2ITUnpacker") << "Module offset out of FED bounds: module index " << modIdx
-                                          << " moduleStartWord=" << moduleStartWord << " fedSize=" << fedSizeInWords
-                                          << ". Skipping module.";
+        edm::LogWarning("Phase2ITUnpacker")
+            << "Module offset out of FED bounds: module index " << modIdx << " moduleStartWord=" << moduleStartWord
+            << " fedSize=" << fedSizeInWords << ". Skipping module.";
         continue;
       }
       // End of this module's data = start of the next module (or the trailer
@@ -153,9 +153,8 @@ namespace Phase2ITUnpacker {
       //   endBit  > 0  -> last word holds endBit real bits:   size = (sizeWords - 1) * 32 + endBit
       // A zero sizeWords with a non-zero endBit underflows to a negative value
       // here, which the guard below treats as malformed.
-      const int bitstreamSize = (endBit == 0)
-                                    ? static_cast<int>(sizeWords * BITS_PER_WORD)
-                                    : static_cast<int>((sizeWords - 1) * BITS_PER_WORD + endBit);
+      const int bitstreamSize = (endBit == 0) ? static_cast<int>(sizeWords * BITS_PER_WORD)
+                                              : static_cast<int>((sizeWords - 1) * BITS_PER_WORD + endBit);
 
       uint32_t nBits = 0;
       if (bitstreamSize > 0) {
