@@ -3,10 +3,8 @@
 
 #include <cstdint>
 
-// MSB-first cursor over a chip bit stream. Reads past the end yield zeros,
-// matching the clamping the bit-vector decoder did. The stream may live in a
-// Phase2ITChipBitStream's own bytes or directly in the raw FED buffer; the
-// reader does not own or copy it either way.
+// MSB-first cursor over a chip bit stream; reads past the end yield zeros.
+// Does not own the bytes it reads.
 class Phase2ITBitReader {
 public:
   Phase2ITBitReader(const uint8_t* bytes, uint32_t nBits) : bytes_(bytes), nBits_(nBits) {}

@@ -3,13 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-// Encoded bit stream output from one chip.
-//
-// The stream is held packed, MSB first within each byte, which is the order the
-// bits already have in the FED payload: bit i is
-//   (bytes[i / 8] >> (7 - i % 8)) & 1
-// so the unpacker can memcpy the payload in rather than copying it bit by bit.
-// A stream does not end on a byte boundary, hence the explicit nBits.
+// Encoded bit stream output from one chip, packed MSB first within each byte:
+// bit i is (bytes[i / 8] >> (7 - i % 8)) & 1. nBits marks the significant bits.
 class Phase2ITChipBitStream {
 public:
   Phase2ITChipBitStream(int rocid, std::vector<uint8_t> bytes, uint32_t nBits)
@@ -31,8 +26,7 @@ public:
   uint32_t nBits() const { return nBits_; }
   bool bit(uint32_t i) const { return (bytes_[i / 8] >> (7 - i % 8)) & 1; }
 
-  // Unpacking accessor kept for consumers that still want a bit vector; it
-  // rebuilds the vector on every call, so prefer bytes()/bit() on hot paths.
+  // Rebuilds a bit vector on every call; prefer bytes()/bit() on hot paths.
   std::vector<bool> get_bitstream() const {
     std::vector<bool> out(nBits_);
     for (uint32_t i = 0; i < nBits_; ++i)

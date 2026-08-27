@@ -42,8 +42,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       auto cabling = iRecord.getTransientHandle(cablingToken_);
       auto geom = iRecord.getTransientHandle(geomToken_);
 
-      // Walk the FEDs in the order SLinkModuleMap gives them, so a module's row
-      // index and its FED's range stay consistent.
+      // FED order follows SLinkModuleMap
       SLinkModuleMap slinkMap(*cabling);
       std::vector<int32_t> fedIds, modStart;
       std::vector<uint16_t> modFedIdx, modGeomIdx;
@@ -88,8 +87,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     }
 
   private:
-    // Declared against the parent records; Phase2ITModuleMapRecord forwards the
-    // lookup, as SiPixelCablingSoAESProducer does.
     edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingToken_;
     edm::ESGetToken<TrackerGeometry, TrackerDigiGeometryRecord> geomToken_;
   };

@@ -1,13 +1,9 @@
 #ifndef EventFilter_Phase2PixelRawToDigi_Phase2ITUnpacker_h
 #define EventFilter_Phase2PixelRawToDigi_Phase2ITUnpacker_h
 
-// Shared pieces of the IT unpacker. The split flow (RawToBitStreamProducer ->
-// BitStreamToPixelProducer) and the fused flow (RawToPixelProducer) are thin
-// loops over these functions: the split flow materialises each chip's stream
-// as a Phase2ITChipBitStream between the two loops, the fused flow decodes it
-// in place. Keeping the navigation and the decode here means a format change
-// lands in one file, mirroring Phase2ITUnpackerKernels.dev.cc on the device
-// side.
+// Shared walk and decode of the IT unpacker; the split flow
+// (RawToBitStreamProducer -> BitStreamToPixelProducer) and the fused flow
+// (RawToPixelProducer) are thin loops over these functions.
 
 #include <algorithm>
 #include <array>
@@ -32,9 +28,7 @@ namespace Phase2ITUnpacker {
            (static_cast<uint32_t>(dataPtr[byteIdx + 2]) << 8) | static_cast<uint32_t>(dataPtr[byteIdx + 3]);
   }
 
-  // KEEP shifts each chip boundary to the gap midline so former gap pixels
-  // reverse correctly; DROP/AGGREGATE use the standard physical chip extents.
-  // who names the calling producer in the misconfiguration message.
+  // KEEP shifts each chip boundary to the gap midline; DROP/AGGREGATE keep the physical extents
   inline bool parseKeepMode(const std::string& s, const char* who) {
     if (s == "DROP" || s == "AGGREGATE")
       return false;
@@ -43,9 +37,7 @@ namespace Phase2ITUnpacker {
     throw cms::Exception(who) << "handleGapPixels must be one of DROP/KEEP/AGGREGATE, got '" << s << "'";
   }
 
-  // Validate the SLinkRocket wrapper of one FED fragment and hand back the IT
-  // body it wraps (IT header + offset block + data block + IT trailer),
-  // setting fedSizeInWords to that body's size.
+  // Validate the SLinkRocket wrapper and return the IT body it wraps
   inline const unsigned char* stripSLinkWrapper(const unsigned char* fragPtr,
                                                 uint32_t fragSize,
                                                 int fedId,
@@ -94,18 +86,15 @@ namespace Phase2ITUnpacker {
     int end;
   };
 
-  // Walk the modules of one FED body through its offset block: calls
-  // module(idxInFed, span). The chip count per module is variable (1, 2 or 4);
-  // a module whose offset points outside the FED body is skipped with a
-  // warning rather than followed.
+  // Walk the modules of one FED body: calls module(idxInFed, span).
+  // An out-of-bounds offset skips the module with a warning.
   template <typename ModuleF>
   void forEachModule(
       const unsigned char* dataPtr, int fedSizeInWords, int trailerStart, int numModules, ModuleF&& module) {
     using namespace Phase2ITSpec;
     const int offsetStart = HEADER_TRAILER_LINES;
 
-    // Block 2 holds one 32-bit offset per module and is padded to a 128-bit
-    // boundary at its end; the data block starts right after.
+    // The offset block is padded to a 128-bit boundary at its end
     const int offsetBits = numModules * BITS_PER_WORD;
     const int paddingBits = (BITS_PER_CHUNK - (offsetBits % BITS_PER_CHUNK)) % BITS_PER_CHUNK;
     const int dataBlockStart = offsetStart + numModules + paddingBits / BITS_PER_WORD;
@@ -118,8 +107,7 @@ namespace Phase2ITUnpacker {
             << " fedSize=" << fedSizeInWords << ". Skipping module.";
         continue;
       }
-      // End of this module's data = start of the next module (or the trailer
-      // for the last module). Chips are only read within [start, end).
+      // End of this module's data = start of the next module (or the trailer for the last)
       int moduleEndWord = (modIdx + 1 < numModules)
                               ? (dataBlockStart + static_cast<int>(readWord(dataPtr, offsetStart + modIdx + 1)))
                               : trailerStart;
@@ -130,10 +118,7 @@ namespace Phase2ITUnpacker {
   }
 
   // Walk the chips of one module: calls chip(chipId, payloadStartWord, nBits).
-  // A non-magic word inside the module bound is the 128-bit end padding: the
-  // module's chips are exhausted, so the walk stops there (not an error).
-  // nBits is 0 when the payload is malformed - it would run past the FED body,
-  // or the header encodes a negative length - and the chip then holds nothing.
+  // nBits is 0 for a malformed payload.
   template <typename ChipF>
   void forEachChip(const unsigned char* dataPtr, ModuleSpan span, int fedSizeInWords, ChipF&& chip) {
     using namespace Phase2ITSpec;
@@ -151,8 +136,6 @@ namespace Phase2ITUnpacker {
       // Reconstruct the stream length in bits.
       //   endBit == 0  -> last word is full or chip is empty: size = sizeWords * 32
       //   endBit  > 0  -> last word holds endBit real bits:   size = (sizeWords - 1) * 32 + endBit
-      // A zero sizeWords with a non-zero endBit underflows to a negative value
-      // here, which the guard below treats as malformed.
       const int bitstreamSize = (endBit == 0) ? static_cast<int>(sizeWords * BITS_PER_WORD)
                                               : static_cast<int>((sizeWords - 1) * BITS_PER_WORD + endBit);
 
@@ -173,10 +156,8 @@ namespace Phase2ITUnpacker {
     }
   }
 
-  // Decode one chip's stream, appending its PixelDigi objects to the module's
-  // accumulating detSet. subtype is the Module_SubType keying the ChipModuleMap
-  // convention used to invert chipId -> (row, col) offset; must match the
-  // packer. dropTot and keepMode must match the encoder settings.
+  // Decode one chip's stream into the module's detSet.
+  // subtype must match the packer's ChipModuleMap convention.
   inline void decodeChip(
       Phase2ITBitReader& reader, int chipId, int subtype, bool dropTot, bool keepMode, edm::DetSet<PixelDigi>& detSet) {
     using namespace Phase2ITSpec;

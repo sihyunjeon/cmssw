@@ -3,12 +3,9 @@
 
 #include "DataFormats/SoATemplate/interface/SoALayout.h"
 
-// Device-side counterpart of SLinkModuleMap: the cabling and geometry derived
-// tables the unpacking kernels index. Built once per IOV by
-// Phase2ITModuleMapESProducer, since it follows the conditions and not the event.
-//
-// Modules are ordered FED by FED, so the modules of FED f are the rows
-// [modStart(f), modStart(f + 1)) of the module layout.
+// Device-side counterpart of SLinkModuleMap, built once per IOV by
+// Phase2ITModuleMapESProducer. Modules are ordered FED by FED: FED f owns
+// rows [modStart(f), modStart(f + 1)) of the module layout.
 GENERATE_SOA_LAYOUT(Phase2ITModuleMapLayout,
                     SOA_COLUMN(uint16_t, fedIdx),  // index of the owning FED, into the FED layout
                     SOA_COLUMN(uint32_t, detId),

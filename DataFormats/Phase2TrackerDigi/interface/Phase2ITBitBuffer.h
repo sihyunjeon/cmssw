@@ -4,10 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-// MSB-first bit accumulator, the write counterpart of Phase2ITBitReader.
-// The encoder appends into one of these so the chip stream is already packed
-// when it reaches Phase2ITChipBitStream, rather than being built as a bit
-// vector and packed afterwards.
+// MSB-first bit accumulator, the write counterpart of Phase2ITBitReader
 class Phase2ITBitBuffer {
 public:
   void push(bool b) {

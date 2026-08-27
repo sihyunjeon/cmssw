@@ -1,7 +1,5 @@
 // EDProducer that takes RawDataBuffer and produces ITChipBitStream
-// Very first step of unpacker. The navigation lives in Phase2ITUnpacker,
-// shared with the fused RawToPixelProducer; this producer's own job is only
-// to materialise each chip's stream as a Phase2ITChipBitStream.
+// Very first step of unpacker
 
 #include <bitset>
 #include <cstring>
@@ -118,9 +116,7 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
         edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller filler(output, detIds[modIdx]);
         Phase2ITUnpacker::forEachChip(
             dataPtr, span, fedSizeInWords, [&](int chipId, int payloadStartWord, uint32_t nBits) {
-              // The payload bytes are already packed MSB first, so materialising
-              // the chip's stream is a copy; a malformed chip (nBits 0) is kept as
-              // an empty stream.
+              // the payload is already packed MSB first, so this is a plain copy
               std::vector<uint8_t> bitstream((nBits + 7) / 8);
               std::memcpy(bitstream.data(), dataPtr + payloadStartWord * BYTES_PER_WORD, bitstream.size());
               if (debug_ && nBits > 0) {

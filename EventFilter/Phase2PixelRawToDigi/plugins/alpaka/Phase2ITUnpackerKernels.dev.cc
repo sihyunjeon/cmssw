@@ -18,7 +18,7 @@
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
-  // ---- device decode primitives, bit-exact with the host Phase2ITUnpacker ----
+  // ---- decode primitives ----
 
   using namespace Phase2ITSpec;
 
@@ -166,9 +166,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     s.start = dataBlockStart + int(readWord(fedBytes, offsetStart + idxInFed));
     s.end = (idxInFed + 1 < numModules) ? dataBlockStart + int(readWord(fedBytes, offsetStart + idxInFed + 1))
                                         : fedSizeWords;  // magic check stops at the IT trailer
-    // Malformed offsets are skipped rather than followed out of the FED body:
-    // the legacy producer logs and drops such a module, a kernel can only clamp.
-    // FIXME no counter is propagated back, so such modules are dropped silently.
+    // FIXME malformed offsets are clamped and the module dropped silently
     if (s.start < dataBlockStart || s.start >= fedSizeWords)
       s.start = s.end = 0;
     if (s.end > fedSizeWords)
@@ -183,9 +181,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   ALPAKA_FN_ACC void forEachChip(const uint8_t* fedBytes, ModuleSpan span, TChip&& chip) {
     int cursor = span.start;
     for (int chipId = 0; cursor < span.end; ++chipId) {
-      // A module never holds more than CHIPS_PER_MODULE chips. Without this the
-      // walk can be driven past that by a corrupted header, and chipId indexes
-      // the per-chip quadrant tables in hitToRowCol out of bounds.
+      // a module never holds more than CHIPS_PER_MODULE chips
       if (chipId >= CHIPS_PER_MODULE)
         break;
       const uint32_t hdr = readWord(fedBytes, cursor);
@@ -193,11 +189,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
         break;  // 128-bit end padding: module exhausted
       const uint32_t endBit = (hdr >> 16) & 0x1F;
       const uint32_t sizeWords = hdr & 0xFFFF;
-      // A payload running past the FED body is malformed. The legacy producer
-      // logs it, hands the chip an empty stream and keeps walking; do the same,
-      // since a zero length means the reader never touches the buffer.
-      // A zero sizeWords with a non-zero endBit is malformed in the same way:
-      // the unsigned length below would underflow to about 4e9 bits.
+      // a payload past the FED body, or a zero sizeWords with endBit set, is
+      // malformed: hand the chip an empty stream and keep walking
       const bool overrun = (sizeWords == 0 && endBit != 0) || cursor + 1 + int(sizeWords) > span.bodyEnd;
       const uint32_t bitLen = overrun         ? 0u
                               : (endBit == 0) ? sizeWords * BITS_PER_WORD
@@ -233,7 +226,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     }
   }
 
-  // ---- the kernels: thread-per-module (stage 1) and thread-per-chip (stage 2) ----
+  // ---- kernels ----
 
   namespace {
     // Start of the FED body owning module m, inside the concatenated buffer.
@@ -252,8 +245,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
   // Stage 1: raw FED bodies -> per-chip index into those bytes.
 
-  // FIXME chips per module is static (ModuleInfo.nChips), so this count could be
-  // built once per IOV instead of every event, saving a kernel and a host sync.
+  // FIXME chips per module is static, so this count could be built once per IOV
   struct ChipCountKernel {
     ALPAKA_FN_ACC void operator()(Acc1D const& acc, const uint8_t* bytes, ModuleMap modMap, uint32_t* counts) const {
       for (auto m : cms::alpakatools::uniform_elements(acc, modMap.nModules)) {

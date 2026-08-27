@@ -1,6 +1,5 @@
 // EDProducer that takes ITChipBitStream and fully decodes it back to PixelDigi
-// Second and final step of the split unpacker. The decode itself lives in
-// Phase2ITUnpacker::decodeChip, shared with the fused RawToPixelProducer.
+// Second and final step of unpacker
 
 #include <memory>
 #include <vector>

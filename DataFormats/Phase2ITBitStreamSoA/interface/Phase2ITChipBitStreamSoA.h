@@ -3,10 +3,8 @@
 
 #include "DataFormats/SoATemplate/interface/SoALayout.h"
 
-// Device-side counterpart of edmNew::DetSetVector<Phase2ITChipBitStream>:
-// one row per chip, pointing into a flat byte buffer of the raw FED bodies
-// (Phase2ITRawBytesSoA). The chip's RD53 stream is bitLen bits starting at
-// bitOffset, MSB first.
+// One row per chip, pointing into the flat raw-byte buffer (Phase2ITRawBytesSoA):
+// the chip's stream is bitLen bits starting at bitOffset, MSB first.
 GENERATE_SOA_LAYOUT(Phase2ITChipBitStreamLayout,
                     SOA_COLUMN(uint32_t, detId),
                     SOA_COLUMN(uint32_t, bitOffset),

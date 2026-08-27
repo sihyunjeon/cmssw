@@ -12,9 +12,8 @@
 //   chip bit streams -> digis (Phase2ITBitStreamToPixelProducer)
 namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
-  // Per-module lookup into the concatenated FED bodies, mirroring SLinkModuleMap, one thread per module.
-  // FIXME chip stream lengths vary by ~4x, so threads in a warp finish unevenly;
-  // binning chips by size before the stage 2 launch would reduce the divergence.
+  // Per-module lookup into the concatenated FED bodies
+  // FIXME chip stream lengths vary ~4x; binning chips by size would reduce warp divergence
   struct ModuleMap {
     const int32_t* fedWordBase;   // [nFeds] word offset of each FED body
     const int32_t* fedSizeWords;  // [nFeds]

@@ -57,8 +57,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const edm::EDGetTokenT<RawDataBuffer> rawToken_;
     const device::EDPutToken<Phase2ITChipBitStreamSoACollection> chipPutToken_;
     const device::EDPutToken<Phase2ITRawBytesSoACollection> bytesPutToken_;
-    // Built once per IOV by Phase2ITModuleMapESProducer; the host view is only
-    // needed to walk the RawDataBuffer fragments in FED order.
+    // Module map, built per IOV by Phase2ITModuleMapESProducer
     const device::ESGetToken<Phase2ITModuleMapDevice, Phase2ITModuleMapRecord> mapToken_;
     const edm::ESGetToken<Phase2ITModuleMapHost, Phase2ITModuleMapRecord> mapHostToken_;
 
@@ -104,8 +103,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   void Phase2ITRawToBitStreamProducer::acquire(device::Event const& iEvent, device::EventSetup const& iSetup) {
     auto& queue = iEvent.queue();
 
-    // The map itself is already on the device; the host copy only tells us which
-    // FEDs to read, and in what order, so the module rows line up with it.
     auto const& esMapHost = iSetup.getData(mapHostToken_);
     auto const fedsH = esMapHost.const_view<Phase2ITFedMapSoA>();
     const int nFeds = fedsH.metadata().size() - 1;  // trailing row closes the last range

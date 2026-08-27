@@ -31,8 +31,6 @@
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   namespace {
-    // KEEP moves each chip boundary to the gap midline; DROP and AGGREGATE keep
-    // the nominal chip dimensions. Mirrors BitStreamToPixelProducer.
     bool parseKeepMode(const std::string& s) {
       if (s == "KEEP")
         return true;
@@ -117,10 +115,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const auto& chips = iEvent.get(chipToken_);
     const auto& bytes = iEvent.get(bytesToken_);
 
-    // Prefix sum over chips: gives the exact output size and each chip a private
-    // write range, so the fill kernel needs no atomics.
-    // nModules is deliberately left unset: the clusterizer overwrites it with its
-    // own count before anything reads it.
+    // Prefix sum gives each chip a private write range; nModules is set by the clusterizer
     uint32_t total = 0;
     for (uint32_t c = 0; c < nChips_; ++c) {
       offsetsH_->data()[c] = total;

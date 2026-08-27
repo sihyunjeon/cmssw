@@ -78,8 +78,8 @@ process.trackerGeometry.applyAlignment = False
 process.PixelToBitStreamProducer = cms.EDProducer('PixelToBitStreamProducer',
     src=cms.InputTag('generalTracks'),
     siPixelDigi=cms.InputTag('simSiPixelDigis', 'Pixel'),
-    dropTot=cms.untracked.bool(_dropTot),
-    handleGapPixels=cms.untracked.string(opts.gapMode),
+    dropTot=cms.bool(_dropTot),
+    handleGapPixels=cms.string(opts.gapMode),
 )
 process.BitStreamToRawProducer = cms.EDProducer('BitStreamToRawProducer',
     Phase2ITChipBitStream=cms.InputTag('PixelToBitStreamProducer'),
@@ -91,16 +91,16 @@ process.rawToBitStreamProducer = cms.EDProducer('RawToBitStreamProducer',
 )
 process.bitstreamToPixelProducer = cms.EDProducer('BitStreamToPixelProducer',
     phase2ItChipBitStream=cms.InputTag('rawToBitStreamProducer'),
-    dropTot=cms.untracked.bool(_dropTot),
-    handleGapPixels=cms.untracked.string(opts.gapMode),
+    dropTot=cms.bool(_dropTot),
+    handleGapPixels=cms.string(opts.gapMode),
 )
 
 # Fused unpacker: raw -> digi in one step, through the same shared walk and
 # decode (Phase2ITUnpacker) as the split chain above.
 process.rawToPixelProducer = cms.EDProducer('RawToPixelProducer',
     fedRawDataCollection=cms.InputTag('BitStreamToRawProducer'),
-    dropTot=cms.untracked.bool(_dropTot),
-    handleGapPixels=cms.untracked.string(opts.gapMode),
+    dropTot=cms.bool(_dropTot),
+    handleGapPixels=cms.string(opts.gapMode),
 )
 
 # Alpaka chain (explicit CPU serial backend)
@@ -114,8 +114,8 @@ process.phase2ITRawToBitStream = cms.EDProducer('Phase2ITRawToBitStreamProducer@
 process.phase2ITBitStreamToPixel = cms.EDProducer('Phase2ITBitStreamToPixelProducer@alpaka',
     phase2ItChipBitStream=cms.InputTag("phase2ITRawToBitStream"),
     phase2ItRawBytes=cms.InputTag("phase2ITRawToBitStream"),
-    dropTot=cms.untracked.bool(_dropTot),
-    handleGapPixels=cms.untracked.string(opts.gapMode),
+    dropTot=cms.bool(_dropTot),
+    handleGapPixels=cms.string(opts.gapMode),
 )
 
 process.phase2ITDigiCompare = cms.EDAnalyzer('Phase2ITDigiCompare',

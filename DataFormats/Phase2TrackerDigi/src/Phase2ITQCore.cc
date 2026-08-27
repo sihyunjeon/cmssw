@@ -21,9 +21,7 @@ namespace {
     return std::vector<bool>({true, true});
   }
 
-  // Encoding. All three append straight into the destination: the originals
-  // built a temporary vector per node and copied it in, once per qcore and
-  // once per hit, which is ~1e7 allocations an event.
+  // Encoding. Append straight into the destination, no per-node temporaries.
   void appendPairBits(Phase2ITBitBuffer& out, bool a, bool b) {
     if (!a && !b)
       return;
@@ -38,8 +36,7 @@ namespace {
   // MSB-first, matching Phase2ITQCore::intToBinary.
   void appendBits(Phase2ITBitBuffer& out, int num, int length) { out.append(num, length); }
 
-  // Walks the same split tree as before but carries offsets into chunk rather
-  // than copying each sub-range out. n is 8 here, so the scratch is ample.
+  // Walks the split tree carrying offsets into chunk; scratch is sized for n <= 16.
   void appendChunk(Phase2ITBitBuffer& out, const bool* chunk, int n) {
     if (n < 2)
       return;
@@ -110,8 +107,7 @@ namespace {
     return {true, true};
   }
 
-  // Decoding. Writes n bits into out; the tree scratch is sized for n <= 16.
-  // Kept allocation-free: this runs once per qcore row, ~1e6 times per event.
+  // Decoding. Writes n bits into out; allocation-free.
   void decChunk(Phase2ITBitReader& reader, int n, bool* out) {
     for (int i = 0; i < n; ++i)
       out[i] = false;
