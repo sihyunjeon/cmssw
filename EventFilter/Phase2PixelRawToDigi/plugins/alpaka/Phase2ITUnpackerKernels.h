@@ -7,13 +7,8 @@
 #include "DataFormats/SiPixelDigiSoA/interface/SiPixelDigisSoA.h"
 #include "HeterogeneousCore/AlpakaInterface/interface/config.h"
 
-// Two-stage device unpacking, mirroring the legacy chain:
-//   raw  -> chip bit streams  (Phase2ITRawToBitStreamProducer)
-//   chip bit streams -> digis (Phase2ITBitStreamToPixelProducer)
 namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
-  // Per-module lookup into the concatenated FED bodies
-  // FIXME chip stream lengths vary ~4x; binning chips by size would reduce warp divergence
   struct ModuleMap {
     const int32_t* fedWordBase;   // [nFeds] word offset of each FED body
     const int32_t* fedSizeWords;  // [nFeds]
@@ -33,7 +28,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                          const uint32_t* chipOffsets,
                          Phase2ITChipBitStreamSoAView chips);
 
-  // stage 2: count digis per chip, then decode into the digi SoA
+  // stage 2: count digis per chip, then decode
   void runDigiCountKernel(
       Queue& queue, const uint8_t* bytes, Phase2ITChipBitStreamSoAConstView chips, bool dropTot, uint32_t* counts);
   void runDigiFillKernel(Queue& queue,

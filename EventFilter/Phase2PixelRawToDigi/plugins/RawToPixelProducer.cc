@@ -37,7 +37,6 @@ private:
   void produce(edm::Event&, const edm::EventSetup&) override;
 
   const edm::EDGetTokenT<RawDataBuffer> fedRawDataToken_;
-  // BeginRun copy builds the FED navigation; the per-event one supplies Module_SubType
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapBeginRunToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   // Must match the dropTot setting that produced the bitstream. When true the
@@ -108,13 +107,12 @@ void RawToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
         dataPtr, fedSizeInWords, trailerStart, detIds.size(), [&](int modIdx, Phase2ITUnpacker::ModuleSpan span) {
           const uint32_t detId = detIds[modIdx];
           edm::DetSet<PixelDigi> moduleDigis(detId);
-          // subtype is resolved only for modules that actually carry chips, as in the split chain
+          // run only for modules that actually carry chips
           int subtype = -1;
           Phase2ITUnpacker::forEachChip(
               dataPtr, span, fedSizeInWords, [&](int chipId, int payloadStartWord, uint32_t nBits) {
                 if (subtype < 0)
                   subtype = static_cast<int>(cablingMap.getModuleInfo(detId).subtype);
-                // decode in place out of the FED buffer
                 Phase2ITBitReader reader(dataPtr + payloadStartWord * BYTES_PER_WORD, nBits);
                 Phase2ITUnpacker::decodeChip(reader, chipId, subtype, dropTot_, keepMode_, moduleDigis);
               });

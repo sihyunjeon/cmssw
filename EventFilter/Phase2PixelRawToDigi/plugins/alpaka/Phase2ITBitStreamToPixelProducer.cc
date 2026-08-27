@@ -1,9 +1,8 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITBitStreamToPixelProducer
-// Description: Portable counterpart of BitStreamToPixelProducer. Decodes the
-//              per-chip bit streams left on the device into SiPixelDigis,
-//              one thread per chip.
+// Description: Portable counterpart of BitStreamToPixelProducer.
+//              Decodes per chip bitstream back into SiPixelDigis
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <optional>
@@ -55,7 +54,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const device::EDGetToken<Phase2ITChipBitStreamSoACollection> chipToken_;
     const device::EDGetToken<Phase2ITRawBytesSoACollection> bytesToken_;
     const device::EDPutToken<SiPixelDigisSoACollection> digiPutToken_;
-    // Must match the dropTot setting that produced the bitstream. When true the encoded stream omits the per-hit 4-bit ToT field.
+    // Must match the dropTot setting that produced the bitstream. 
     const bool dropTot_;
     // Must match the encoder's handleGapPixels mode.
     const bool keepMode_;
@@ -115,7 +114,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const auto& chips = iEvent.get(chipToken_);
     const auto& bytes = iEvent.get(bytesToken_);
 
-    // Prefix sum gives each chip a private write range; nModules is set by the clusterizer
+    // Sum up to get each chips write range
     uint32_t total = 0;
     for (uint32_t c = 0; c < nChips_; ++c) {
       offsetsH_->data()[c] = total;

@@ -3,8 +3,7 @@
 
 #include "DataFormats/SoATemplate/interface/SoALayout.h"
 
-// One row per chip, pointing into the flat raw-byte buffer (Phase2ITRawBytesSoA):
-// the chip's stream is bitLen bits starting at bitOffset, MSB first.
+// One row per chip, pointing to the flat byte buffer
 GENERATE_SOA_LAYOUT(Phase2ITChipBitStreamLayout,
                     SOA_COLUMN(uint32_t, detId),
                     SOA_COLUMN(uint32_t, bitOffset),

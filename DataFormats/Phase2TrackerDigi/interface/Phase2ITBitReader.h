@@ -3,8 +3,7 @@
 
 #include <cstdint>
 
-// MSB-first cursor over a chip bit stream; reads past the end yield zeros.
-// Does not own the bytes it reads.
+// Just for reading of the bytes, owning them as it is being read
 class Phase2ITBitReader {
 public:
   Phase2ITBitReader(const uint8_t* bytes, uint32_t nBits) : bytes_(bytes), nBits_(nBits) {}

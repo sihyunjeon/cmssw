@@ -53,11 +53,8 @@ public:
   template <typename T>
   static std::vector<T> toRocCoordinates(const std::vector<T>& inputMap);
 
-  static std::vector<bool> encodeHitmap(const std::vector<bool>& hitmap);
-  // A hitmap is always 16 entries and a qcore never holds more hits than that,
-  // so both decoders return fixed-size arrays: no allocation per qcore.
+  // A hitmap is always 16 entries, force the size of array casting (same for ADCs)
   static std::array<bool, 16> decodeHitmap(Phase2ITBitReader& reader);
-
   static std::array<int, 16> decodeADCs(Phase2ITBitReader& reader, int numHits);
 
 private:

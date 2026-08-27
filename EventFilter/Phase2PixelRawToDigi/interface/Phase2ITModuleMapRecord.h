@@ -5,8 +5,7 @@
 #include "FWCore/Framework/interface/DependentRecordImplementation.h"
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
 
-// The IT module map is derived from the cabling map and the tracker geometry,
-// so it is valid over the intersection of their intervals.
+// Create the cabling and geometry map once
 class Phase2ITModuleMapRecord : public edm::eventsetup::DependentRecordImplementation<
                                     Phase2ITModuleMapRecord,
                                     edm::mpl::Vector<TrackerDetToDTCELinkCablingMapRcd, TrackerDigiGeometryRecord>> {};

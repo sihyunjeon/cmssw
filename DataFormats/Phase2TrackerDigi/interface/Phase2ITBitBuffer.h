@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <vector>
 
-// MSB-first bit accumulator, the write counterpart of Phase2ITBitReader
+// Writing counterpart of Phase2ITBitReader
+// Instead of casting new objects in each step, create the buffer
 class Phase2ITBitBuffer {
 public:
   void push(bool b) {
@@ -15,7 +16,6 @@ public:
     ++nBits_;
   }
 
-  // MSB first, matching Phase2ITQCore::intToBinary.
   void append(int num, int length) {
     for (int i = length - 1; i >= 0; --i)
       push((num >> i) & 1);

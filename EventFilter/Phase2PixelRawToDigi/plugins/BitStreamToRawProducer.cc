@@ -79,10 +79,8 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
   // SLinkRocket header/trailer + IT header/trailer placeholders.
   struct FedFrame {
     int fedId;
-    // Held as bytes: everything in these blocks is word aligned, so they can be
-    // assembled and emitted with copies instead of bit at a time.
-    std::vector<uint8_t> offsetBlock;  // already padded to 128-bit
-    std::vector<uint8_t> dataBlock;    // already padded to 128-bit
+    std::vector<uint8_t> offsetBlock;  // already padded to 16 B
+    std::vector<uint8_t> dataBlock;    // already padded to 16 B
     unsigned int totalSize;            // bytes
   };
   std::vector<FedFrame> frames;
@@ -91,8 +89,8 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
   // Each fragment carries:
   //   SLinkRocket header (16 B)
   // + IT header placeholder (16 B = HEADER_TRAILER_LINES words)
-  // + offset table (128-bit padded)
-  // + data block (128-bit padded)
+  // + offset table (16 B padded)
+  // + data block (16 B padded for each module)
   // + IT trailer placeholder (16 B)
   // + SLinkRocket trailer (16 B)
   const unsigned int SLINK_HDR_BYTES = sizeof(SLinkRocketHeader_v3);
@@ -139,17 +137,17 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
         addWordToByteVector(f.dataBlock, chipHeader);
         f.dataBlock.insert(f.dataBlock.end(), chipBitStream.begin(), chipBitStream.end());
 
-        // Pad chip bitstream to 32-bit boundary. The stream's own trailing bits
+        // Pad chip bitstream to 4 B boundary. The stream's own trailing bits
         // are already zero, so only whole bytes need adding.
         while (f.dataBlock.size() % BYTES_PER_WORD != 0)
           f.dataBlock.push_back(0);
       }
 
-      // Pad module to 128-bit boundary at module end
+      // Pad module to 16 B boundary at module end
       padToChunkBoundary(f.dataBlock);
     }
 
-    // Pad offset block to 128-bit boundary
+    // Pad offset block to 16 B boundary
     padToChunkBoundary(f.offsetBlock);
 
     unsigned int offsetSize = f.offsetBlock.size();
@@ -185,7 +183,6 @@ void BitStreamToRawProducer::produce(edm::Event& iEvent, const edm::EventSetup& 
       addWordToBuffer(buffer, wordIdx++, HEADER_TRAILER_PATTERN);
     }
 
-    // Offset and data blocks are already big-endian byte sequences
     std::memcpy(buffer + wordIdx * BYTES_PER_WORD, f.offsetBlock.data(), f.offsetBlock.size());
     wordIdx += f.offsetBlock.size() / BYTES_PER_WORD;
     std::memcpy(buffer + wordIdx * BYTES_PER_WORD, f.dataBlock.data(), f.dataBlock.size());
@@ -216,7 +213,7 @@ void BitStreamToRawProducer::addWordToBuffer(unsigned char* buffer, size_t posit
   buffer[position * 4 + 3] = word & 0xFF;
 }
 
-// Append a 32-bit word, big endian, to a byte vector
+// Append a 4 B word to a byte vector
 void BitStreamToRawProducer::addWordToByteVector(std::vector<uint8_t>& vec, uint32_t word) {
   vec.push_back((word >> 24) & 0xFF);
   vec.push_back((word >> 16) & 0xFF);
@@ -224,7 +221,7 @@ void BitStreamToRawProducer::addWordToByteVector(std::vector<uint8_t>& vec, uint
   vec.push_back(word & 0xFF);
 }
 
-// Pad byte vector with zeros up to the next 128-bit chunk boundary
+// Pad byte vector with zeros up to the next 16 B chunk boundary
 void BitStreamToRawProducer::padToChunkBoundary(std::vector<uint8_t>& vec) {
   constexpr size_t kBytesPerChunk = BITS_PER_CHUNK / 8;
   if (!vec.empty() && vec.size() % kBytesPerChunk != 0) {

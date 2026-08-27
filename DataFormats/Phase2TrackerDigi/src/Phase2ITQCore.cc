@@ -21,11 +21,11 @@ namespace {
     return std::vector<bool>({true, true});
   }
 
-  // Encoding. Append straight into the destination, no per-node temporaries.
+  // Encoding
   void appendPairBits(Phase2ITBitBuffer& out, bool a, bool b) {
     if (!a && !b)
       return;
-    if (!a && b) {  // "01 -> 0" substitute
+    if (!a && b) {  // for "01 -> 0" substitute
       out.push(false);
       return;
     }
@@ -36,7 +36,7 @@ namespace {
   // MSB-first, matching Phase2ITQCore::intToBinary.
   void appendBits(Phase2ITBitBuffer& out, int num, int length) { out.append(num, length); }
 
-  // Walks the split tree carrying offsets into chunk; scratch is sized for n <= 16.
+  // Walk through the Huffman split tree
   void appendChunk(Phase2ITBitBuffer& out, const bool* chunk, int n) {
     if (n < 2)
       return;
@@ -75,8 +75,6 @@ namespace {
   }
 
   void appendHitmapBits(Phase2ITBitBuffer& out, const std::vector<bool>& hitmap) {
-    if (hitmap.size() != 16)
-      return;
     bool bits[16];
     for (int i = 0; i < 16; ++i)
       bits[i] = hitmap[i];
@@ -107,7 +105,7 @@ namespace {
     return {true, true};
   }
 
-  // Decoding. Writes n bits into out; allocation-free.
+  // Decoding
   void decChunk(Phase2ITBitReader& reader, int n, bool* out) {
     for (int i = 0; i < n; ++i)
       out[i] = false;
@@ -182,7 +180,7 @@ std::vector<T> Phase2ITQCore::toRocCoordinates(const std::vector<T>& inputMap) {
 }
 
 std::vector<bool> Phase2ITQCore::toSensorCoordinates(const std::vector<bool>& rocHitmap) {
-  std::vector<bool> sensorHitmap(16, false);  // or HITMAP_SIZE
+  std::vector<bool> sensorHitmap(16, false);  // FIXME or HITMAP_SIZE?
   for (int i = 0; i < 16; ++i) {
     int rocRow = i / 8;
     int rocCol = i % 8;
@@ -253,18 +251,6 @@ bool Phase2ITQCore::containsHit(std::vector<bool>& hitmap) {
   return foundHit;
 }
 
-//Returns the RD53B-spec Huffman encoded hitmap.
-//Layout: encPair(rowOr) || encChunk(row1) || encChunk(row2)
-//  row1 = hitmap[0..7], row2 = hitmap[8..15] (ROC 2x8 layout).
-std::vector<bool> Phase2ITQCore::encodeHitmap(const std::vector<bool>& hitmap) {
-  Phase2ITBitBuffer buf;
-  appendHitmapBits(buf, hitmap);
-  std::vector<bool> code(buf.nBits());
-  for (uint32_t i = 0; i < buf.nBits(); ++i)
-    code[i] = (buf.bytes()[i / 8] >> (7 - i % 8)) & 1;
-  return code;
-}
-
 std::array<bool, 16> Phase2ITQCore::decodeHitmap(Phase2ITBitReader& reader) {
   std::array<bool, 16> hitmap{};
   auto rowOr = decPairBits(reader);
@@ -302,7 +288,7 @@ void Phase2ITQCore::encodeQCore(Phase2ITBitBuffer& code, bool isNewCol, bool dro
   if (!dropTot) {
     std::vector<int> adcsCode = getADCs();
     for (int i = 0; i < 16; i++) {
-      if (hitmap[i]) {  // only write ADC if there's a hit
+      if (hitmap[i]) {  // write ADC only if there's a hit
         appendBits(code, adcsCode[i], 4);
       }
     }

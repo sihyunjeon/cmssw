@@ -1,6 +1,5 @@
-// Compares the legacy unpacking chain (RawToBitStream + BitStreamToPixel)
-// against the Alpaka unpacker digi SoA, digi by digi. Throws at endJob on any
-// mismatch so a test job fails loudly.
+// Compares the unpacking chain (legacy = RawToBitStream + BitStreamToPixel)
+// against the Alpaka unpacker
 
 #include <cstdint>
 #include <unordered_map>
@@ -47,7 +46,7 @@ public:
       return (uint64_t(id) << 29) | (uint64_t(row) << 18) | (col << 8) | adc;
     };
 
-    // position-only key, to pair the two collections and compare their ADCs
+    // position key : to pair the two collections and compare their ADCs
     auto posKey = [](uint32_t id, uint32_t row, uint32_t col) {
       return (uint64_t(id) << 21) | (uint64_t(row) << 10) | col;
     };

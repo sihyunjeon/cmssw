@@ -1,9 +1,7 @@
 #ifndef EventFilter_Phase2PixelRawToDigi_Phase2ITUnpacker_h
 #define EventFilter_Phase2PixelRawToDigi_Phase2ITUnpacker_h
 
-// Shared walk and decode of the IT unpacker; the split flow
-// (RawToBitStreamProducer -> BitStreamToPixelProducer) and the fused flow
-// (RawToPixelProducer) are thin loops over these functions.
+// Shared functions for the IT unpacking chain
 
 #include <algorithm>
 #include <array>
@@ -28,7 +26,8 @@ namespace Phase2ITUnpacker {
            (static_cast<uint32_t>(dataPtr[byteIdx + 2]) << 8) | static_cast<uint32_t>(dataPtr[byteIdx + 3]);
   }
 
-  // KEEP shifts each chip boundary to the gap midline; DROP/AGGREGATE keep the physical extents
+  // KEEP shifts each chip boundary to the gap midline - only for in & out validation purposes
+  // DROP/AGGREGATE keep the physical extents (later to be properly treated in simulation)
   inline bool parseKeepMode(const std::string& s, const char* who) {
     if (s == "DROP" || s == "AGGREGATE")
       return false;
@@ -86,8 +85,7 @@ namespace Phase2ITUnpacker {
     int end;
   };
 
-  // Walk the modules of one FED body: calls module(idxInFed, span).
-  // An out-of-bounds offset skips the module with a warning.
+  // Walk through the modules of an FED
   template <typename ModuleF>
   void forEachModule(
       const unsigned char* dataPtr, int fedSizeInWords, int trailerStart, int numModules, ModuleF&& module) {
@@ -117,8 +115,8 @@ namespace Phase2ITUnpacker {
     }
   }
 
-  // Walk the chips of one module: calls chip(chipId, payloadStartWord, nBits).
-  // nBits is 0 for a malformed payload.
+  // Walk through the chips of a module
+  // nBits is kept at 0 for a malformed payload.
   template <typename ChipF>
   void forEachChip(const unsigned char* dataPtr, ModuleSpan span, int fedSizeInWords, ChipF&& chip) {
     using namespace Phase2ITSpec;
@@ -156,8 +154,7 @@ namespace Phase2ITUnpacker {
     }
   }
 
-  // Decode one chip's stream into the module's detSet.
-  // subtype must match the packer's ChipModuleMap convention.
+  // Decode chip bit stream
   inline void decodeChip(
       Phase2ITBitReader& reader, int chipId, int subtype, bool dropTot, bool keepMode, edm::DetSet<PixelDigi>& detSet) {
     using namespace Phase2ITSpec;
@@ -167,10 +164,7 @@ namespace Phase2ITUnpacker {
     bool previousIsLast = true;
 
     while (!reader.atEnd()) {
-      // Read a fresh ccol only at the start of a new column group (previous
-      // QCore was islast, or this is the first QCore in the chip stream).
-      // Otherwise the current QCore is in the same column as the previous one,
-      // so we keep currentCol unchanged.
+      // Read a fresh ccol only at the start of a new column group
       if (previousIsLast) {
         currentCol = reader.bits(6);
       }

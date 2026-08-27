@@ -116,7 +116,6 @@ void RawToBitStreamProducer::processFED(const unsigned char* dataPtr,
         edmNew::DetSetVector<Phase2ITChipBitStream>::FastFiller filler(output, detIds[modIdx]);
         Phase2ITUnpacker::forEachChip(
             dataPtr, span, fedSizeInWords, [&](int chipId, int payloadStartWord, uint32_t nBits) {
-              // the payload is already packed MSB first, so this is a plain copy
               std::vector<uint8_t> bitstream((nBits + 7) / 8);
               std::memcpy(bitstream.data(), dataPtr + payloadStartWord * BYTES_PER_WORD, bitstream.size());
               if (debug_ && nBits > 0) {

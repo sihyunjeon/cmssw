@@ -2,8 +2,8 @@
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITRawToBitStreamProducer
 // Description: Portable counterpart of RawToBitStreamProducer. Copies the IT
-//              FED bodies to the device once per event and builds a per-chip
-//              index into that byte buffer, one thread per module.
+//              index into that byte buffer, use one thread per module.
+//              And then go through chip indexing to be used for next step.
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <cstring>
@@ -67,7 +67,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> countsD_, offsetsD_;
 
-    // Per-event: the raw bytes product is built in acquire() and moved out in produce()
     std::optional<Phase2ITRawBytesHost> bytesH_;
     std::optional<Phase2ITRawBytesSoACollection> bytesD_;
     bool hasData_ = false;

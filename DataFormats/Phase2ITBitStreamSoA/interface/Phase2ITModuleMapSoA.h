@@ -3,21 +3,17 @@
 
 #include "DataFormats/SoATemplate/interface/SoALayout.h"
 
-// Device-side counterpart of SLinkModuleMap, built once per IOV by
-// Phase2ITModuleMapESProducer. Modules are ordered FED by FED: FED f owns
-// rows [modStart(f), modStart(f + 1)) of the module layout.
+// Device-side version of SLinkModuleMap
 GENERATE_SOA_LAYOUT(Phase2ITModuleMapLayout,
-                    SOA_COLUMN(uint16_t, fedIdx),  // index of the owning FED, into the FED layout
+                    SOA_COLUMN(uint16_t, fedIdx),  // index of the FED
                     SOA_COLUMN(uint32_t, detId),
-                    SOA_COLUMN(uint8_t, subtype),   // Module_SubType, keys the chip quadrant table
+                    SOA_COLUMN(uint8_t, subtype),   // Module_SubType, needed for the chip indexing
                     SOA_COLUMN(uint16_t, geomIdx))  // TrackerGeometry detUnit index
 
 using Phase2ITModuleMapSoA = Phase2ITModuleMapLayout<>;
 using Phase2ITModuleMapSoAView = Phase2ITModuleMapSoA::View;
 using Phase2ITModuleMapSoAConstView = Phase2ITModuleMapSoA::ConstView;
 
-// One row per FED plus a trailing row, so modStart(nFeds) closes the last range.
-// fedId on that trailing row is unset.
 GENERATE_SOA_LAYOUT(Phase2ITFedMapLayout, SOA_COLUMN(int32_t, modStart), SOA_COLUMN(int32_t, fedId))
 
 using Phase2ITFedMapSoA = Phase2ITFedMapLayout<>;
