@@ -36,7 +36,7 @@
 #include <numeric> // exclusive_scan
 #include <algorithm>
 #include <limits>
-#include "EventFilter/Phase2TrackerRawToDigi/interface/TrackerHeader.h"
+#include "EventFilter/Phase2TrackerRawToDigi/interface/TrackerBlock.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/ChannelsOffset.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/Phase2TrackerSpecifications.h"
 #include "EventFilter/Phase2TrackerRawToDigi/interface/Phase2DAQFormatSpecification.h"
