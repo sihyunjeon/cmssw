@@ -27,8 +27,6 @@ public:
   /// retrieve data for fed @param fedid
   FEDRawData& FEDData(int fedid);
 
-  unsigned int size() const;
-
   FEDRawDataCollection(const FEDRawDataCollection&);
 
   FEDRawDataCollection& operator=(const FEDRawDataCollection&) = default;
