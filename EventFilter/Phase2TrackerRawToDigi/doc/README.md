@@ -10,6 +10,8 @@ cmsrel CMSSW_16_0_0
 cd CMSSW_16_0_0/src
 cmsenv
 git cms-checkout-topic -u P2-Tracker-BES-SW:unpackers_16_0_0
+# Need this as depends on changed TrackerDetToDTCELinkCablingMap.h class
+git cms-addpkg CondFormats/DataRecord
 scram b -j
 cd EventFilter/Phase2TrackerRawToDigi/test/
 # Run cluster --> RAW --> cluster sequence for Outer Tracker.
