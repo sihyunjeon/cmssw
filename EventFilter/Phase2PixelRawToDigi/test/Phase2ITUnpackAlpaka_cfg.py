@@ -32,6 +32,18 @@ opts.register('timing', 0, VarParsing.VarParsing.multiplicity.singleton,
               'digis is charged to the job instead of never happening.')
 opts.register('threads', 1, VarParsing.VarParsing.multiplicity.singleton,
               VarParsing.VarParsing.varType.int, 'threads and concurrent events')
+opts.register('blockSize', 0, VarParsing.VarParsing.multiplicity.singleton,
+              VarParsing.VarParsing.varType.int,
+              'threads per block for the alpaka kernels, 0 keeps each producer default. '
+              'Pass "<stage1>,<stage2>" via blockSize1/blockSize2 to tune them apart.')
+opts.register('blockSize1', 0, VarParsing.VarParsing.multiplicity.singleton,
+              VarParsing.VarParsing.varType.int, 'block size for the stage-1 (per module) kernels')
+opts.register('blockSize2', 0, VarParsing.VarParsing.multiplicity.singleton,
+              VarParsing.VarParsing.varType.int, 'block size for the stage-2 (per chip) kernels')
+opts.register('recovery', 0, VarParsing.VarParsing.multiplicity.singleton,
+              VarParsing.VarParsing.varType.int,
+              'also compare the digis fed to the packer against what each of the three '
+              'flows gives back, as pixel occupancy maps plus a digi-by-digi tally')
 opts.parseArguments()
 _dropTot = bool(opts.dropTot)
 from Configuration.Eras.Era_Phase2C17I13M9_cff import Phase2C17I13M9
@@ -52,11 +64,14 @@ process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 # maxEvents follows the VarParsing convention: -1, which is also the default,
 # means every event in the file. Pass a small number for quick validation runs.
 process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(opts.maxEvents))
+# inputFiles overrides the default sample, e.g. a local copy for timing scans
 process.source = cms.Source('PoolSource',
     fileNames=cms.untracked.vstring(
         'root://cms-xrd-global.cern.ch//store/relval/CMSSW_14_1_0_pre3/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_140X_mcRun4_realistic_v3_SpecialRV296_Run4D112-v1/2590000/0060c957-0236-4b79-abe3-8410dec69b26.root',
     ),
 )
+if opts.inputFiles:
+    process.source.fileNames = cms.untracked.vstring(opts.inputFiles)
 
 # Local DTC cabling map (sqlite next to this cfg)
 _dbpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'OTandITDTCCablingMap.db')
@@ -118,6 +133,15 @@ process.phase2ITBitStreamToPixel = cms.EDProducer('Phase2ITBitStreamToPixelProdu
     handleGapPixels=cms.string(opts.gapMode),
 )
 
+# Block size is a pure performance knob: it changes how the work is spread over the
+# device, never the digis that come out. Left at the producer default unless asked.
+_bs1 = opts.blockSize1 or opts.blockSize
+_bs2 = opts.blockSize2 or opts.blockSize
+if _bs1:
+    process.phase2ITRawToBitStream.blockSize = cms.uint32(_bs1)
+if _bs2:
+    process.phase2ITBitStreamToPixel.blockSize = cms.uint32(_bs2)
+
 process.phase2ITDigiCompare = cms.EDAnalyzer('Phase2ITDigiCompare',
     legacy=cms.InputTag('bitstreamToPixelProducer'),
     soa=cms.InputTag('phase2ITBitStreamToPixel'),
@@ -128,7 +152,21 @@ process.phase2ITFusedCompare = cms.EDAnalyzer('Phase2ITDigiCompare',
     soa=cms.InputTag('phase2ITBitStreamToPixel'),
 )
 
-process.TFileService = cms.Service('TFileService', fileName=cms.string('phase2ITDigiCompare_%s%s.root' % (opts.gapMode, '_dropTot' if _dropTot else '')))
+# Recovery: each flow against the digis the packer was given, rather than against
+# each other. Every analyzer writes its own TDirectory, named after its label.
+_recovery = cms.EDAnalyzer('Phase2ITDigiRecovery', digis=cms.InputTag('simSiPixelDigis', 'Pixel'))
+process.recoveryLegacy = _recovery.clone(unpacked=cms.InputTag('bitstreamToPixelProducer'))
+process.recoveryFused = _recovery.clone(unpacked=cms.InputTag('rawToPixelProducer'))
+process.recoveryAlpaka = _recovery.clone(unpackedSoA=cms.InputTag('phase2ITBitStreamToPixel'))
+
+# Only the comparison analyzer fills it, so it is created only when that analyzer
+# runs. A pure timing job then writes no ROOT file at all, which keeps the job off
+# the filesystem entirely -- writing it was a way to fail at shutdown for nothing.
+if opts.timing != 1:
+    _stem = 'phase2ITDigiRecovery' if opts.recovery else 'phase2ITDigiCompare'
+    process.TFileService = cms.Service(
+        'TFileService',
+        fileName=cms.string('%s_%s%s.root' % (_stem, opts.gapMode, '_dropTot' if _dropTot else '')))
 
 _chain = (process.PixelToBitStreamProducer
           * process.BitStreamToRawProducer
@@ -146,6 +184,8 @@ if opts.timing != 1:
     # The analyzer consumes SiPixelDigisHost, which is what pulls the digi SoA
     # back off the device; without it the transfer never happens at all.
     _chain = _chain * process.phase2ITDigiCompare * process.phase2ITFusedCompare
+    if opts.recovery:
+        _chain = _chain * process.recoveryLegacy * process.recoveryFused * process.recoveryAlpaka
 process.p = cms.Path(_chain)
 
 process.options.numberOfThreads = cms.untracked.uint32(opts.threads)

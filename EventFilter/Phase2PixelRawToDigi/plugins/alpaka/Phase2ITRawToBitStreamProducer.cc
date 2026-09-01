@@ -60,6 +60,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     // Module map, built per IOV by Phase2ITModuleMapESProducer
     const device::ESGetToken<Phase2ITModuleMapDevice, Phase2ITModuleMapRecord> mapToken_;
     const edm::ESGetToken<Phase2ITModuleMapHost, Phase2ITModuleMapRecord> mapHostToken_;
+    // Threads per block for the two kernels below, which run over modules.
+    const uint32_t blockSize_;
 
     int nModules_ = 0;
     std::optional<cms::alpakatools::host_buffer<int32_t[]>> fedWordBaseH_, fedSizeWordsH_;
@@ -78,11 +80,15 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         chipPutToken_(produces()),
         bytesPutToken_(produces()),
         mapToken_(esConsumes()),
-        mapHostToken_(esConsumes()) {}
+        mapHostToken_(esConsumes()),
+        blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
+    Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITRawToBitStreamProducer");
+  }
 
   void Phase2ITRawToBitStreamProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("fedRawDataCollection", edm::InputTag("BitStreamToRawProducer"));
+    desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
     descriptions.addWithDefaultLabel(desc);
   }
 
@@ -155,7 +161,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *fedSizeWordsD_, *fedSizeWordsH_);
 
     Phase2ITUnpacker::runChipCountKernel(
-        queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), countsD_->data());
+        queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), countsD_->data(), blockSize_);
     alpaka::memcpy(queue, *countsH_, *countsD_);
   }
 
@@ -176,8 +182,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *offsetsD_, *offsetsH_);
 
     Phase2ITChipBitStreamSoACollection chips(nChips, queue);
-    Phase2ITUnpacker::runChipFillKernel(
-        queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), offsetsD_->data(), chips.view());
+    Phase2ITUnpacker::runChipFillKernel(queue,
+                                        bytesD_->view().byte().data(),
+                                        moduleMap(iSetup.getData(mapToken_)),
+                                        offsetsD_->data(),
+                                        chips.view(),
+                                        blockSize_);
 
     iEvent.emplace(chipPutToken_, std::move(chips));
     iEvent.emplace(bytesPutToken_, std::move(*bytesD_));

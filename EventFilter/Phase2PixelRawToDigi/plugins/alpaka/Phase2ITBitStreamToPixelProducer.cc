@@ -58,6 +58,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const bool dropTot_;
     // Must match the encoder's handleGapPixels mode.
     const bool keepMode_;
+    // Threads per block for the two kernels below, which run over chips.
+    const uint32_t blockSize_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> countsD_, offsetsD_;
@@ -70,7 +72,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         bytesToken_(consumes(iConfig.getParameter<edm::InputTag>("phase2ItRawBytes"))),
         digiPutToken_(produces()),
         dropTot_(iConfig.getParameter<bool>("dropTot")),
-        keepMode_(parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"))) {}
+        keepMode_(parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"))),
+        blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
+    Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITBitStreamToPixelProducer");
+  }
 
   void Phase2ITBitStreamToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
@@ -78,6 +83,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     desc.add<edm::InputTag>("phase2ItRawBytes", edm::InputTag("phase2ITRawToBitStream"));
     desc.add<bool>("dropTot", false);
     desc.add<std::string>("handleGapPixels", "DROP");
+    desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
     descriptions.addWithDefaultLabel(desc);
   }
 
@@ -96,7 +102,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       offsetsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChips_);
     }
     Phase2ITUnpacker::runDigiCountKernel(
-        queue, bytes.const_view().byte().data(), chips.const_view(), dropTot_, countsD_->data());
+        queue, bytes.const_view().byte().data(), chips.const_view(), dropTot_, countsD_->data(), blockSize_);
     alpaka::memcpy(queue, *countsH_, *countsD_);
   }
 
@@ -129,7 +135,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                         dropTot_,
                                         keepMode_,
                                         offsetsD_->data(),
-                                        digis.view());
+                                        digis.view(),
+                                        blockSize_);
     iEvent.emplace(digiPutToken_, std::move(digis));
   }
 

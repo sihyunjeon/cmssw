@@ -20,24 +20,39 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     int nModules;
   };
 
+  // Threads per block on the GPU backends; on the CPU backends make_workdiv turns
+  // it into elements per thread instead, so it only changes the loop chunking there.
+  inline constexpr uint32_t kDefaultBlockSize = 128;
+
   // stage 1: count chips per module, then fill the chip index rows
-  void runChipCountKernel(Queue& queue, const uint8_t* bytes, const ModuleMap& modMap, uint32_t* chipCounts);
+  void runChipCountKernel(
+      Queue& queue, const uint8_t* bytes, const ModuleMap& modMap, uint32_t* chipCounts, uint32_t blockSize);
   void runChipFillKernel(Queue& queue,
                          const uint8_t* bytes,
                          const ModuleMap& modMap,
                          const uint32_t* chipOffsets,
-                         Phase2ITChipBitStreamSoAView chips);
+                         Phase2ITChipBitStreamSoAView chips,
+                         uint32_t blockSize);
 
   // stage 2: count digis per chip, then decode
-  void runDigiCountKernel(
-      Queue& queue, const uint8_t* bytes, Phase2ITChipBitStreamSoAConstView chips, bool dropTot, uint32_t* counts);
+  void runDigiCountKernel(Queue& queue,
+                          const uint8_t* bytes,
+                          Phase2ITChipBitStreamSoAConstView chips,
+                          bool dropTot,
+                          uint32_t* counts,
+                          uint32_t blockSize);
   void runDigiFillKernel(Queue& queue,
                          const uint8_t* bytes,
                          Phase2ITChipBitStreamSoAConstView chips,
                          bool dropTot,
                          bool keepMode,
                          const uint32_t* offsets,
-                         SiPixelDigisSoAView digis);
+                         SiPixelDigisSoAView digis,
+                         uint32_t blockSize);
+
+  // Rejects a block size the backend cannot launch; 'who' names the module in the
+  // exception. Queries the device rather than assuming the CUDA limit of 1024.
+  void checkBlockSize(uint32_t blockSize, const char* who);
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker
 

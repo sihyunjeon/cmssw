@@ -46,6 +46,7 @@ private:
   const bool keepMode_;
 
   std::unique_ptr<SLinkModuleMap> slinkMap_;
+  size_t nModules_ = 0;
 };
 
 RawToPixelProducer::RawToPixelProducer(const edm::ParameterSet& iConfig)
@@ -69,10 +70,12 @@ void RawToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descri
 
 void RawToPixelProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
   slinkMap_ = std::make_unique<SLinkModuleMap>(iSetup.getData(cablingMapBeginRunToken_));
+  nModules_ = 0;
+  for (const auto& entry : slinkMap_->fedIdToDetIds())
+    nModules_ += entry.second.size();
 }
 
 void RawToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
-  auto outputPixelDigis = std::make_unique<edm::DetSetVector<PixelDigi>>();
   edm::Handle<RawDataBuffer> rawBuf;
   iEvent.getByToken(fedRawDataToken_, rawBuf);
   if (!rawBuf.isValid()) {
@@ -80,6 +83,12 @@ void RawToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
   }
 
   auto const& cablingMap = iSetup.getData(cablingMapToken_);
+
+  // Decoded into here and then handed to the DetSetVector constructor that swaps
+  // the whole thing in. DetSetVector::insert would instead deep copy every
+  // module's digis a second time, which is what its own header warns about.
+  std::vector<edm::DetSet<PixelDigi>> moduleSets;
+  moduleSets.reserve(nModules_);
 
   for (const auto& entry : slinkMap_->fedIdToDetIds()) {
     int fedId = entry.first;
@@ -106,7 +115,8 @@ void RawToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
     Phase2ITUnpacker::forEachModule(
         dataPtr, fedSizeInWords, trailerStart, detIds.size(), [&](int modIdx, Phase2ITUnpacker::ModuleSpan span) {
           const uint32_t detId = detIds[modIdx];
-          edm::DetSet<PixelDigi> moduleDigis(detId);
+          // decoded in place, so the digis are never copied out of here
+          auto& moduleDigis = moduleSets.emplace_back(detId);
           // run only for modules that actually carry chips
           int subtype = -1;
           Phase2ITUnpacker::forEachChip(
@@ -116,12 +126,12 @@ void RawToPixelProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSet
                 Phase2ITBitReader reader(dataPtr + payloadStartWord * BYTES_PER_WORD, nBits);
                 Phase2ITUnpacker::decodeChip(reader, chipId, subtype, dropTot_, keepMode_, moduleDigis);
               });
-          if (!moduleDigis.empty())
-            outputPixelDigis->insert(moduleDigis);
+          if (moduleDigis.empty())
+            moduleSets.pop_back();
         });
   }
 
-  iEvent.put(std::move(outputPixelDigis));
+  iEvent.put(std::make_unique<edm::DetSetVector<PixelDigi>>(moduleSets));
 }
 
 DEFINE_FWK_MODULE(RawToPixelProducer);

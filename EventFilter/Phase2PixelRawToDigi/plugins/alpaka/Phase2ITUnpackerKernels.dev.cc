@@ -12,6 +12,8 @@
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChip.h"
 #include "DataFormats/SiPixelDetId/interface/PixelChannelIdentifier.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
+#include "FWCore/MessageLogger/interface/MessageLogger.h"
+#include "FWCore/Utilities/interface/Exception.h"
 #include "HeterogeneousCore/AlpakaInterface/interface/workdivision.h"
 
 #include "Phase2ITUnpackerKernels.h"
@@ -280,8 +282,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     }
   };
 
-  void runChipCountKernel(Queue& queue, const uint8_t* bytes, const ModuleMap& modMap, uint32_t* counts) {
-    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(modMap.nModules, 128), 128);
+  void runChipCountKernel(
+      Queue& queue, const uint8_t* bytes, const ModuleMap& modMap, uint32_t* counts, uint32_t blockSize) {
+    const auto wd =
+        cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(modMap.nModules, blockSize), blockSize);
     alpaka::exec<Acc1D>(queue, wd, ChipCountKernel{}, bytes, modMap, counts);
   }
 
@@ -289,8 +293,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                          const uint8_t* bytes,
                          const ModuleMap& modMap,
                          const uint32_t* offsets,
-                         Phase2ITChipBitStreamSoAView chips) {
-    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(modMap.nModules, 128), 128);
+                         Phase2ITChipBitStreamSoAView chips,
+                         uint32_t blockSize) {
+    const auto wd =
+        cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(modMap.nModules, blockSize), blockSize);
     alpaka::exec<Acc1D>(queue, wd, ChipFillKernel{}, bytes, modMap, offsets, chips);
   }
 
@@ -359,10 +365,14 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     }
   };
 
-  void runDigiCountKernel(
-      Queue& queue, const uint8_t* bytes, Phase2ITChipBitStreamSoAConstView chips, bool dropTot, uint32_t* counts) {
+  void runDigiCountKernel(Queue& queue,
+                          const uint8_t* bytes,
+                          Phase2ITChipBitStreamSoAConstView chips,
+                          bool dropTot,
+                          uint32_t* counts,
+                          uint32_t blockSize) {
     const int n = chips.metadata().size();
-    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(n, 128), 128);
+    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(n, blockSize), blockSize);
     alpaka::exec<Acc1D>(queue, wd, DigiCountKernel{}, bytes, chips, dropTot, counts);
   }
 
@@ -372,10 +382,28 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                          bool dropTot,
                          bool keepMode,
                          const uint32_t* offsets,
-                         SiPixelDigisSoAView digis) {
+                         SiPixelDigisSoAView digis,
+                         uint32_t blockSize) {
     const int n = chips.metadata().size();
-    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(n, 128), 128);
+    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(n, blockSize), blockSize);
     alpaka::exec<Acc1D>(queue, wd, DigiFillKernel{}, bytes, chips, dropTot, keepMode, offsets, digis);
+  }
+
+  void checkBlockSize(uint32_t blockSize, const char* who) {
+    if (blockSize == 0)
+      throw cms::Exception(who) << "blockSize must be greater than zero";
+    // On the CPU backends this is elements per thread, which has no device limit;
+    // only the GPU backends cap the threads per block.
+    if constexpr (not cms::alpakatools::requires_single_thread_per_block_v<Acc1D>) {
+      const auto dev = alpaka::getDevByIdx(alpaka::Platform<Device>{}, 0u);
+      const auto maxThreads = alpaka::getAccDevProps<Acc1D>(dev).m_blockThreadCountMax;
+      if (blockSize > maxThreads)
+        throw cms::Exception(who) << "blockSize " << blockSize << " exceeds the device limit of " << maxThreads
+                                  << " threads per block";
+      if (blockSize % 32 != 0)
+        edm::LogWarning(who) << "blockSize " << blockSize
+                             << " is not a multiple of the warp size (32), which wastes threads in every block";
+    }
   }
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker
