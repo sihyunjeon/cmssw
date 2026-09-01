@@ -40,6 +40,11 @@ opts.register('blockSize1', 0, VarParsing.VarParsing.multiplicity.singleton,
               VarParsing.VarParsing.varType.int, 'block size for the stage-1 (per module) kernels')
 opts.register('blockSize2', 0, VarParsing.VarParsing.multiplicity.singleton,
               VarParsing.VarParsing.varType.int, 'block size for the stage-2 (per chip) kernels')
+opts.register('syncForTiming', 0, VarParsing.VarParsing.multiplicity.singleton,
+              VarParsing.VarParsing.varType.int,
+              'block after each alpaka fill kernel so TimeReport can attribute it. '
+              'Measurement only, and single thread only: it serializes the queue, so a '
+              'threads>1 number taken with it measures the barrier, not the device.')
 opts.register('recovery', 0, VarParsing.VarParsing.multiplicity.singleton,
               VarParsing.VarParsing.varType.int,
               'also compare the digis fed to the packer against what each of the three '
@@ -141,6 +146,13 @@ if _bs1:
     process.phase2ITRawToBitStream.blockSize = cms.uint32(_bs1)
 if _bs2:
     process.phase2ITBitStreamToPixel.blockSize = cms.uint32(_bs2)
+
+# Kept a separate opt-in rather than tied to 'timing': turning it on changes what
+# the per-module GPU numbers mean, so scans taken with and without it must not be
+# silently mixed.
+if opts.syncForTiming:
+    process.phase2ITRawToBitStream.syncForTiming = cms.bool(True)
+    process.phase2ITBitStreamToPixel.syncForTiming = cms.bool(True)
 
 process.phase2ITDigiCompare = cms.EDAnalyzer('Phase2ITDigiCompare',
     legacy=cms.InputTag('bitstreamToPixelProducer'),

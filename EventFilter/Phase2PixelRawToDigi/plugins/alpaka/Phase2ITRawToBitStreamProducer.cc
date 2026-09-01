@@ -62,6 +62,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const edm::ESGetToken<Phase2ITModuleMapHost, Phase2ITModuleMapRecord> mapHostToken_;
     // Threads per block for the two kernels below, which run over modules.
     const uint32_t blockSize_;
+    // Measurement only. The fill kernel below is launched asynchronously, so without
+    // this the module returns before the GPU has done anything and TimeReport charges
+    // it only the enqueue. Blocking makes the kernel attributable, at the cost of the
+    // overlap the design relies on: never enable it in production, and never trust a
+    // threads>1 number taken with it, since concurrent events serialize on the queue.
+    const bool syncForTiming_;
 
     int nModules_ = 0;
     std::optional<cms::alpakatools::host_buffer<int32_t[]>> fedWordBaseH_, fedSizeWordsH_;
@@ -81,7 +87,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         bytesPutToken_(produces()),
         mapToken_(esConsumes()),
         mapHostToken_(esConsumes()),
-        blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
+        blockSize_(iConfig.getParameter<uint32_t>("blockSize")),
+        syncForTiming_(iConfig.getParameter<bool>("syncForTiming")) {
     Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITRawToBitStreamProducer");
   }
 
@@ -89,6 +96,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("fedRawDataCollection", edm::InputTag("BitStreamToRawProducer"));
     desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
+    desc.add<bool>("syncForTiming", false);
     descriptions.addWithDefaultLabel(desc);
   }
 
@@ -188,6 +196,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                         offsetsD_->data(),
                                         chips.view(),
                                         blockSize_);
+    if (syncForTiming_)
+      alpaka::wait(queue);
 
     iEvent.emplace(chipPutToken_, std::move(chips));
     iEvent.emplace(bytesPutToken_, std::move(*bytesD_));

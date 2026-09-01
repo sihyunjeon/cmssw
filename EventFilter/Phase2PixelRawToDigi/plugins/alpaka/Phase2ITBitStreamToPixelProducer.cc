@@ -60,6 +60,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const bool keepMode_;
     // Threads per block for the two kernels below, which run over chips.
     const uint32_t blockSize_;
+    // Measurement only. The fill kernel below is launched asynchronously, so without
+    // this the module returns before the GPU has done anything and TimeReport charges
+    // it only the enqueue. Blocking makes the kernel attributable, at the cost of the
+    // overlap the design relies on: never enable it in production, and never trust a
+    // threads>1 number taken with it, since concurrent events serialize on the queue.
+    const bool syncForTiming_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> countsD_, offsetsD_;
@@ -73,7 +79,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         digiPutToken_(produces()),
         dropTot_(iConfig.getParameter<bool>("dropTot")),
         keepMode_(parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"))),
-        blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
+        blockSize_(iConfig.getParameter<uint32_t>("blockSize")),
+        syncForTiming_(iConfig.getParameter<bool>("syncForTiming")) {
     Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITBitStreamToPixelProducer");
   }
 
@@ -84,6 +91,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     desc.add<bool>("dropTot", false);
     desc.add<std::string>("handleGapPixels", "DROP");
     desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
+    desc.add<bool>("syncForTiming", false);
     descriptions.addWithDefaultLabel(desc);
   }
 
@@ -137,6 +145,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                         offsetsD_->data(),
                                         digis.view(),
                                         blockSize_);
+    if (syncForTiming_)
+      alpaka::wait(queue);
     iEvent.emplace(digiPutToken_, std::move(digis));
   }
 

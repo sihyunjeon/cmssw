@@ -5,9 +5,9 @@ the digis fed to the packer, the digis that came back, and their difference.
     cmsRun Phase2ITUnpackAlpaka_cfg.py maxEvents=2 gapMode=KEEP accelerator=cpu recovery=1
     python3 Phase2ITRecoveryPlot.py phase2ITDigiRecovery_KEEP.root
 
-One PDF per flow, plus a combined page. Δ is empty when the round trip is exact,
-which is the point of the test, so the panel is annotated with the digi tally
-rather than left to look like a plotting failure.
+One PDF per flow, plus a combined page; --png writes PNGs alongside. Δ is empty
+when the round trip is exact, which is the point of the test -- the digi tally is
+printed to the terminal, and only a mismatch is annotated on the figure itself.
 """
 import os
 import sys
@@ -32,8 +32,9 @@ if "--out" in sys.argv:
         sys.exit("--out needs a directory")
     outdir = sys.argv[i]
     args = [a for a in args if a != outdir]
+png = "--png" in sys.argv
 if not args:
-    sys.exit("usage: Phase2ITRecoveryPlot.py <phase2ITDigiRecovery_*.root> [--out dir]")
+    sys.exit("usage: Phase2ITRecoveryPlot.py <phase2ITDigiRecovery_*.root> [--out dir] [--png]")
 path = args[0]
 os.makedirs(outdir, exist_ok=True)
 f = uproot.open(path)
@@ -71,10 +72,12 @@ def panels(axes, m, cx, rx, label):
         plt.colorbar(im, ax=ax, label=cb, fraction=0.046, pad=0.04)
     n_in, n_out = m["input"].sum(), m["output"].sum()
     worst = np.abs(m["delta"]).max()
-    axes[2].text(0.5, 0.5, f"max |$\\Delta$| = {worst:g}\n" +
-                 ("exact round trip" if worst == 0 else "MISMATCH"),
-                 transform=axes[2].transAxes, ha="center", va="center", fontsize=11,
-                 color=("green" if worst == 0 else "red"))
+    # An exact round trip is left as a clean empty panel. A mismatch still gets
+    # called out, because there an empty-looking panel would be a lie.
+    if worst != 0:
+        axes[2].text(0.5, 0.5, f"MISMATCH\nmax |$\\Delta$| = {worst:g}",
+                     transform=axes[2].transAxes, ha="center", va="center",
+                     fontsize=11, color="red")
     axes[0].text(0.02, 0.98, label, transform=axes[0].transAxes, va="top", fontsize=11,
                  bbox=dict(fc="white", ec="0.7", alpha=0.85))
     return n_in, n_out, worst
@@ -95,6 +98,8 @@ for folder, label in FLOWS:
     fig.tight_layout()
     out = os.path.join(outdir, f"recovery_{folder.replace('recovery', '').lower()}_{mode}.pdf")
     fig.savefig(out, bbox_inches="tight")
+    if png:
+        fig.savefig(out[:-4] + ".png", bbox_inches="tight", dpi=160)
     plt.close(fig)
     rows_ok.append((label, m, cx, rx, out))
     print(f"   {out}   in {n_in:.0f}, out {n_out:.0f}, max|delta| {worst:g}")
@@ -106,5 +111,7 @@ if rows_ok:
     fig.tight_layout()
     out = os.path.join(outdir, f"recovery_all_{mode}.pdf")
     fig.savefig(out, bbox_inches="tight")
+    if png:
+        fig.savefig(out[:-4] + ".png", bbox_inches="tight", dpi=160)
     plt.close(fig)
     print(f"   {out}")
