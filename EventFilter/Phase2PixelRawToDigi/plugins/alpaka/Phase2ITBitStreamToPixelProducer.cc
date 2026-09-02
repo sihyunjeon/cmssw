@@ -60,11 +60,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const bool keepMode_;
     // Threads per block for the two kernels below, which run over chips.
     const uint32_t blockSize_;
-    // Measurement only. The fill kernel below is launched asynchronously, so without
-    // this the module returns before the GPU has done anything and TimeReport charges
-    // it only the enqueue. Blocking makes the kernel attributable, at the cost of the
-    // overlap the design relies on: never enable it in production, and never trust a
-    // threads>1 number taken with it, since concurrent events serialize on the queue.
+    // Measurement only: blocks on the fill kernel so TimeReport can charge it here.
+    // Serializes the queue, so single thread timing runs only.
     const bool syncForTiming_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;

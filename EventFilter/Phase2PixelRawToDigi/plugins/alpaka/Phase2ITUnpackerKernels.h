@@ -20,8 +20,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     int nModules;
   };
 
-  // Threads per block on the GPU backends; on the CPU backends make_workdiv turns
-  // it into elements per thread instead, so it only changes the loop chunking there.
+  // Threads per block on GPU; elements per thread on the CPU backends
   inline constexpr uint32_t kDefaultBlockSize = 128;
 
   // stage 1: count chips per module, then fill the chip index rows
@@ -50,8 +49,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                          SiPixelDigisSoAView digis,
                          uint32_t blockSize);
 
-  // Rejects a block size the backend cannot launch; 'who' names the module in the
-  // exception. Queries the device rather than assuming the CUDA limit of 1024.
+  // Throws if the device cannot launch that block size; 'who' names the module
   void checkBlockSize(uint32_t blockSize, const char* who);
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker

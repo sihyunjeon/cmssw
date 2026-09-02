@@ -392,8 +392,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   void checkBlockSize(uint32_t blockSize, const char* who) {
     if (blockSize == 0)
       throw cms::Exception(who) << "blockSize must be greater than zero";
-    // On the CPU backends this is elements per thread, which has no device limit;
-    // only the GPU backends cap the threads per block.
+    // only the GPU backends cap the threads per block
     if constexpr (not cms::alpakatools::requires_single_thread_per_block_v<Acc1D>) {
       const auto dev = alpaka::getDevByIdx(alpaka::Platform<Device>{}, 0u);
       const auto maxThreads = alpaka::getAccDevProps<Acc1D>(dev).m_blockThreadCountMax;
