@@ -26,7 +26,7 @@ namespace TrackerPhase2PlotUtil {
     std::vector<std::string> formats = {"png", "pdf"};
     // MEs with this prefix get the occupancy-map rendering
     std::string occMapNamePrefix;
-    double zMax = 1.2;
+    double zMax = 1.6;
     // 1D MEs with this prefix get a Gaussian fit drawn on top
     std::string gaussFitNamePrefix;
   };

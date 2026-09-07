@@ -52,7 +52,7 @@ SlinkOccupancyHarvester::SlinkOccupancyHarvester(const edm::ParameterSet& iConfi
       savePlots_(iConfig.getUntrackedParameter<bool>("savePlots", false)),
       plotDir_(iConfig.getUntrackedParameter<std::string>("plotDir", ".")),
       plotFormats_(iConfig.getUntrackedParameter<std::vector<std::string>>("plotFormats", {"png", "pdf"})),
-      zMax_(iConfig.getUntrackedParameter<double>("plotZMax", 1.2)) {}
+      zMax_(iConfig.getUntrackedParameter<double>("plotZMax", 1.6)) {}
 
 SlinkOccupancyHarvester::~SlinkOccupancyHarvester() {}
 
@@ -170,13 +170,13 @@ void SlinkOccupancyHarvester::fillDescriptions(edm::ConfigurationDescriptions& d
   desc.addUntracked<bool>("savePlots", false);
   desc.addUntracked<std::string>("plotDir", ".");
   desc.addUntracked<std::vector<std::string>>("plotFormats", {"png", "pdf"});
-  desc.addUntracked<double>("plotZMax", 1.2);
+  desc.addUntracked<double>("plotZMax", 1.6);
 
   edm::ParameterSetDescription psd0;
   psd0.add<std::string>("name", "slinkOccupancyAvg");
   psd0.add<std::string>("title", "Event-averaged SLink occupancy;occupancy;SLinks");
   psd0.add<int>("NxBins", 33);
-  psd0.add<double>("xmax", 1.65);
+  psd0.add<double>("xmax", 1.6);
   psd0.add<double>("xmin", 0.);
   psd0.add<bool>("switch", true);
   desc.add<edm::ParameterSetDescription>("occupancyAvg", psd0);

@@ -196,7 +196,7 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker, edm::Run 
   me_nStreamGroups_ = ibooker.book1D("nStreamGroups", "Processed NE stream groups;;Stream groups", 1, 0., 1.);
 
   me_elinkOccupancy_ = ibooker.book1D(
-      "eLinkOccupancy", "Full Spectrum ELink Occupancy;Occupancy;ELink entries per stream group", 70, 0., 1.4);
+      "eLinkOccupancy", "Full Spectrum ELink Occupancy;Occupancy;ELink entries per stream group", 80, 0., 1.6);
 
   bookSectionHistos(ibooker);
   bookSubTypeHistos(ibooker);
@@ -243,7 +243,7 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker, edm::Run 
                                                     0.,
                                                     0.);
   me_elinkOccupancyBySection_->getTH1()->SetMinimum(0);
-  me_elinkOccupancyBySection_->getTH1()->SetMaximum(1.4);
+  me_elinkOccupancyBySection_->getTH1()->SetMaximum(1.6);
 
   // 1 bin per subtype, <occupancy> with across-event RMS error bars
   me_elinkOccupancyBySubType_ = ibooker.bookProfile("eLinkOccupancyBySubType",
@@ -254,21 +254,27 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker, edm::Run 
                                                     0.,
                                                     0.);
   me_elinkOccupancyBySubType_->getTH1()->SetMinimum(0);
-  me_elinkOccupancyBySubType_->getTH1()->SetMaximum(1.4);
+  me_elinkOccupancyBySubType_->getTH1()->SetMaximum(1.6);
 
   me_elinkOccupancyVsSection_ = ibooker.book2D("eLinkOccupancyVsSection",
                                                "Full Spectrum ELink Occupancy;Section;Occupancy",
                                                nSections_,
                                                -0.5,
                                                nSections_ - 0.5,
-                                               70,
+                                               80,
                                                0.,
-                                               1.4);
+                                               1.6);
   me_elinkOccupancyVsSection_->getTH1()->SetStats(0);
   me_elinkOccupancyVsSection_->getTH1()->SetOption("COLZ");
 
-  me_elinkOccupancyVsSubType_ = ibooker.book2D(
-      "eLinkOccupancyVsSubType", "Full Spectrum ELink Occupancy;SubType;Occupancy", nSub, -0.5, nSub - 0.5, 70, 0., 1.4);
+  me_elinkOccupancyVsSubType_ = ibooker.book2D("eLinkOccupancyVsSubType",
+                                               "Full Spectrum ELink Occupancy;SubType;Occupancy",
+                                               nSub,
+                                               -0.5,
+                                               nSub - 0.5,
+                                               80,
+                                               0.,
+                                               1.6);
   me_elinkOccupancyVsSubType_->getTH1()->SetStats(0);
   me_elinkOccupancyVsSubType_->getTH1()->SetOption("COLZ");
 
@@ -302,7 +308,7 @@ void Phase2ITValidateELink::bookHistograms(DQMStore::IBooker& ibooker, edm::Run 
     me->getTH1()->SetStats(0);
     me->getTH1()->SetOption("COLZ");
     me->getTH1()->SetMinimum(0);
-    me->getTH1()->SetMaximum(1.4);
+    me->getTH1()->SetMaximum(1.6);
     for (int r = 0; r < static_cast<int>(quadrantVals_.size()); ++r)
       me->setBinLabel(r + 1, "Q" + std::to_string(quadrantVals_[r]), 2);
 
@@ -319,9 +325,9 @@ void Phase2ITValidateELink::bookSectionHistos(DQMStore::IBooker& ibooker) {
     mes_elinkOccupancyPerSection_[idx] = ibooker.book1D(
         ("eLinkOccupancyPerSection_TBPX_L" + std::to_string(L)).c_str(),
         ("Full Spectrum ELink Occupancy, TBPX_L" + std::to_string(L) + ";Occupancy;Per-event ELink entries").c_str(),
-        70,
+        80,
         0.,
-        1.4);
+        1.6);
     sectionLabels_[idx] = "TBPX_L" + std::to_string(L);
     sectionToIndex_[{static_cast<int>(Section::TBPX), L}] = idx++;
   }
@@ -330,9 +336,9 @@ void Phase2ITValidateELink::bookSectionHistos(DQMStore::IBooker& ibooker) {
     mes_elinkOccupancyPerSection_[idx] = ibooker.book1D(
         ("eLinkOccupancyPerSection_TFPX_R" + std::to_string(R)).c_str(),
         ("Full Spectrum ELink Occupancy, TFPX_R" + std::to_string(R) + ";Occupancy;Per-event ELink entries").c_str(),
-        70,
+        80,
         0.,
-        1.4);
+        1.6);
     sectionLabels_[idx] = "TFPX_R" + std::to_string(R);
     sectionToIndex_[{static_cast<int>(Section::TFPX), R}] = idx++;
   }
@@ -341,9 +347,9 @@ void Phase2ITValidateELink::bookSectionHistos(DQMStore::IBooker& ibooker) {
     mes_elinkOccupancyPerSection_[idx] = ibooker.book1D(
         ("eLinkOccupancyPerSection_TEPX_R" + std::to_string(R)).c_str(),
         ("Full Spectrum ELink Occupancy, TEPX_R" + std::to_string(R) + ";Occupancy;Per-event ELink entries").c_str(),
-        70,
+        80,
         0.,
-        1.4);
+        1.6);
     sectionLabels_[idx] = "TEPX_R" + std::to_string(R);
     sectionToIndex_[{static_cast<int>(Section::TEPX), R}] = idx++;
   }
@@ -358,9 +364,9 @@ void Phase2ITValidateELink::bookSubTypeHistos(DQMStore::IBooker& ibooker) {
                        ("Full Spectrum ELink Occupancy, SubType " + std::to_string(subTypeVals_[i]) +
                         ";Occupancy;Per-event ELink entries")
                            .c_str(),
-                       70,
+                       80,
                        0.,
-                       1.4);
+                       1.6);
     subTypeToIndex_[subTypeVals_[i]] = i;
   }
 }

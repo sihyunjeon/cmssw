@@ -106,7 +106,7 @@ void Phase2ITValidateSLink::bookHistograms(DQMStore::IBooker& ibooker, edm::Run 
   me_nEvents_ = ibooker.book1D("nEvents", "Processed events;;Events", 1, 0., 1.);
 
   me_slinkOccupancy_ =
-      ibooker.book1D("slinkOccupancy", "Full Spectrum SLink Occupancy;Occupancy;Per-event SLink entries", 60, 0., 1.2);
+      ibooker.book1D("slinkOccupancy", "Full Spectrum SLink Occupancy;Occupancy;Per-event SLink entries", 80, 0., 1.6);
 
   bookDTCHistos(ibooker);
 
@@ -117,9 +117,9 @@ void Phase2ITValidateSLink::bookHistograms(DQMStore::IBooker& ibooker, edm::Run 
                                                 -0.5,
                                                 nDTCs_ - 0.5,
                                                 0.,
-                                                1.2);
+                                                1.6);
   me_slinkOccupancyByDTC_->getTH1()->SetMinimum(0);
-  me_slinkOccupancyByDTC_->getTH1()->SetMaximum(1.2);
+  me_slinkOccupancyByDTC_->getTH1()->SetMaximum(1.6);
 
   me_slinkOccupancyMap_ = ibooker.bookProfile2D("slinkOccupancyMap",
                                                 "Mean SLink Occupancy;DTC;SLink Index;<Occupancy>",
@@ -130,14 +130,14 @@ void Phase2ITValidateSLink::bookHistograms(DQMStore::IBooker& ibooker, edm::Run 
                                                 -0.5,
                                                 nslinksPerDTC_ - 0.5,
                                                 0.,
-                                                1.2);
+                                                1.6);
   me_slinkOccupancyMap_->getTH1()->SetStats(0);
   me_slinkOccupancyMap_->getTH1()->SetMinimum(0);
-  me_slinkOccupancyMap_->getTH1()->SetMaximum(1.2);
+  me_slinkOccupancyMap_->getTH1()->SetMaximum(1.6);
   me_slinkOccupancyMap_->getTH1()->SetOption("COLZ");
 
   me_slinkOccupancyVsDTC_ = ibooker.book2D(
-      "slinkOccupancyVsDTC", "Full Spectrum SLink Occupancy;DTC;Occupancy", nDTCs_, -0.5, nDTCs_ - 0.5, 60, 0., 1.2);
+      "slinkOccupancyVsDTC", "Full Spectrum SLink Occupancy;DTC;Occupancy", nDTCs_, -0.5, nDTCs_ - 0.5, 80, 0., 1.6);
   me_slinkOccupancyVsDTC_->getTH1()->SetStats(0);
   me_slinkOccupancyVsDTC_->getTH1()->SetOption("COLZ");
 
@@ -162,17 +162,17 @@ void Phase2ITValidateSLink::bookDTCHistos(DQMStore::IBooker& ibooker) {
         -0.5,
         nslinksPerDTC_ - 0.5,
         0.,
-        1.2);
+        1.6);
     mes_slinkOccupancyPerDTC_[i]->getTH1()->SetMinimum(0);
-    mes_slinkOccupancyPerDTC_[i]->getTH1()->SetMaximum(1.2);
+    mes_slinkOccupancyPerDTC_[i]->getTH1()->SetMaximum(1.6);
 
     mes_slinkSpectrumOccupancyPerDTC_[i] = ibooker.book1D(
         ("slinkSpectrumOccupancyPerDTC_" + std::to_string(dtcIds_[i])).c_str(),
         ("Full Spectrum SLink Occupancy, DTC " + std::to_string(dtcIds_[i]) + ";Occupancy;Per-event SLink entries")
             .c_str(),
-        60,
+        80,
         0.,
-        1.2);
+        1.6);
 
     mes_dataSizePerDTC_[i] =
         ibooker.book1D(("dataSizePerDTC_" + std::to_string(dtcIds_[i])).c_str(),

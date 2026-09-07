@@ -28,14 +28,14 @@ process.slinkOccupancyHarvester = cms.EDProducer('SlinkOccupancyHarvester',
     savePlots     = cms.untracked.bool(True),
     plotDir       = cms.untracked.string(options.plotDir),
     plotFormats   = cms.untracked.vstring('pdf', 'png'),
-    plotZMax      = cms.untracked.double(1.2),
+    plotZMax      = cms.untracked.double(1.6),
     occupancyAvg = cms.PSet(
         switch = cms.bool(True),
         name   = cms.string('slinkOccupancyAvg'),
         title  = cms.string('Event-Averaged SLink Occupancy;<Occupancy>;SLink entries'),
         NxBins = cms.int32(33),
         xmin   = cms.double(0.),
-        xmax   = cms.double(1.65),
+        xmax   = cms.double(1.6),
     ),
 )
 
