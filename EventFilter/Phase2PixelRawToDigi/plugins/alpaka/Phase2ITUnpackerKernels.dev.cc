@@ -10,6 +10,7 @@
 #include <alpaka/alpaka.hpp>
 
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChip.h"
+#include "DataFormats/SiPixelClusterSoA/interface/ClusteringConstants.h"
 #include "DataFormats/SiPixelDetId/interface/PixelChannelIdentifier.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
@@ -336,7 +337,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       // The collection carries one spare row past the digis; zero it once.
       if (cms::alpakatools::once_per_grid(acc)) {
         const int last = digis.metadata().size() - 1;
-        digis[last].clus() = 0;
+        digis[last].clus() = ::pixelClustering::invalidClusterId;
         digis[last].pdigi() = 0;
         digis[last].rawIdArr() = 0;
         digis[last].adc() = 0;
@@ -356,7 +357,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                      int row, col;
                      hitToRowCol(subtype, chipId, ccol, qrow, i, keepMode, row, col);
                      auto d = digis[cursor++];
-                     d.clus() = 0;
+                     // not yet clustered; 0 is a valid cluster id, so use the sentinel
+                     d.clus() = ::pixelClustering::invalidClusterId;
                      d.pdigi() =
                          (uint32_t(row) << kRowShift) | (uint32_t(col) << kColShift) | (uint32_t(adc) << kAdcShift);
                      d.rawIdArr() = chip.detId();
