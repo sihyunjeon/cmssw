@@ -29,7 +29,11 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
   }
 
-  // MSB-first reader over a byte buffer, clamped like binaryToInt
+  // MSB-first reader over a byte buffer.
+  // next() is the unchecked primitive: it does NOT test pos against len, so callers
+  // must either use the clamped nextOr0()/bits() wrappers below or check themselves
+  // (as decPair does). Keeping the check out of next() avoids a branch in the
+  // innermost per-bit loop.
   struct BitReader {
     const uint8_t* bytes;
     uint32_t len;
