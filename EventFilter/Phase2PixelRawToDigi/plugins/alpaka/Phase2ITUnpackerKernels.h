@@ -24,8 +24,15 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   inline constexpr uint32_t kDefaultBlockSize = 128;
 
   // stage 1: count chips per module, then fill the chip index rows
-  void runChipCountKernel(
-      Queue& queue, const uint8_t* bytes, const ModuleMap& modMap, uint32_t* chipCounts, uint32_t blockSize);
+  // badOffset[m] and overrunChips[m] report malformed input per module: a dropped
+  // module and the number of chips whose payload did not fit the FED body.
+  void runChipCountKernel(Queue& queue,
+                          const uint8_t* bytes,
+                          const ModuleMap& modMap,
+                          uint32_t* chipCounts,
+                          uint32_t* badOffset,
+                          uint32_t* overrunChips,
+                          uint32_t blockSize);
   void runChipFillKernel(Queue& queue,
                          const uint8_t* bytes,
                          const ModuleMap& modMap,

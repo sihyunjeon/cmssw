@@ -10,6 +10,7 @@
 
 #include "CondFormats/SiPhase2TrackerObjects/interface/TrackerDetToDTCELinkCablingMap.h"
 #include "DataFormats/Phase2ITBitStreamSoA/interface/Phase2ITModuleMapHost.h"
+#include "Geometry/CommonTopologies/interface/SimplePixelTopology.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2ITModuleMapRecord.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/SLinkModuleMap.h"
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
@@ -24,6 +25,17 @@
 #include "HeterogeneousCore/AlpakaInterface/interface/memory.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
+
+  namespace {
+    // Module_SubType values the chip-quadrant table in ChipModuleMap covers.
+    constexpr int kMinSubtype = 1;
+    constexpr int kMaxSubtype = 12;
+    // The clusterizer allocates SiPixelClustersSoA with this many entries and indexes
+    // it by moduleId (SiPixelPhase2DigiToCluster.cc), so this is the real bound -- not
+    // pixelClustering::maxNumModules, which is an upper limit across topologies.
+    constexpr int kMaxModuleId = pixelTopology::Phase2::numberOfModules;
+  }  // namespace
+
 
   class Phase2ITModuleMapESProducer : public ESProducer {
   public:
@@ -59,10 +71,26 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           const auto* det = geom->idToDetUnit(DetId(detId));
           if (det == nullptr)
             throw cms::Exception("Phase2ITModuleMapESProducer") << "No GeomDetUnit for detId " << detId;
+          // The kernels use these two as array indices with no device-side bound
+          // check (an ALPAKA_ASSERT_ACC compiles out in a release build), so validate
+          // here, where it is cheap and the exception is catchable.
+          const int subtype = static_cast<int>(cabling->getModuleInfo(detId).subtype);
+          if (subtype < kMinSubtype || subtype > kMaxSubtype)
+            throw cms::Exception("Phase2ITModuleMapESProducer")
+                << "Module_SubType " << subtype << " for detId " << detId << " is outside the supported range "
+                << kMinSubtype << ".." << kMaxSubtype << "; it indexes the chip-quadrant table in the unpacking kernels.";
+          // Checked before the narrowing cast: afterwards a truncated value is
+          // indistinguishable from a valid one.
+          const int geomIdx = det->index();
+          if (geomIdx < 0 || geomIdx >= static_cast<int>(kMaxModuleId))
+            throw cms::Exception("Phase2ITModuleMapESProducer")
+                << "GeomDetUnit index " << geomIdx << " for detId " << detId << " is outside [0, " << kMaxModuleId
+                << "); it is written to SiPixelDigisSoA::moduleId, which the clusterizer uses to index "
+                << "SiPixelClustersSoA, allocated with that many entries.";
           modFedIdx.push_back(fedIdx);
           modDetId.push_back(detId);
-          modSubtype.push_back(static_cast<uint8_t>(cabling->getModuleInfo(detId).subtype));
-          modGeomIdx.push_back(static_cast<uint16_t>(det->index()));
+          modSubtype.push_back(static_cast<uint8_t>(subtype));
+          modGeomIdx.push_back(static_cast<uint16_t>(geomIdx));
         }
       }
       modStart.push_back(static_cast<int32_t>(modDetId.size()));
