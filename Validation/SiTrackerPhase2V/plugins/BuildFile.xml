@@ -11,6 +11,7 @@
 <use name="DataFormats/TrackerCommon"/>
 <use name="DataFormats/TrackerRecHit2D"/>
 <use name="DataFormats/SiPixelDigi"/>
+<use name="EventFilter/Phase2PixelRawToDigi"/>
 <use name="SimDataFormats/Track"/>
 <use name="SimDataFormats/TrackingHit"/>
 <use name="SimDataFormats/Vertex"/>
