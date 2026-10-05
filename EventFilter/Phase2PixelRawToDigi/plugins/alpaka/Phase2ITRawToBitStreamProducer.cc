@@ -21,6 +21,7 @@
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2DAQFormatSpecification.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2ITUnpacker.h"
 #include "EventFilter/Phase2PixelRawToDigi/interface/Phase2ITModuleMapRecord.h"
+#include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
@@ -69,8 +70,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     int nModules_ = 0;
     std::optional<cms::alpakatools::host_buffer<int32_t[]>> fedWordBaseH_, fedSizeWordsH_;
     std::optional<cms::alpakatools::device_buffer<Device, int32_t[]>> fedWordBaseD_, fedSizeWordsD_;
-    std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
-    std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> countsD_, offsetsD_;
+    std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_, badOffsetH_, overrunH_;
+    std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> countsD_, offsetsD_, badOffsetD_, overrunD_;
 
     std::optional<Phase2ITRawBytesHost> bytesH_;
     std::optional<Phase2ITRawBytesSoACollection> bytesD_;
@@ -128,6 +129,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       offsetsH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, nModules);
       countsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nModules);
       offsetsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nModules);
+      badOffsetH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, nModules);
+      overrunH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, nModules);
+      badOffsetD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nModules);
+      overrunD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nModules);
     }
 
     const auto rawHandle = iEvent.getHandle(rawToken_);
@@ -165,9 +170,16 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, *fedWordBaseD_, *fedWordBaseH_);
     alpaka::memcpy(queue, *fedSizeWordsD_, *fedSizeWordsH_);
 
-    Phase2ITUnpacker::runChipCountKernel(
-        queue, bytesD_->view().byte().data(), moduleMap(iSetup.getData(mapToken_)), countsD_->data(), blockSize_);
+    Phase2ITUnpacker::runChipCountKernel(queue,
+                                        bytesD_->view().byte().data(),
+                                        moduleMap(iSetup.getData(mapToken_)),
+                                        countsD_->data(),
+                                        badOffsetD_->data(),
+                                        overrunD_->data(),
+                                        blockSize_);
     alpaka::memcpy(queue, *countsH_, *countsD_);
+    alpaka::memcpy(queue, *badOffsetH_, *badOffsetD_);
+    alpaka::memcpy(queue, *overrunH_, *overrunD_);
   }
 
   void Phase2ITRawToBitStreamProducer::produce(device::Event& iEvent, device::EventSetup const& iSetup) {
@@ -180,10 +192,19 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     }
 
     uint32_t nChips = 0;
+    uint32_t nDropped = 0, nOverrun = 0;
     for (int m = 0; m < nModules_; ++m) {
       offsetsH_->data()[m] = nChips;
       nChips += countsH_->data()[m];
+      nDropped += badOffsetH_->data()[m];
+      nOverrun += overrunH_->data()[m];
     }
+    // Without this the kernels drop malformed modules and chips silently, which
+    // makes corrupt input indistinguishable from an empty detector.
+    if (nDropped != 0 || nOverrun != 0)
+      edm::LogWarning("Phase2ITRawToBitStreamProducer")
+          << nDropped << " of " << nModules_ << " modules dropped for an out-of-range offset, and " << nOverrun
+          << " chips had a payload past the end of the FED body.";
     alpaka::memcpy(queue, *offsetsD_, *offsetsH_);
 
     Phase2ITChipBitStreamSoACollection chips(nChips, queue);
