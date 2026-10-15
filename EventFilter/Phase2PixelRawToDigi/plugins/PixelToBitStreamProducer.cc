@@ -8,6 +8,7 @@
 //
 
 // system include files
+#include <algorithm>
 #include <memory>
 
 // user include files
@@ -61,18 +62,19 @@ namespace {
   }
 }  // namespace
 
-class PixelToBitStreamProducer : public edm::stream::EDProducer<> {
+class PixelToBitStreamProducer : public edm::stream::EDProducer<edm::stream::WatchRuns> {
 public:
   PixelToBitStreamProducer(const edm::ParameterSet&);
   ~PixelToBitStreamProducer() override = default;
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
+  void beginRun(const edm::Run&, const edm::EventSetup&) override;
 
 private:
   void produce(edm::Event&, const edm::EventSetup&) override;
 
-  const edm::InputTag src_;
   const edm::EDGetTokenT<edm::DetSetVector<PixelDigi>> pixelDigiToken_;
   const edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> tTopoToken_;
+  const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapBeginRunToken_;
   // Cabling map supplies the per-module Module_SubType that keys the ChipMap
   // chip-index convention.
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
@@ -82,11 +84,14 @@ private:
   const bool dropTot_;
   typedef math::XYZPointD Point;
   typedef std::vector<Point> PointCollection;
+
+  // Every cabled module, sorted by detId. All of them are packed each event, digis or not,
+  // as the chips send data on every trigger.
+  std::vector<uint32_t> cabledDetIds_;
 };
 
 void PixelToBitStreamProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
-  desc.add<edm::InputTag>("src", edm::InputTag("generalTracks"));
   desc.add<edm::InputTag>("siPixelDigi", edm::InputTag("simSiPixelDigis", "Pixel"));
   desc.add<bool>("dropTot", false);
   desc.add<std::string>("handleGapPixels", "AGGREGATE");
@@ -94,14 +99,22 @@ void PixelToBitStreamProducer::fillDescriptions(edm::ConfigurationDescriptions& 
 }
 
 PixelToBitStreamProducer::PixelToBitStreamProducer(const edm::ParameterSet& iConfig)
-    : src_(iConfig.getParameter<edm::InputTag>("src")),
-      pixelDigiToken_(consumes(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
+    : pixelDigiToken_(consumes(iConfig.getParameter<edm::InputTag>("siPixelDigi"))),
       tTopoToken_(esConsumes()),
+      cablingMapBeginRunToken_(
+          esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd, edm::Transition::BeginRun>()),
       cablingMapToken_(esConsumes<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd>()),
       gapMode_(parseGapMode(iConfig.getParameter<std::string>("handleGapPixels"))),
       dropTot_(iConfig.getParameter<bool>("dropTot")) {
   produces<edm::DetSetVector<Phase2ITQCore>>();
   produces<edmNew::DetSetVector<Phase2ITChipBitStream>>();
+}
+
+void PixelToBitStreamProducer::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {
+  // Same module set as SLinkModuleMap (all detIds of all known DTCs), so BitStreamToRawProducer finds every one.
+  // Sorted because the bitstream FastFiller must be filled in increasing detId order.
+  cabledDetIds_ = iSetup.getData(cablingMapBeginRunToken_).getKnownDetIds();
+  std::sort(cabledDetIds_.begin(), cabledDetIds_.end());
 }
 
 namespace {
@@ -231,8 +244,9 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
 
   auto pixelDigiHandle = iEvent.getHandle(pixelDigiToken_);
   const edm::DetSetVector<PixelDigi>& pixelDigi = *pixelDigiHandle;
-  for (const auto& theDigis : pixelDigi) {
-    DetId tkId = theDigis.id;
+  size_t nModulesWithDigis = 0;
+  for (uint32_t detId : cabledDetIds_) {
+    DetId tkId(detId);
     std::vector<Phase2ITDigiHit> hitlist;
     std::vector<int> id;
     if (tkId.subdetId() == PixelSubdetector::PixelBarrel) {
@@ -249,8 +263,14 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
       id = {tkId.subdetId(), moduleNum, diskNum, bladeNum, panelNum, sideNum};
     }
 
-    for (const auto& digi : theDigis) {
-      hitlist.emplace_back(digi.row(), digi.column(), digi.adc());
+    // A module without digis still gets nChips empty chip streams.
+    auto foundDetId = pixelDigi.find(detId);
+    const bool hasDigis = (foundDetId != pixelDigi.end());
+    if (hasDigis) {
+      ++nModulesWithDigis;
+      for (const auto& digi : *foundDetId) {
+        hitlist.emplace_back(digi.row(), digi.column(), digi.adc());
+      }
     }
     // Module_SubType from the cabling map keys the chip-index convention.
     const int subtype = static_cast<int>(cablingMap.getModuleInfo(tkId.rawId()).subtype);
@@ -271,7 +291,13 @@ void PixelToBitStreamProducer::produce(edm::Event& iEvent, const edm::EventSetup
       bitStreamFiller.push_back(std::move(aChipBitStream));
     }
 
-    aQCoreVector->insert(DetSetQCores);
+    if (hasDigis)
+      aQCoreVector->insert(DetSetQCores);
+  }
+  if (nModulesWithDigis != pixelDigi.size()) {
+    throw cms::Exception("PixelToBitStreamProducer")
+        << "Could not find modules with digis in the cabling map: " << pixelDigi.size() - nModulesWithDigis << " of "
+        << pixelDigi.size();
   }
   iEvent.put(std::move(aQCoreVector));
   iEvent.put(std::move(aBitStreamVector));

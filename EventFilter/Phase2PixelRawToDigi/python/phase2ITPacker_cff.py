@@ -1,0 +1,7 @@
+import FWCore.ParameterSet.Config as cms
+
+from EventFilter.Phase2PixelRawToDigi.pixelToBitStreamProducer_cfi import pixelToBitStreamProducer
+from EventFilter.Phase2PixelRawToDigi.BitStreamToAuroraProducer_cfi import BitStreamToAuroraProducer
+from EventFilter.Phase2PixelRawToDigi.pixelToRawProducer_cfi import pixelToRawProducer
+
+phase2ITPacker = cms.Sequence(pixelToBitStreamProducer + BitStreamToAuroraProducer + pixelToRawProducer)

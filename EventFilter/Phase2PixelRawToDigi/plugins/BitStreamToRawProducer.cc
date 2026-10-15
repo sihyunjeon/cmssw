@@ -57,7 +57,7 @@ BitStreamToRawProducer::BitStreamToRawProducer(const edm::ParameterSet& iConfig)
 
 void BitStreamToRawProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
-  desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("PixelQCoreProducer"));
+  desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("pixelToBitStreamProducer"));
   descriptions.add("pixelToRawProducer", desc);
 }
 

@@ -11,6 +11,7 @@
 
 #include <array>
 #include <map>
+#include <string>
 #include <vector>
 #include <cstdint>
 #include "FWCore/Framework/interface/Frameworkfwd.h"
@@ -18,6 +19,7 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
+#include "FWCore/Framework/interface/Run.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
@@ -34,20 +36,26 @@
 #include "FWCore/Utilities/interface/ESGetToken.h"
 #include "FWCore/Utilities/interface/Transition.h"
 
-class BitStreamToAuroraProducer : public edm::one::EDProducer<> {
+class BitStreamToAuroraProducer : public edm::one::EDProducer<edm::one::WatchRuns> {
 public:
   explicit BitStreamToAuroraProducer(const edm::ParameterSet&);
   ~BitStreamToAuroraProducer() override = default;
 
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
+  void beginRun(const edm::Run&, const edm::EventSetup&) override;
+  void endRun(const edm::Run&, const edm::EventSetup&) override {}
+  void endJob() override;
   void produce(edm::Event&, const edm::EventSetup&) override;
 
 private:
+  void dropPendingEvents(const std::string& where);
+
   const edm::EDGetTokenT<edmNew::DetSetVector<Phase2ITChipBitStream>> ITChipBitStreamToken_;
   const edm::ESGetToken<TrackerDetToDTCELinkCablingMap, TrackerDetToDTCELinkCablingMapRcd> cablingMapToken_;
   const unsigned int eventsPerStream_;       // NE: events per stream group
   const unsigned int serviceBlockInterval_;  // ND: data blocks per Aurora service block
   unsigned int eventCount_;
+  edm::RunNumber_t bufferRun_ = 0;  // run of the buffered events
 
   // detId -> chip -> per-event RD53 chip bit streams, accumulated across NE events
   std::map<uint32_t, std::vector<std::vector<Phase2ITChipBitStream>>> buffer_;
@@ -77,12 +85,34 @@ BitStreamToAuroraProducer::BitStreamToAuroraProducer(const edm::ParameterSet& iC
 
 void BitStreamToAuroraProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
-  desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("Phase2ITQCoreProducer"));
+  desc.add<edm::InputTag>("Phase2ITChipBitStream", edm::InputTag("pixelToBitStreamProducer"));
   using Phase2DAQFormatSpecification::AURORA_EVENTS_PER_STREAM_DEFAULT;
   using Phase2DAQFormatSpecification::AURORA_SERVICE_BLOCK_INTERVAL_DEFAULT;
   desc.add<unsigned int>("eventsPerStream", AURORA_EVENTS_PER_STREAM_DEFAULT);            // NE, 1..64
   desc.add<unsigned int>("serviceBlockInterval", AURORA_SERVICE_BLOCK_INTERVAL_DEFAULT);  // ND, 1..256
   descriptions.add("BitStreamToAuroraProducer", desc);
+}
+
+// Unfinished stream group is dropped when a different run starts 
+// TODO :: Should this be somehow updated?
+void BitStreamToAuroraProducer::beginRun(const edm::Run& iRun, const edm::EventSetup&) {
+  if (iRun.run() != bufferRun_) {
+    dropPendingEvents("before run " + std::to_string(iRun.run()));
+    bufferRun_ = iRun.run();
+  }
+}
+
+void BitStreamToAuroraProducer::endJob() { dropPendingEvents("at the end of the job"); }
+
+void BitStreamToAuroraProducer::dropPendingEvents(const std::string& where) {
+  const unsigned int pending = eventCount_ % eventsPerStream_;
+  if (pending > 0) {
+    edm::LogWarning("BitStreamToAuroraProducer")
+        << pending << " event(s) " << where << " did not complete a stream group of " << eventsPerStream_
+        << " events and are not in the Aurora output";
+  }
+  buffer_.clear();
+  eventCount_ = 0;
 }
 
 void BitStreamToAuroraProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
