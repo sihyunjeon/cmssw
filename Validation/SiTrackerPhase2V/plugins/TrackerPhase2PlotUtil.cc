@@ -6,7 +6,7 @@
 // Author: Lacey Dishman, Sihyun Jeon (Boston University)
 // Written: August 2026
 
-#include "Validation/SiTrackerPhase2V/interface/TrackerPhase2PlotUtil.h"
+#include "Validation/SiTrackerPhase2V/plugins/TrackerPhase2PlotUtil.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -24,6 +24,7 @@
 #include "TH1.h"
 #include "THStack.h"
 #include "TKey.h"
+#include "TLatex.h"
 #include "TLegend.h"
 #include "TPaveText.h"
 #include "TStyle.h"
@@ -32,6 +33,8 @@ namespace {
 
   constexpr int kStdWidthPx = 900;
   constexpr int kStdHeightPx = 600;
+  // 1D histograms and the stacked plots are square and drawn without title
+  constexpr int kSquarePx = 800;
   constexpr int kWideMinBins = 40;
   constexpr int kWidePxPerBin = 11;
   constexpr int kWidePadPx = 300;
@@ -41,12 +44,14 @@ namespace {
 
   class StyleGuard {
   public:
-    StyleGuard() : optStat_(gStyle->GetOptStat()), nContours_(gStyle->GetNumberContours()) {
+    StyleGuard()
+        : optStat_(gStyle->GetOptStat()), optTitle_(gStyle->GetOptTitle()), nContours_(gStyle->GetNumberContours()) {
       const TArrayI& pal = TColor::GetPalette();
       palette_.assign(pal.GetArray(), pal.GetArray() + pal.GetSize());
     }
     ~StyleGuard() {
       gStyle->SetOptStat(optStat_);
+      gStyle->SetOptTitle(optTitle_);
       gStyle->SetNumberContours(nContours_);
       if (!palette_.empty())
         gStyle->SetPalette(static_cast<Int_t>(palette_.size()), palette_.data());
@@ -56,11 +61,12 @@ namespace {
 
   private:
     int optStat_;
+    int optTitle_;
     int nContours_;
     std::vector<Int_t> palette_;
   };
 
-  // drop empty rows at the top, e.g. the 6-row ELink map when no module uses all of them
+  // drop empty rows at the top, e.g. ELink map rows that no module uses
   void cropEmptyRows(TH2* h2) {
     auto* prof = dynamic_cast<TProfile2D*>(h2);
     int top = 0;
@@ -75,6 +81,15 @@ namespace {
   }
 
 }  // namespace
+
+std::unique_ptr<TF1> TrackerPhase2PlotUtil::fitGaussian(TH1& h) {
+  if (h.GetEntries() <= 0)
+    return nullptr;
+  auto fit = std::make_unique<TF1>("gausFit", "gaus", h.GetMean() - 4 * h.GetRMS(), h.GetMean() + 4 * h.GetRMS());
+  if (h.Fit(fit.get(), "QNR") != 0)
+    return nullptr;
+  return fit;
+}
 
 int TrackerPhase2PlotUtil::saveFolderPlots(dqm::harvesting::DQMStore::IGetter& igetter,
                                            const std::string& folder,
@@ -118,6 +133,10 @@ int TrackerPhase2PlotUtil::saveFolderPlots(dqm::harvesting::DQMStore::IGetter& i
 
     const std::string& name = me->getName();
     const bool isOccMap = is2D && !cfg.occMapNamePrefix.empty() && name.rfind(cfg.occMapNamePrefix, 0) == 0;
+    // profiles, 2D plots and summaries with labelled bins keep the landscape canvas and the title for their axes
+    const bool summary = me->kind() == dqm::harvesting::MonitorElement::Kind::TPROFILE ||
+                         (!is2D && h->GetXaxis()->GetLabels() != nullptr);
+    const bool square = !is2D && !summary;
 
     if (isOccMap) {
       gStyle->SetPalette(kRainBow);
@@ -126,11 +145,14 @@ int TrackerPhase2PlotUtil::saveFolderPlots(dqm::harvesting::DQMStore::IGetter& i
     } else {
       gStyle->SetPalette(kViridis);
     }
+    gStyle->SetOptTitle(square ? 0 : 1);
 
     const int nx = h->GetNbinsX();
     const bool wide = isOccMap && nx > kWideMinBins;
-    const int width = wide ? std::clamp(nx * kWidePxPerBin + kWidePadPx, kWideMinPx, kWideMaxPx) : kStdWidthPx;
-    const int height = wide ? kWideHeightPx : kStdHeightPx;
+    const int width = wide     ? std::clamp(nx * kWidePxPerBin + kWidePadPx, kWideMinPx, kWideMaxPx)
+                      : square ? kSquarePx
+                               : kStdWidthPx;
+    const int height = wide ? kWideHeightPx : square ? kSquarePx : kStdHeightPx;
 
     TCanvas canvas(("c_" + name).c_str(), name.c_str(), width, height);
     if (isOccMap) {
@@ -139,9 +161,9 @@ int TrackerPhase2PlotUtil::saveFolderPlots(dqm::harvesting::DQMStore::IGetter& i
       canvas.SetTopMargin(0.13);
       canvas.SetBottomMargin(0.16);
     } else {
-      canvas.SetLeftMargin(0.11);
+      canvas.SetLeftMargin(square ? 0.16 : 0.11);
       canvas.SetRightMargin(is2D ? 0.135 : 0.05);
-      canvas.SetTopMargin(0.10);
+      canvas.SetTopMargin(square ? 0.05 : 0.10);
       canvas.SetBottomMargin(0.13);
     }
 
@@ -152,27 +174,35 @@ int TrackerPhase2PlotUtil::saveFolderPlots(dqm::harvesting::DQMStore::IGetter& i
         h->GetXaxis()->LabelsOption("h");
       }
       h->Draw("COLZ");
-    } else if (me->kind() == dqm::harvesting::MonitorElement::Kind::TPROFILE) {
+    } else if (summary) {
       h->SetLineWidth(2);
       h->SetMarkerStyle(20);
       h->SetMarkerSize(0.9);
       h->Draw("E1");
     } else {
+      const bool gaussFit = !cfg.gaussFitNamePrefix.empty() && name.rfind(cfg.gaussFitNamePrefix, 0) == 0;
       h->SetLineWidth(2);
       h->SetFillColorAlpha(kAzure + 1, 0.35);
+      if (gaussFit && cfg.gaussFitYMax > 0.)
+        h->SetMaximum(cfg.gaussFitYMax);
       h->Draw("HIST");
-      if (!cfg.gaussFitNamePrefix.empty() && name.rfind(cfg.gaussFitNamePrefix, 0) == 0 && h->GetEntries() > 0) {
-        TF1 fit("gausFit", "gaus", h->GetMean() - 4 * h->GetRMS(), h->GetMean() + 4 * h->GetRMS());
-        if (h->Fit(&fit, "QNR") == 0) {
-          fit.SetLineColor(kRed);
-          fit.SetLineWidth(2);
-          fit.DrawCopy("SAME");
-          TPaveText box(0.60, 0.72, 0.92, 0.87, "NDC");
+      if (gaussFit) {
+        if (auto fit = fitGaussian(*h)) {
+          fit->SetLineColor(kRed);
+          fit->SetLineWidth(2);
+          fit->DrawCopy("SAME");
+          std::string id = name.substr(cfg.gaussFitNamePrefix.size());
+          if (!id.empty() && id.front() == '_')
+            id.erase(0, 1);
+          const bool labelled = !cfg.gaussFitLabelPrefix.empty() && !id.empty();
+          TPaveText box(0.60, labelled ? 0.695 : 0.77, 0.92, 0.92, "NDC");
           box.SetBorderSize(1);
           box.SetFillColor(0);
           box.SetTextAlign(12);
-          box.AddText(Form("Mean: %.2f", fit.GetParameter(1)));
-          box.AddText(Form("Std Dev: %.2f", std::abs(fit.GetParameter(2))));
+          if (labelled)
+            box.AddText((cfg.gaussFitLabelPrefix + id).c_str());
+          box.AddText(Form("Mean: %.2f", fit->GetParameter(1)));
+          box.AddText(Form("Std Dev: %.2f", std::abs(fit->GetParameter(2))));
           box.DrawClone();
         }
       }
@@ -282,18 +312,46 @@ int TrackerPhase2PlotUtil::saveStackedPlots(const std::vector<std::pair<std::str
 
   StyleGuard styleGuard;
   gStyle->SetOptStat(0);
+  gStyle->SetOptTitle(0);
 
   const TH1* first = components.front().second;
   const std::string axisTitles = std::string(";") + first->GetXaxis()->GetTitle() + ";" + first->GetYaxis()->GetTitle();
 
-  // Spread long component lists over several columns
+  // Spread long component lists over several columns, on the side away from the bulk of the entries
   const int nColumns = 1 + static_cast<int>(components.size() - 1) / 13;
+  double sumW = 0., sumWX = 0.;
+  for (const auto& [label, hist] : components) {
+    sumW += hist->GetSumOfWeights();
+    sumWX += hist->GetSumOfWeights() * hist->GetMean();
+  }
+  const bool legendLeft =
+      sumW > 0. && sumWX / sumW > 0.5 * (first->GetXaxis()->GetXmin() + first->GetXaxis()->GetXmax());
+  // Called on the canvas with its margins set
   auto makeLegend = [&]() {
-    auto legend = std::make_unique<TLegend>(0.93 - 0.13 * nColumns, 0.52, 0.93, 0.88);
+    const double textSize = nColumns > 1 ? 0.030 : 0.042;
+    // TLegend draws the symbol in the first 25% of a column, its box starting at 15% of that margin
+    const double columnWidth = 0.195;
+    const double margin = 0.25 * columnWidth;
+    const double frameGap = 0.04 + 0.15 * margin;
+    double x1 = gPad->GetLeftMargin() + 0.04;
+    if (!legendLeft) {
+      // the widest label ends as far from the right frame line as the symbols start from the left one
+      TLatex text;
+      text.SetTextFont(gStyle->GetLegendFont());
+      text.SetTextSize(textSize);
+      UInt_t w = 0, h = 0, labelPx = 0;
+      for (const auto& [label, hist] : components) {
+        text.GetTextExtent(w, h, label.c_str());
+        labelPx = std::max(labelPx, w);
+      }
+      x1 = 1. - gPad->GetRightMargin() - frameGap - static_cast<double>(labelPx) / gPad->GetWw() - margin -
+           (nColumns - 1) * columnWidth;
+    }
+    auto legend = std::make_unique<TLegend>(x1, 0.34, x1 + nColumns * columnWidth, 0.88);
     legend->SetBorderSize(0);
     legend->SetFillStyle(0);
     legend->SetNColumns(nColumns);
-    legend->SetTextSize(nColumns > 1 ? 0.020 : 0.028);
+    legend->SetTextSize(textSize);
     return legend;
   };
   auto saveCanvas = [&](TCanvas& canvas, const std::string& suffix) {
@@ -319,10 +377,10 @@ int TrackerPhase2PlotUtil::saveStackedPlots(const std::vector<std::pair<std::str
   };
 
   {
-    TCanvas canvas("c_stacked", "", kStdWidthPx, kStdHeightPx);
-    canvas.SetLeftMargin(0.11);
+    TCanvas canvas("c_stacked", "", kSquarePx, kSquarePx);
+    canvas.SetLeftMargin(0.16);
     canvas.SetRightMargin(0.05);
-    canvas.SetTopMargin(0.10);
+    canvas.SetTopMargin(0.05);
     canvas.SetBottomMargin(0.13);
     THStack stack("stack", (std::string(first->GetTitle()) + axisTitles).c_str());
     auto legend = makeLegend();
@@ -334,7 +392,7 @@ int TrackerPhase2PlotUtil::saveStackedPlots(const std::vector<std::pair<std::str
       stack.Add(h, "HIST");
       legend->AddEntry(h, components[i].first.c_str(), "f");
     }
-    stack.SetMaximum(1.25 * stack.GetMaximum());
+    stack.SetMaximum(cfg.stackedYMax > 0. ? cfg.stackedYMax : 1.25 * stack.GetMaximum());
     stack.Draw("HIST");
     legend->Draw();
     canvas.RedrawAxis();
@@ -342,10 +400,10 @@ int TrackerPhase2PlotUtil::saveStackedPlots(const std::vector<std::pair<std::str
   }
 
   {
-    TCanvas canvas("c_overlaid", "", kStdWidthPx, kStdHeightPx);
-    canvas.SetLeftMargin(0.11);
+    TCanvas canvas("c_overlaid", "", kSquarePx, kSquarePx);
+    canvas.SetLeftMargin(0.16);
     canvas.SetRightMargin(0.05);
-    canvas.SetTopMargin(0.10);
+    canvas.SetTopMargin(0.05);
     canvas.SetBottomMargin(0.13);
     auto legend = makeLegend();
     cloneComponents();

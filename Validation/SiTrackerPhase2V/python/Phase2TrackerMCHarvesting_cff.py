@@ -5,6 +5,7 @@ from DQMServices.Core.DQMEDHarvester import DQMEDHarvester
 from Validation.SiTrackerPhase2V.Phase2ITRechitHarvester_cfi import *
 from Validation.SiTrackerPhase2V.Phase2OTHarvestTracks_cfi import *
 from Validation.SiTrackerPhase2V.Phase2OTEffClient_cff import *
+from Validation.SiTrackerPhase2V.Phase2ITHarvestLink_cff import *
 #ITTracking rechit
 #clone the rechit harvester for tracking rechit
 Phase2ITtrackingrechitHarvester=Phase2ITRechitHarvester.clone(
@@ -69,6 +70,8 @@ trackerphase2ValidationHarvesting = cms.Sequence(Phase2ITRechitHarvester
                                                  * Phase2OTTrackingRechitHarvester_2S
                                                  * Phase2OTHarvestTracks
                                                  * phase2OTEffClientSeq
+                                                 * PhaseITELinkHarvesting
+                                                 * PhaseITSLinkHarvesting
 )
 
 from Configuration.ProcessModifiers.vectorHits_cff import vectorHits
@@ -82,4 +85,6 @@ trackerphase2ValidationHarvesting_standalone = cms.Sequence(Phase2ITRechitHarves
                                                             * Phase2OTTrackingRechitHarvester_2S
                                                             * Phase2OTHarvestTracks
                                                             * phase2OTEffClientSeq
+                                                            * Phase2ITELinkHarvesting
+                                                            * Phase2ITSLinkHarvesting
 )

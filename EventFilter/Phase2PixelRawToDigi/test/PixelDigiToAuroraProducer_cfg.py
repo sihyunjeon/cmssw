@@ -58,7 +58,6 @@ process.PoolDBESSource = cms.ESSource('PoolDBESSource', process.CondDB,
 process.es_prefer_local_cabling = cms.ESPrefer('PoolDBESSource', '')
 
 process.PixelToBitStreamProducer = cms.EDProducer('PixelToBitStreamProducer',
-    src=cms.InputTag('generalTracks'),
     siPixelDigi=cms.InputTag('simSiPixelDigis', 'Pixel'),
 )
 if options.dropTot:

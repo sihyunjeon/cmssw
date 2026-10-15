@@ -25,4 +25,11 @@
 <use name="DQM/SiTrackerPhase2"/>
 <use name="Validation/SiTrackerPhase2V"/>
 <use name="rootcling"/>
-<flags EDM_PLUGIN="1"/>
+<library name="ValidationSiTrackerPhase2VPlugins" file="Phase2ITRecHitHarvester.cc,Phase2ITValidate*.cc,Phase2OT*.cc,Phase2TrackerValidateDigi.cc">
+  <use name="EventFilter/Phase2PixelRawToDigi"/>
+  <flags EDM_PLUGIN="1"/>
+</library>
+<library name="ValidationSiTrackerPhase2VLinkHarvesters" file="Phase2ITHarvestELink.cc,Phase2ITHarvestSLink.cc,TrackerPhase2PlotUtil.cc">
+  <use name="rootgpad"/>
+  <flags EDM_PLUGIN="1"/>
+</library>
