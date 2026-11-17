@@ -22,7 +22,7 @@ options.register('accelerator', 'auto',
 options.register('timing', 0,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
-                 'Print the per-module TimeReport; 1 drops the comparison, 2 keeps it')
+                 'Print the per-module TimeReport')
 options.register('threads', 1,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
@@ -35,10 +35,6 @@ options.register('syncForTiming', 0,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
                  'Wait for each Alpaka stage so TimeReport charges its kernels to it; single thread only')
-options.register('recovery', 0,
-                 VarParsing.VarParsing.multiplicity.singleton,
-                 VarParsing.VarParsing.varType.int,
-                 'Also compare each unpacker with the digis given to the packer')
 options.register('cablingDB', 'frontier://FrontierProd/CMS_CONDITIONS',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
@@ -113,32 +109,8 @@ if options.syncForTiming:
     process.Phase2ITRawToBitStreamProducer.syncForTiming = cms.bool(True)
     process.Phase2ITBitStreamToPixelProducer.syncForTiming = cms.bool(True)
 
-process.Phase2ITDigiCompare = cms.EDAnalyzer('Phase2ITDigiCompare',
-    legacy=cms.InputTag('RawToPixelProducer'),
-    soa=cms.InputTag('Phase2ITBitStreamToPixelProducer'),
-)
-# Each recovery analyzer writes its own TDirectory, named after its label
-process.Phase2ITDigiRecoveryCPU = cms.EDAnalyzer('Phase2ITDigiRecovery',
-    digis=cms.InputTag('simSiPixelDigis', 'Pixel'),
-    unpacked=cms.InputTag('RawToPixelProducer'),
-)
-process.Phase2ITDigiRecoveryAlpaka = cms.EDAnalyzer('Phase2ITDigiRecovery',
-    digis=cms.InputTag('simSiPixelDigis', 'Pixel'),
-    unpackedSoA=cms.InputTag('Phase2ITBitStreamToPixelProducer'),
-)
-
-chain = (process.PixelToBitStreamProducer * process.BitStreamToRawProducer * process.RawToPixelProducer
-         * process.Phase2ITRawToBitStreamProducer * process.Phase2ITBitStreamToPixelProducer)
-if options.timing != 1:
-    # the comparison also brings the digi SoA back to the host
-    chain = chain * process.Phase2ITDigiCompare
-    if options.recovery:
-        chain = chain * process.Phase2ITDigiRecoveryCPU * process.Phase2ITDigiRecoveryAlpaka
-    process.TFileService = cms.Service('TFileService',
-        fileName=cms.string('%s_%s%s.root' % ('phase2ITDigiRecovery' if options.recovery else 'phase2ITDigiCompare',
-                                              options.gapMode, '_dropTot' if dropTot else '')),
-    )
-process.p = cms.Path(chain)
+process.p = cms.Path(process.PixelToBitStreamProducer * process.BitStreamToRawProducer * process.RawToPixelProducer
+                     * process.Phase2ITRawToBitStreamProducer * process.Phase2ITBitStreamToPixelProducer)
 
 if options.timing:
     process.options.wantSummary = cms.untracked.bool(True)
