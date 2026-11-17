@@ -393,14 +393,15 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
         digis[last].moduleId() = 0;
         digis[last].rawADC() = 0;
       }
+      // one block per module, whose threads copy its hits side by side;
       // offsets[] gives each module a private output range, so no atomics are needed
-      for (auto m : cms::alpakatools::uniform_elements(acc, modules.metadata().size())) {
+      for (auto m : cms::alpakatools::independent_groups(acc, modules.metadata().size())) {
         const auto mod = modules[m];
-        const uint32_t n = counts[m];
+        const uint32_t first = offsets[m];
         const DecodedHit* hits = mediator + firstSlot(mod.wordBegin(), dropTot);
-        for (uint32_t j = 0; j < n; ++j) {
+        for (auto j : cms::alpakatools::independent_group_elements(acc, counts[m])) {
           const DecodedHit h = hits[j];
-          auto d = digis[offsets[m] + j];
+          auto d = digis[first + j];
           // not yet clustered; 0 is a valid cluster id, so use the sentinel
           d.clus() = ::pixelClustering::invalidClusterId;
           d.pdigi() = (uint32_t(h.row) << kRowShift) | (uint32_t(h.col) << kColShift) | (uint32_t(h.adc) << kAdcShift);
@@ -439,7 +440,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                          SiPixelDigisSoAView digis,
                          uint32_t blockSize) {
     const int n = modules.metadata().size();
-    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(n, blockSize), blockSize);
+    // one block per module
+    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(n, blockSize);
     alpaka::exec<Acc1D>(queue, wd, DigiCopyKernel{}, modules, dropTot, mediator, counts, offsets, digis);
   }
 

@@ -69,6 +69,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                            uint32_t* counts,
                            uint32_t* stats,
                            uint32_t blockSize);
+  // One block per module copies its counts[m] hits from the mediator into the
+  // digis, from row offsets[m] on.
   void runDigiCopyKernel(Queue& queue,
                          Phase2ITModuleStreamSoAConstView modules,
                          bool dropTot,

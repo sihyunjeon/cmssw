@@ -49,7 +49,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const bool dropTot_;
     // Must match the encoder's handleGapPixels mode.
     const bool keepMode_;
-    // Threads per block for the two kernels below, which run over modules.
+    // Threads per block for the two kernels below: one module per thread in the decode, one per block in the copy.
     const uint32_t blockSize_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
