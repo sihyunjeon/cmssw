@@ -2,27 +2,27 @@
 # Runs the three IT unpacking flows on the same events and reports whether each one ran, and its time:
 #   cpu         RawToPixelProducer
 #   alpaka-cpu  the Alpaka stages on the serial CPU backend
-#   gpu         the Alpaka stages on the GPU, 64 threads per block
-# Two jobs of PixelDigiToRawAlpakaProducer_cfg.py: accelerator=cpu runs the first two flows, the GPU job the third.
-# ms/event is from this short job; the scan scripts are for timing.
+#   gpu         the Alpaka stages on the GPU, once each with 16, 32, 64 and 128 threads per block
+# Jobs of PixelDigiToRawAlpakaProducer_cfg.py: accelerator=cpu runs the first two flows, one GPU job per block size the third.
 #
-#   ./Phase2ITUnpackTest.sh                   20 events, gapMode KEEP
-#   ./Phase2ITUnpackTest.sh 100               more events
+#   ./Phase2ITUnpackTest.sh                   100 events, gapMode KEEP
+#   ./Phase2ITUnpackTest.sh 20                fewer events
 #   GAP="DROP KEEP AGGREGATE" ./Phase2ITUnpackTest.sh
-#   GPU=gpu-amd BLOCK=128 ./Phase2ITUnpackTest.sh
+#   GPU=gpu-amd BLOCK="64 128" ./Phase2ITUnpackTest.sh
 #   THREADS=8 ./Phase2ITUnpackTest.sh         framework threads; the GPU times are then launch times only
 #   IN=file:/path/a.root ./Phase2ITUnpackTest.sh   default: EOSDIR, the scan scripts' local copy, or xrootd
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 CFG=$HERE/PixelDigiToRawAlpakaProducer_cfg.py
-N=${1:-20}
+N=${1:-100}
 GAPS=${GAP:-KEEP}
 GPU=${GPU:-gpu-nvidia}
-BLOCK=${BLOCK:-64}
+BLOCKS=${BLOCK:-16 32 64 128}
 THREADS=${THREADS:-1}
 
 case $N in '' | *[!0-9]*) echo "usage: $0 [events]"; exit 1 ;; esac
+case $BLOCKS in *[!0-9\ ]*) echo "BLOCK must be block sizes separated by spaces, e.g. BLOCK=\"64 128\""; exit 1 ;; esac
 case $GPU in
   gpu-nvidia) PROBE=cudaIsEnabled ;;
   gpu-amd) PROBE=rocmIsEnabled ;;
@@ -56,16 +56,20 @@ GPUNAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2> /dev/null | head 
 
 : > "$OUT/jobs.tsv"
 for gap in $GAPS; do
-  for job in cpu gpu; do
-    if [ $job = cpu ]; then acc=cpu; extra=; else acc=$GPU; extra="blockSize=$BLOCK $SYNC"; fi
-    if [ $job = gpu ] && [ $GPUOK = 0 ]; then
-      printf '%s\t%s\t%s\t%s\t\tSKIP no %s device visible (%s)\n' "$gap" $job "$acc" "$BLOCK" "${GPU#gpu-}" $PROBE >> "$OUT/jobs.tsv"
-      continue
+  # block - is the cpu job, then one GPU job per block size
+  for block in - $BLOCKS; do
+    if [ $block = - ]; then
+      job=cpu acc=cpu extra= log=$OUT/cpu_$gap.log
+    else
+      job=gpu acc=$GPU extra="blockSize=$block $SYNC" log=$OUT/gpu_${gap}_b$block.log
     fi
-    log=$OUT/${job}_$gap.log
+    if [ $job = gpu ] && [ $GPUOK = 0 ]; then
+      printf '%s\t%s\t%s\t%s\t\tSKIP no %s device visible (%s)\n' "$gap" $job "$acc" "$BLOCKS" "${GPU#gpu-}" $PROBE >> "$OUT/jobs.tsv"
+      break
+    fi
     echo "=== $job: accelerator=$acc gapMode=$gap $extra"
     (cd "$OUT" && cmsRun "$CFG" accelerator=$acc gapMode=$gap maxEvents=$N threads=$THREADS timing=1 $extra $INARG > "$log" 2>&1)
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$gap" $job "$acc" "$BLOCK" $? "$log" >> "$OUT/jobs.tsv"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$gap" $job "$acc" "$block" $? "$log" >> "$OUT/jobs.tsv"
   done
 done
 
@@ -101,7 +105,7 @@ rows = []
 for line in open(out + '/jobs.tsv'):
     gap, job, acc, block, rc, log = line.rstrip('\n').split('\t')
     if log.startswith('SKIP'):
-        rows.append([gap, 'gpu', '%s, blockSize %s' % (acc, block), 'SKIP', '-', '-', '-', log[5:]])
+        rows.append([gap, 'gpu', '%s, blockSize %s' % (acc, '/'.join(block.split())), 'SKIP', '-', '-', '-', log[5:]])
         continue
     r = parse(log)
     err = set(r['errors'])
