@@ -51,9 +51,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const bool keepMode_;
     // Threads per block for the two kernels below, which run over modules.
     const uint32_t blockSize_;
-    // Measurement only: blocks on the fill kernel so TimeReport can charge it here.
-    // Serializes the queue, so single thread timing runs only.
-    const bool syncForTiming_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> countsD_, offsetsD_;
@@ -73,8 +70,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         dropTot_(iConfig.getParameter<bool>("dropTot")),
         keepMode_(::Phase2ITUnpacker::parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"),
                                                     "Phase2ITBitStreamToPixelProducer")),
-        blockSize_(iConfig.getParameter<uint32_t>("blockSize")),
-        syncForTiming_(iConfig.getParameter<bool>("syncForTiming")) {
+        blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
     Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITBitStreamToPixelProducer");
   }
 
@@ -85,7 +81,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     desc.add<bool>("dropTot", false);
     desc.add<std::string>("handleGapPixels", "DROP");
     desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
-    desc.add<bool>("syncForTiming", false);
     descriptions.addWithDefaultLabel(desc);
   }
 
@@ -169,8 +164,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                         offsetsD_->data(),
                                         digis.view(),
                                         blockSize_);
-    if (syncForTiming_)
-      alpaka::wait(queue);
     iEvent.emplace(digiPutToken_, std::move(digis));
   }
 

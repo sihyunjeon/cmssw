@@ -63,9 +63,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const edm::ESGetToken<Phase2ITModuleMapHost, Phase2ITModuleMapRecord> mapHostToken_;
     // Threads per block for the module table kernel, which runs over modules.
     const uint32_t blockSize_;
-    // Measurement only: blocks on the module table kernel so TimeReport can charge it here.
-    // Serializes the queue, so single thread timing runs only.
-    const bool syncForTiming_;
   };
 
   Phase2ITRawToBitStreamProducer::Phase2ITRawToBitStreamProducer(const edm::ParameterSet& iConfig)
@@ -75,8 +72,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         bytesPutToken_(produces()),
         mapToken_(esConsumes()),
         mapHostToken_(esConsumes()),
-        blockSize_(iConfig.getParameter<uint32_t>("blockSize")),
-        syncForTiming_(iConfig.getParameter<bool>("syncForTiming")) {
+        blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
     Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITRawToBitStreamProducer");
   }
 
@@ -84,7 +80,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("fedRawDataCollection", edm::InputTag("BitStreamToRawProducer"));
     desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
-    desc.add<bool>("syncForTiming", false);
     descriptions.addWithDefaultLabel(desc);
   }
 
@@ -170,8 +165,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         moduleMap(iSetup.getData(mapToken_), fedWordBaseD.data(), fedTrailerStartD.data()),
         modules.view(),
         blockSize_);
-    if (syncForTiming_)
-      alpaka::wait(queue);
 
     iEvent.emplace(modulePutToken_, std::move(modules));
     iEvent.emplace(bytesPutToken_, std::move(bytesD));

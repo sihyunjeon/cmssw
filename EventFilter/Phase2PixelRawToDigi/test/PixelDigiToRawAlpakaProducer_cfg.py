@@ -34,7 +34,8 @@ options.register('blockSize', 0,
 options.register('syncForTiming', 0,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
-                 'Wait for each Alpaka stage so TimeReport charges its kernels to it; single thread only')
+                 'Make each Alpaka module wait for the device at the end of acquire and produce, '
+                 'so TimeReport charges the kernels to it; single thread only')
 options.register('cablingDB', 'frontier://FrontierProd/CMS_CONDITIONS',
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.string,
@@ -106,8 +107,7 @@ if options.blockSize:
     process.Phase2ITRawToBitStreamProducer.blockSize = cms.uint32(options.blockSize)
     process.Phase2ITBitStreamToPixelProducer.blockSize = cms.uint32(options.blockSize)
 if options.syncForTiming:
-    process.Phase2ITRawToBitStreamProducer.syncForTiming = cms.bool(True)
-    process.Phase2ITBitStreamToPixelProducer.syncForTiming = cms.bool(True)
+    process.ProcessAcceleratorAlpaka.setSynchronize(True)
 
 process.p = cms.Path(process.PixelToBitStreamProducer * process.BitStreamToRawProducer * process.RawToPixelProducer
                      * process.Phase2ITRawToBitStreamProducer * process.Phase2ITBitStreamToPixelProducer)
