@@ -6,7 +6,7 @@
 #include <functional>
 #include <utility>
 
-// Huffman encoding/decoding for hitmaps.
+// Huffman encoding for hitmaps; the decoding is inline in Phase2ITQCore.h.
 // Every split hitmaps checkeed whether "left/right has hit".
 // Finally, "01 -> 0" replacing is done.
 namespace {
@@ -78,50 +78,6 @@ namespace {
       appendChunk(out, bits, 8);
     if (row2Has)
       appendChunk(out, bits + 8, 8);
-  }
-
-  // Read one 2 bits from the stream.
-  std::pair<bool, bool> decPairBits(Phase2ITBitReader& reader) {
-    if (reader.atEnd())
-      return {false, false};
-    bool first = reader.next();
-    if (!first)  // "0 -> 01" substitute
-      return {false, true};
-    if (reader.atEnd())
-      return {true, false};
-    bool second = reader.next();
-    if (!second)
-      return {true, false};
-    return {true, true};
-  }
-
-  // Decoding
-  void decChunk(Phase2ITBitReader& reader, int n, bool* out) {
-    for (int i = 0; i < n; ++i)
-      out[i] = false;
-    int active[16], nActive = 0;
-    active[nActive++] = 0;
-    int curSize = n;
-    while (curSize > 2) {
-      const int half = curSize / 2;
-      int next[16], nNext = 0;
-      for (int i = 0; i < nActive; ++i) {
-        auto p = decPairBits(reader);
-        if (p.first)
-          next[nNext++] = active[i];
-        if (p.second)
-          next[nNext++] = active[i] + half;
-      }
-      for (int i = 0; i < nNext; ++i)
-        active[i] = next[i];
-      nActive = nNext;
-      curSize = half;
-    }
-    for (int i = 0; i < nActive; ++i) {
-      auto p = decPairBits(reader);
-      out[active[i]] = p.first;
-      out[active[i] + 1] = p.second;
-    }
   }
 
 }  // namespace
@@ -228,24 +184,6 @@ bool Phase2ITQCore::containsHit(std::vector<bool>& hitmap) {
   }
 
   return foundHit;
-}
-
-std::array<bool, 16> Phase2ITQCore::decodeHitmap(Phase2ITBitReader& reader) {
-  std::array<bool, 16> hitmap{};
-  auto rowOr = decPairBits(reader);
-  if (rowOr.first)
-    decChunk(reader, 8, hitmap.data());
-  if (rowOr.second)
-    decChunk(reader, 8, hitmap.data() + 8);
-  return hitmap;
-}
-
-std::array<int, 16> Phase2ITQCore::decodeADCs(Phase2ITBitReader& reader, int numHits) {
-  std::array<int, 16> adcs{};
-  for (int i = 0; i < numHits && i < 16; i++) {
-    adcs[i] = reader.bits(4);
-  }
-  return adcs;
 }
 
 //Returns the bit code associated with the Phase2ITQCore

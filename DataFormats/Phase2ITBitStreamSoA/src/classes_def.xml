@@ -1,0 +1,15 @@
+<lcgdict>
+  <class name="PortableHostCollection<Phase2ITModuleStreamSoA>" rntupleStreamerMode="true"/>
+  <!-- PortableHostCollection<Phase2ITModuleStreamSoA>::Layout must be listed before the aliased-to type -->
+  <class name="PortableHostCollection<Phase2ITModuleStreamSoA>::Layout"/>
+  <class name="Phase2ITModuleStreamSoA"/>
+  <class name="Phase2ITModuleStreamSoA::View"/>
+  <class name="edm::Wrapper<PortableHostCollection<Phase2ITModuleStreamSoA>>" splitLevel="0"/>
+
+  <class name="PortableHostCollection<Phase2ITRawBytesSoA>" rntupleStreamerMode="true"/>
+  <!-- PortableHostCollection<Phase2ITRawBytesSoA>::Layout must be listed before the aliased-to type -->
+  <class name="PortableHostCollection<Phase2ITRawBytesSoA>::Layout"/>
+  <class name="Phase2ITRawBytesSoA"/>
+  <class name="Phase2ITRawBytesSoA::View"/>
+  <class name="edm::Wrapper<PortableHostCollection<Phase2ITRawBytesSoA>>" splitLevel="0"/>
+</lcgdict>

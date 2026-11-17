@@ -1,7 +1,10 @@
-<use name="DataFormats/FEDRawData"/>
+<use name="CondFormats/DataRecord"/>
 <use name="CondFormats/SiPhase2TrackerObjects"/>
+<use name="DataFormats/FEDRawData"/>
+<use name="FWCore/Framework"/>
 <use name="FWCore/MessageLogger"/>
 <use name="FWCore/Utilities"/>
+<use name="Geometry/Records"/>
 <export>
   <lib name="1"/>
 </export>

@@ -22,11 +22,16 @@ public:
   Phase2ITBitBuffer getChipCode(bool dropTot = false);
 
   static int encodeQCoreIndex(int row, int col);
-  static std::pair<int, int> decodeQCoreIndex(int index);
+  static std::pair<int, int> decodeQCoreIndex(int index) {
+    int adjusted = (index + 8) % 16;
+    return {adjusted / 4, adjusted % 4};
+  }
 
   // subtype = Module_SubType; selects the ChipModuleMap chip-index convention used to recover the (row, col) offset from chipId.
   static std::pair<int, int> getGlobalPixelCoordinate(
       int chipId, int subtype, int qcoreCol, int qcoreRow, int localCol, int localRow, bool keepMode = false);
+  // (row, col) of the chip's first pixel in the module; getGlobalPixelCoordinate adds the position inside the chip
+  static std::pair<int, int> chipOrigin(int chipId, int subtype, bool keepMode = false);
 
   static constexpr int kColsPerROC = 54;
   static constexpr int kRowsPerChip = 672;

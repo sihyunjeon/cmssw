@@ -29,13 +29,16 @@ std::pair<int, int> Phase2ITChip::getQCorePos(Phase2ITDigiHit hit) {
 
 int Phase2ITChip::encodeQCoreIndex(int row, int col) { return ((4 * (row % 4) + (col % 4) + 8) % 16); }
 
-std::pair<int, int> Phase2ITChip::decodeQCoreIndex(int index) {
-  int adjusted = (index + 8) % 16;
-  return {adjusted / 4, adjusted % 4};
-}
-
 std::pair<int, int> Phase2ITChip::getGlobalPixelCoordinate(
     int chipId, int subtype, int qcoreCol, int qcoreRow, int localCol, int localRow, bool keepMode) {
+  auto [rowOffset, colOffset] = chipOrigin(chipId, subtype, keepMode);
+  int globalRow = rowOffset + qcoreRow * HITMAP_COL + localRow;
+  int globalCol = colOffset + qcoreCol * HITMAP_ROW + localCol;
+
+  return {globalRow, globalCol};
+}
+
+std::pair<int, int> Phase2ITChip::chipOrigin(int chipId, int subtype, bool keepMode) {
   // DROP: Pixel hits in the gap are completely dropped from encoding.
   // AGGREGATE: Pixel hits in the gap are assigned to the boundary sensor IDs with ADCs being stacked up.
   // KEEP: Pixel hits in the gap are kept with its own sensor IDs.
@@ -51,10 +54,8 @@ std::pair<int, int> Phase2ITChip::getGlobalPixelCoordinate(
   const int colHalf = (q.second > 0) ? 1 : 0;
   int rowOffset = rowHalf ? (rowsPerChip + largePixelNRows) : 0;
   int colOffset = colHalf ? (colsPerChip + largePixelNCols) : 0;
-  int globalRow = rowOffset + qcoreRow * HITMAP_COL + localRow;
-  int globalCol = colOffset + qcoreCol * HITMAP_ROW + localCol;
 
-  return {globalRow, globalCol};
+  return {rowOffset, colOffset};
 }
 
 //Takes in an oranized list of Phase2ITQCores and sets the islast and isneighbor properties of those qcores
