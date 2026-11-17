@@ -50,7 +50,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const bool dropTot_;
     // Must match the encoder's handleGapPixels mode.
     const bool keepMode_;
-    // Threads per block for the two kernels below: one chip per thread in the decode, one module per block in the copy.
+    // One thread per chip in the decode, or one per module taking its chips in turn.
+    const bool decodePerChip_;
+    // Threads per block for the two kernels below: the decode gives each thread a chip, or a module,
+    // and the copy each block a module.
     const uint32_t blockSize_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
@@ -73,6 +76,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         dropTot_(iConfig.getParameter<bool>("dropTot")),
         keepMode_(::Phase2ITUnpacker::parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"),
                                                     "Phase2ITBitStreamToPixelProducer")),
+        decodePerChip_(iConfig.getParameter<bool>("decodePerChip")),
         blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
     Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITBitStreamToPixelProducer");
   }
@@ -84,6 +88,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     desc.add<edm::InputTag>("phase2ItRawBytes", edm::InputTag("phase2ITRawToBitStream"));
     desc.add<bool>("dropTot", false);
     desc.add<std::string>("handleGapPixels", "DROP");
+    desc.add<bool>("decodePerChip", true);
     desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
     descriptions.addWithDefaultLabel(desc);
   }
@@ -116,6 +121,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                           bytes.const_view().byte().data(),
                                           modules.const_view(),
                                           chips.const_view(),
+                                          decodePerChip_,
                                           dropTot_,
                                           keepMode_,
                                           mediatorD_->data(),

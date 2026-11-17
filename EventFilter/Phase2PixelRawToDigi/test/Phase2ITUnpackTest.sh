@@ -3,12 +3,14 @@
 #   cpu         RawToPixelProducer
 #   alpaka-cpu  the Alpaka stages on the serial CPU backend
 #   gpu         the Alpaka stages on the GPU, once each with 16, 32, 64 and 128 threads per block
-# Jobs of PixelDigiToRawAlpakaProducer_cfg.py: accelerator=cpu runs the first two flows, one GPU job per block size the third.
+# Jobs of PixelDigiToRawAlpakaProducer_cfg.py: accelerator=cpu runs the first two flows, one GPU job per block size
+# and decode layout the third.
 #
 #   ./Phase2ITUnpackTest.sh                   100 events, gapMode KEEP
 #   ./Phase2ITUnpackTest.sh 20                fewer events
 #   GAP="DROP KEEP AGGREGATE" ./Phase2ITUnpackTest.sh
 #   GPU=gpu-amd BLOCK="64 128" ./Phase2ITUnpackTest.sh
+#   DECODE="chip module" ./Phase2ITUnpackTest.sh   GPU decode with a thread per chip (default), per module, or both
 #   THREADS=8 ./Phase2ITUnpackTest.sh         framework threads; the GPU times are then launch times only
 #   IN=file:/path/a.root ./Phase2ITUnpackTest.sh   default: EOSDIR, the scan scripts' local copy, or xrootd
 set -u
@@ -19,10 +21,14 @@ N=${1:-100}
 GAPS=${GAP:-KEEP}
 GPU=${GPU:-gpu-nvidia}
 BLOCKS=${BLOCK:-16 32 64 128}
+DECODES=${DECODE:-chip}
 THREADS=${THREADS:-1}
 
 case $N in '' | *[!0-9]*) echo "usage: $0 [events]"; exit 1 ;; esac
 case $BLOCKS in *[!0-9\ ]*) echo "BLOCK must be block sizes separated by spaces, e.g. BLOCK=\"64 128\""; exit 1 ;; esac
+for d in $DECODES; do
+  case $d in chip | module) ;; *) echo "DECODE must be chip, module or both, e.g. DECODE=\"chip module\""; exit 1 ;; esac
+done
 case $GPU in
   gpu-nvidia) PROBE=cudaIsEnabled ;;
   gpu-amd) PROBE=rocmIsEnabled ;;
@@ -56,12 +62,15 @@ GPUNAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2> /dev/null | head 
 
 : > "$OUT/jobs.tsv"
 for gap in $GAPS; do
-  # block - is the cpu job, then one GPU job per block size
-  for block in - $BLOCKS; do
-    if [ $block = - ]; then
-      job=cpu acc=cpu extra= log=$OUT/cpu_$gap.log
+  # - is the cpu job, then one GPU job per decode layout and block size
+  for run in - $(for d in $DECODES; do for b in $BLOCKS; do echo $d:$b; done; done); do
+    if [ $run = - ]; then
+      job=cpu acc=cpu block=- extra= log=$OUT/cpu_$gap.log
     else
-      job=gpu acc=$GPU extra="blockSize=$block $SYNC" log=$OUT/gpu_${gap}_b$block.log
+      decode=${run%:*} b=${run#*:} perchip=1
+      [ $decode = module ] && perchip=0
+      job=gpu acc=$GPU block="$b, per $decode" extra="blockSize=$b decodePerChip=$perchip $SYNC"
+      log=$OUT/gpu_${gap}_${decode}_b$b.log
     fi
     if [ $job = gpu ] && [ $GPUOK = 0 ]; then
       printf '%s\t%s\t%s\t%s\t\tSKIP no %s device visible (%s)\n' "$gap" $job "$acc" "$BLOCKS" "${GPU#gpu-}" $PROBE >> "$OUT/jobs.tsv"

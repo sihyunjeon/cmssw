@@ -31,6 +31,10 @@ options.register('blockSize', 0,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
                  'Threads per block for both Alpaka stages; 0 keeps the producer default')
+options.register('decodePerChip', 1,
+                 VarParsing.VarParsing.multiplicity.singleton,
+                 VarParsing.VarParsing.varType.int,
+                 'One thread per chip in the Alpaka decode; 0 gives each module\'s chips to one thread')
 options.register('syncForTiming', 0,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
@@ -103,6 +107,7 @@ process.Phase2ITBitStreamToPixelProducer = cms.EDProducer('Phase2ITBitStreamToPi
     phase2ItRawBytes=cms.InputTag('Phase2ITRawToBitStreamProducer'),
     dropTot=cms.bool(dropTot),
     handleGapPixels=cms.string(options.gapMode),
+    decodePerChip=cms.bool(bool(options.decodePerChip)),
 )
 if options.blockSize:
     process.Phase2ITRawToBitStreamProducer.blockSize = cms.uint32(options.blockSize)

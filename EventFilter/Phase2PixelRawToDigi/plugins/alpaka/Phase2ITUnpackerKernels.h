@@ -62,11 +62,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     kNumDecodeStats
   };
 
-  // One thread per chip row decodes the chip into its mediator slots; counts[c] is the chip's hit count.
+  // One thread per chip row, or with perChip false one thread per module taking its chip rows in turn,
+  // decodes each chip into its mediator slots; counts[c] is the chip's hit count.
   void runDigiDecodeKernel(Queue& queue,
                            const uint8_t* bytes,
                            Phase2ITModuleStreamSoAConstView modules,
                            Phase2ITChipStreamSoAConstView chips,
+                           bool perChip,
                            bool dropTot,
                            bool keepMode,
                            DecodedHit* mediator,
