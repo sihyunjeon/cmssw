@@ -2,7 +2,7 @@
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITBitStreamToPixelProducer
 // Description: Portable counterpart of BitStreamToPixelProducer.
-//              Decodes each module's chip bitstreams once into SiPixelDigis
+//              Decodes each chip's bitstream in its own thread into SiPixelDigis
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <optional>
@@ -43,13 +43,14 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   private:
     const device::EDGetToken<Phase2ITModuleStreamSoACollection> moduleToken_;
+    const device::EDGetToken<Phase2ITChipStreamSoACollection> chipToken_;
     const device::EDGetToken<Phase2ITRawBytesSoACollection> bytesToken_;
     const device::EDPutToken<SiPixelDigisSoACollection> digiPutToken_;
     // Must match the dropTot setting that produced the bitstream.
     const bool dropTot_;
     // Must match the encoder's handleGapPixels mode.
     const bool keepMode_;
-    // Threads per block for the two kernels below: one module per thread in the decode, one per block in the copy.
+    // Threads per block for the two kernels below: one chip per thread in the decode, one module per block in the copy.
     const uint32_t blockSize_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
@@ -60,11 +61,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> statsH_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> statsD_;
     uint32_t nModules_ = 0;
+    uint32_t nChipSlots_ = 0;
   };
 
   Phase2ITBitStreamToPixelProducer::Phase2ITBitStreamToPixelProducer(const edm::ParameterSet& iConfig)
       : SynchronizingEDProducer(iConfig),
         moduleToken_(consumes(iConfig.getParameter<edm::InputTag>("phase2ItModuleStream"))),
+        chipToken_(consumes(iConfig.getParameter<edm::InputTag>("phase2ItChipStream"))),
         bytesToken_(consumes(iConfig.getParameter<edm::InputTag>("phase2ItRawBytes"))),
         digiPutToken_(produces()),
         dropTot_(iConfig.getParameter<bool>("dropTot")),
@@ -77,6 +80,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   void Phase2ITBitStreamToPixelProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("phase2ItModuleStream", edm::InputTag("phase2ITRawToBitStream"));
+    desc.add<edm::InputTag>("phase2ItChipStream", edm::InputTag("phase2ITRawToBitStream"));
     desc.add<edm::InputTag>("phase2ItRawBytes", edm::InputTag("phase2ITRawToBitStream"));
     desc.add<bool>("dropTot", false);
     desc.add<std::string>("handleGapPixels", "DROP");
@@ -87,16 +91,18 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   void Phase2ITBitStreamToPixelProducer::acquire(device::Event const& iEvent, device::EventSetup const&) {
     auto& queue = iEvent.queue();
     const auto& modules = iEvent.get(moduleToken_);
+    const auto& chips = iEvent.get(chipToken_);
     const auto& bytes = iEvent.get(bytesToken_);
     nModules_ = modules.view().metadata().size();
+    nChipSlots_ = chips.view().metadata().size();
     if (nModules_ == 0)
       return;
 
-    if (!countsH_ || alpaka::getExtentProduct(*countsH_) < nModules_) {
-      countsH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, nModules_);
-      offsetsH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, nModules_);
-      countsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nModules_);
-      offsetsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nModules_);
+    if (!countsH_ || alpaka::getExtentProduct(*countsH_) < nChipSlots_) {
+      countsH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, nChipSlots_);
+      offsetsH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, nChipSlots_);
+      countsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChipSlots_);
+      offsetsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChipSlots_);
     }
     const uint32_t nSlots = Phase2ITUnpacker::mediatorSize(bytes.const_view().metadata().size(), dropTot_);
     if (!mediatorD_ || alpaka::getExtentProduct(*mediatorD_) < nSlots)
@@ -109,6 +115,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     Phase2ITUnpacker::runDigiDecodeKernel(queue,
                                           bytes.const_view().byte().data(),
                                           modules.const_view(),
+                                          chips.const_view(),
                                           dropTot_,
                                           keepMode_,
                                           mediatorD_->data(),
@@ -131,12 +138,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     }
 
     const auto& modules = iEvent.get(moduleToken_);
+    const auto& chips = iEvent.get(chipToken_);
 
-    // Sum up to get each module's write range
+    // Sum up to get each chip's write range, in module then chip order
     uint32_t total = 0;
-    for (uint32_t m = 0; m < nModules_; ++m) {
-      offsetsH_->data()[m] = total;
-      total += countsH_->data()[m];
+    for (uint32_t c = 0; c < nChipSlots_; ++c) {
+      offsetsH_->data()[c] = total;
+      total += countsH_->data()[c];
     }
     alpaka::memcpy(queue, *offsetsD_, *offsetsH_);
     // Without these the kernels drop malformed modules, chips and hits silently, which
@@ -158,6 +166,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     SiPixelDigisSoACollection digis(queue, total);
     Phase2ITUnpacker::runDigiCopyKernel(queue,
                                         modules.const_view(),
+                                        chips.const_view(),
                                         dropTot_,
                                         mediatorD_->data(),
                                         countsD_->data(),

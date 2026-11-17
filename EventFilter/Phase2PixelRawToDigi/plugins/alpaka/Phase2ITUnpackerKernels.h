@@ -13,26 +13,30 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     const int32_t* fedWordBase;      // [nFeds] word offset of each FED body
     const int32_t* fedTrailerStart;  // [nFeds] word of each FED's IT trailer, inside its body
     const int32_t* fedModStart;      // [nFeds+1] first module index of each FED
-    const uint16_t* modFedIdx;       // [nModules]
     const uint32_t* modDetId;        // [nModules]
     const uint8_t* modSubtype;       // [nModules]
     const uint8_t* modNChips;        // [nModules]
     const uint16_t* modGeomIdx;      // [nModules]
-    int nModules;
+    int nFeds;
   };
 
   // Threads per block on GPU; elements per thread on the CPU backends
   inline constexpr uint32_t kDefaultBlockSize = 128;
 
-  // stage 1: one row per module, from its FED's offset block; the table has
-  // one row for every module in the map, so it needs no count first
-  void runModuleTableKernel(Queue& queue,
-                            const uint8_t* bytes,
-                            const ModuleMap& modMap,
-                            Phase2ITModuleStreamSoAView modules,
-                            uint32_t blockSize);
+  // Chip-table rows per module: the most chips a subtype has
+  inline constexpr uint32_t kChipSlots = 4;
 
-  // stage 2: decode each module once into the mediator, then copy it into the digis
+  // stage 1: one block per FED gives each of its modules a row, from the FED's offset block, and
+  // kChipSlots chip rows, from the module's chip headers; both tables are sized by the map, so
+  // they need no count first
+  void runModuleChipTableKernel(Queue& queue,
+                                const uint8_t* bytes,
+                                const ModuleMap& modMap,
+                                Phase2ITModuleStreamSoAView modules,
+                                Phase2ITChipStreamSoAView chips,
+                                uint32_t blockSize);
+
+  // stage 2: decode each chip in its own thread into the mediator, then copy it into the digis
   struct DecodedHit {
     uint16_t row;
     uint16_t col;
@@ -40,8 +44,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   };
 
   // A hit takes at least 6 stream bits (2 without ToT): a QCore with k hits spends
-  // >= 2 header bits, >= 2k - 2 hitmap bits and 4k ToT bits. A module's mediator slots
-  // start at its first bit divided by this, so modules never share a slot.
+  // >= 2 header bits, >= 2k - 2 hitmap bits and 4k ToT bits. A chip's mediator slots
+  // start at its first bit divided by this, so chips never share a slot.
   ALPAKA_FN_HOST_ACC inline constexpr uint32_t minBitsPerHit(bool dropTot) { return dropTot ? 2u : 6u; }
   inline uint32_t mediatorSize(uint32_t nBytes, bool dropTot) {
     return uint32_t(uint64_t(nBytes) * 8 / minBitsPerHit(dropTot)) + 1;
@@ -58,21 +62,22 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     kNumDecodeStats
   };
 
-  // One thread per module walks its chip headers and decodes every chip into the
-  // module's mediator slots; counts[m] is the module's hit count.
+  // One thread per chip row decodes the chip into its mediator slots; counts[c] is the chip's hit count.
   void runDigiDecodeKernel(Queue& queue,
                            const uint8_t* bytes,
                            Phase2ITModuleStreamSoAConstView modules,
+                           Phase2ITChipStreamSoAConstView chips,
                            bool dropTot,
                            bool keepMode,
                            DecodedHit* mediator,
                            uint32_t* counts,
                            uint32_t* stats,
                            uint32_t blockSize);
-  // One block per module copies its counts[m] hits from the mediator into the
-  // digis, from row offsets[m] on.
+  // One block per module copies its chips' hits from the mediator into the
+  // digis, chip c from row offsets[c] on.
   void runDigiCopyKernel(Queue& queue,
                          Phase2ITModuleStreamSoAConstView modules,
+                         Phase2ITChipStreamSoAConstView chips,
                          bool dropTot,
                          const DecodedHit* mediator,
                          const uint32_t* counts,

@@ -5,6 +5,7 @@
 #include "DataFormats/Portable/interface/PortableHostCollection.h"
 
 using Phase2ITModuleStreamHost = PortableHostCollection<Phase2ITModuleStreamSoA>;
+using Phase2ITChipStreamHost = PortableHostCollection<Phase2ITChipStreamSoA>;
 using Phase2ITRawBytesHost = PortableHostCollection<Phase2ITRawBytesSoA>;
 
 #endif  // DataFormats_Phase2ITBitStreamSoA_interface_Phase2ITModuleStreamHost_h

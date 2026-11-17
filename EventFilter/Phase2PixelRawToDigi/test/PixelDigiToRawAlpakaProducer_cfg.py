@@ -99,6 +99,7 @@ process.Phase2ITRawToBitStreamProducer = cms.EDProducer('Phase2ITRawToBitStreamP
 )
 process.Phase2ITBitStreamToPixelProducer = cms.EDProducer('Phase2ITBitStreamToPixelProducer@alpaka',
     phase2ItModuleStream=cms.InputTag('Phase2ITRawToBitStreamProducer'),
+    phase2ItChipStream=cms.InputTag('Phase2ITRawToBitStreamProducer'),
     phase2ItRawBytes=cms.InputTag('Phase2ITRawToBitStreamProducer'),
     dropTot=cms.bool(dropTot),
     handleGapPixels=cms.string(options.gapMode),

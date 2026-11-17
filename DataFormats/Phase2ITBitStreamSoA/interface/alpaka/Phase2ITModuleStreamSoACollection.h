@@ -9,11 +9,13 @@
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   using Phase2ITModuleStreamSoACollection = PortableCollection<Phase2ITModuleStreamSoA>;
+  using Phase2ITChipStreamSoACollection = PortableCollection<Phase2ITChipStreamSoA>;
   using Phase2ITRawBytesSoACollection = PortableCollection<Phase2ITRawBytesSoA>;
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
 ASSERT_DEVICE_MATCHES_HOST_COLLECTION(Phase2ITModuleStreamSoACollection, Phase2ITModuleStreamHost);
+ASSERT_DEVICE_MATCHES_HOST_COLLECTION(Phase2ITChipStreamSoACollection, Phase2ITChipStreamHost);
 ASSERT_DEVICE_MATCHES_HOST_COLLECTION(Phase2ITRawBytesSoACollection, Phase2ITRawBytesHost);
 
 #endif  // DataFormats_Phase2ITBitStreamSoA_interface_alpaka_Phase2ITModuleStreamSoACollection_h

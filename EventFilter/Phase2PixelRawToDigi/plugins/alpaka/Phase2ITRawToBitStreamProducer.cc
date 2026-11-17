@@ -3,7 +3,7 @@
 // Class:      Phase2ITRawToBitStreamProducer
 // Description: Portable counterpart of RawToBitStreamProducer. Copies the IT
 //              bodies of the FEDs into one byte buffer and writes one row per
-//              module locating its words there, for the next step.
+//              module and per chip locating their words there, for the next step.
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <cstring>
@@ -57,11 +57,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
     const edm::EDGetTokenT<RawDataBuffer> rawToken_;
     const device::EDPutToken<Phase2ITModuleStreamSoACollection> modulePutToken_;
+    const device::EDPutToken<Phase2ITChipStreamSoACollection> chipPutToken_;
     const device::EDPutToken<Phase2ITRawBytesSoACollection> bytesPutToken_;
     // Module map, built per IOV by Phase2ITModuleMapESProducer
     const device::ESGetToken<Phase2ITModuleMapDevice, Phase2ITModuleMapRecord> mapToken_;
     const edm::ESGetToken<Phase2ITModuleMapHost, Phase2ITModuleMapRecord> mapHostToken_;
-    // Threads per block for the module table kernel, which runs over modules.
+    // Threads per block for the table kernel, which gives each FED a block.
     const uint32_t blockSize_;
   };
 
@@ -69,6 +70,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       : EDProducer<>(iConfig),
         rawToken_(consumes<RawDataBuffer>(iConfig.getParameter<edm::InputTag>("fedRawDataCollection"))),
         modulePutToken_(produces()),
+        chipPutToken_(produces()),
         bytesPutToken_(produces()),
         mapToken_(esConsumes()),
         mapHostToken_(esConsumes()),
@@ -91,12 +93,11 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     return {fedWordBase,
             fedTrailerStart,
             feds.modStart().data(),
-            mods.fedIdx().data(),
             mods.detId().data(),
             mods.subtype().data(),
             mods.nChips().data(),
             mods.geomIdx().data(),
-            mods.metadata().size()};
+            feds.metadata().size() - 1};  // trailing row closes the last range
   }
 
   void Phase2ITRawToBitStreamProducer::produce(device::Event& iEvent, device::EventSetup const& iSetup) {
@@ -157,16 +158,19 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     alpaka::memcpy(queue, fedWordBaseD, fedWordBaseH);
     alpaka::memcpy(queue, fedTrailerStartD, fedTrailerStartH);
 
-    // every module in the map gets a row, so the table is sized without reading the data
+    // every module in the map gets a row and kChipSlots chip rows, so the tables are sized without reading the data
     Phase2ITModuleStreamSoACollection modules(queue, nModules);
-    Phase2ITUnpacker::runModuleTableKernel(
+    Phase2ITChipStreamSoACollection chips(queue, Phase2ITUnpacker::kChipSlots * nModules);
+    Phase2ITUnpacker::runModuleChipTableKernel(
         queue,
         bytesD.view().byte().data(),
         moduleMap(iSetup.getData(mapToken_), fedWordBaseD.data(), fedTrailerStartD.data()),
         modules.view(),
+        chips.view(),
         blockSize_);
 
     iEvent.emplace(modulePutToken_, std::move(modules));
+    iEvent.emplace(chipPutToken_, std::move(chips));
     iEvent.emplace(bytesPutToken_, std::move(bytesD));
   }
 
