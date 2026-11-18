@@ -10,6 +10,8 @@
 //              collection.
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
+#include <type_traits>
+
 #include <alpaka/alpaka.hpp>
 
 #include "DataFormats/Phase2TrackerDigi/interface/Phase2ITChip.h"
@@ -61,13 +63,73 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
         r = (r << 1) | (nextOr0() ? 1u : 0u);
       return r;
     }
+    ALPAKA_FN_ACC bool atEnd() const { return pos >= len; }
+    // nothing has run past the end and n more bits are left
+    ALPAKA_FN_ACC bool has(uint32_t n) const { return !past && pos + n <= len; }
   };
+
+  // The same reads from a 64-bit register refilled one 32-bit word at a time. Nothing past the stream
+  // is loaded and its bits read as 0, as above.
+  struct WindowReader {
+    const uint32_t* words;
+    uint32_t len;
+    uint64_t win = 0;     // unread bits, the next one at bit 63
+    uint32_t avail = 0;   // unread bits in win
+    uint32_t loaded = 0;  // words put into win
+
+    // a chip's stream starts on a word, so its words are 4-byte aligned
+    ALPAKA_FN_ACC WindowReader(const uint8_t* bytes, uint32_t nBits)
+        : words(reinterpret_cast<const uint32_t*>(bytes)), len(nBits) {}
+
+    // at least n <= 32 unread bits in win
+    ALPAKA_FN_ACC void need(uint32_t n) {
+      if (avail >= n)
+        return;
+      const uint32_t first = loaded * 32;
+      uint32_t w = 0;
+      if (first < len) {
+        const uint32_t raw = words[loaded];  // stored big-endian
+        w = (raw >> 24) | ((raw >> 8) & 0xff00u) | ((raw << 8) & 0xff0000u) | (raw << 24);
+        if (len - first < 32)
+          w &= ~0u << (32 - (len - first));
+      }
+      win |= uint64_t(w) << (32 - avail);
+      avail += 32;
+      ++loaded;
+    }
+    ALPAKA_FN_ACC uint32_t peek(uint32_t n) const { return uint32_t(win >> (64 - n)); }
+    ALPAKA_FN_ACC void skip(uint32_t n) {
+      win <<= n;
+      avail -= n;
+    }
+    ALPAKA_FN_ACC uint32_t bits(uint32_t n) {
+      need(n);
+      const uint32_t r = peek(n);
+      skip(n);
+      return r;
+    }
+    ALPAKA_FN_ACC bool nextOr0() { return bits(1) != 0; }
+    // bits taken so far, counting those past the end
+    ALPAKA_FN_ACC uint32_t taken() const { return loaded * 32 - avail; }
+    ALPAKA_FN_ACC bool atEnd() const { return taken() >= len; }
+    ALPAKA_FN_ACC bool has(uint32_t n) const { return taken() + n <= len; }
+  };
+
+  // a load per bit is cheap on a CPU, but on a GPU it costs far more than the window's shifts
+  using ChipReader = std::conditional_t<std::is_same_v<alpaka::Dev<Acc1D>, alpaka::DevCpu>, BitReader, WindowReader>;
 
   // Huffman pair: returns (first << 1 | second), mirroring decPairBits
   ALPAKA_FN_ACC inline int decPair(BitReader& br) {
     if (!br.nextOr0())  // "0 -> 01" substitute
       return 0b01;
     return br.nextOr0() ? 0b11 : 0b10;
+  }
+  // the same from both bits at once
+  ALPAKA_FN_ACC inline int decPair(WindowReader& br) {
+    br.need(2);
+    const int p = int(br.peek(2));
+    br.skip(p < 0b10 ? 1 : 2);
+    return p < 0b10 ? 0b01 : p;
   }
 
   // a pair's first half -> bit k, its second -> bit k + 1
@@ -76,7 +138,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   }
 
   // decChunk(n=8): fixed 8 -> 4 -> 2 tree traversal, the pixels returned as bits 0-7
-  ALPAKA_FN_ACC inline uint32_t decChunk8(BitReader& br) {
+  template <typename TReader>
+  ALPAKA_FN_ACC inline uint32_t decChunk8(TReader& br) {
     const int halves = decPair(br);  // pixels 0-3 and 4-7
     uint32_t quarters = 0;           // bit q: pixels 2q and 2q + 1
     if (halves & 2)
@@ -91,7 +154,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   }
 
   // the 16-pixel hitmap as bits 0-15
-  ALPAKA_FN_ACC inline uint32_t decodeHitmap(BitReader& br) {
+  template <typename TReader>
+  ALPAKA_FN_ACC inline uint32_t decodeHitmap(TReader& br) {
     const int p = decPair(br);
     uint32_t hm = 0;
     if (p & 2)
@@ -215,12 +279,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
   // Decode one chip stream: calls hit(ccol, qrow, hitmapIndex, adc) per fired pixel.
   // Returns true if the stream ends inside a quarter core (malformed): that quarter core's hits are ignored.
-  template <typename TAcc, typename THit>
-  ALPAKA_FN_ACC bool decodeChip(TAcc const& acc, BitReader br, bool dropTot, THit&& hit) {
+  template <typename TAcc, typename TReader, typename THit>
+  ALPAKA_FN_ACC bool decodeChip(TAcc const& acc, TReader br, bool dropTot, THit&& hit) {
     bool previousIsLast = true;
     uint32_t ccol = 0;
     int prevRow = -1;
-    while (br.pos < br.len) {
+    while (!br.atEnd()) {
       if (previousIsLast)
         ccol = br.bits(6);
       const bool islast = br.nextOr0();
@@ -231,7 +295,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       // the ToTs follow the hitmap: the quarter core is complete only if nothing so far ran past the end
       // and all its ToTs are still in the stream, which is checked before any of its hits is handed on
       const uint32_t nHits = alpaka::popcount(acc, hm);
-      if (br.past || (!dropTot && br.pos + 4 * nHits > br.len))
+      if (!br.has(dropTot ? 0 : 4 * nHits))
         return true;
       // the fired pixels in ascending hitmap index, as the ToTs are ordered
       for (uint32_t m = hm; m != 0; m &= m - 1) {
@@ -377,7 +441,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
         hitToRowCol(rowOffset, colOffset, ccol, qrow, i, row, col);
         mediator[begin + n++] = DecodedHit{uint16_t(row), uint16_t(col), uint16_t(adc)};
       };
-      const bool cut = decodeChip(acc, BitReader{bytes + chip.payloadWord() * 4, chip.bitLen()}, dropTot, store);
+      const bool cut = decodeChip(acc, ChipReader{bytes + chip.payloadWord() * 4, chip.bitLen()}, dropTot, store);
       counts[c] = n;
       if (cut)
         alpaka::atomicAdd(acc, &stats[kTruncatedChips], 1u, alpaka::hierarchy::Blocks{});
