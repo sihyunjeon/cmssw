@@ -70,52 +70,39 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     return br.nextOr0() ? 0b11 : 0b10;
   }
 
-  // decChunk(n=8): fixed 8 -> 4 -> 2 tree traversal
-  ALPAKA_FN_ACC inline void decChunk8(BitReader& br, bool out[8]) {
-    for (int i = 0; i < 8; ++i)
-      out[i] = false;
-    int act1[2], n1 = 0;
-    int p = decPair(br);
-    if (p & 2)
-      act1[n1++] = 0;
-    if (p & 1)
-      act1[n1++] = 4;
-    int act2[4], n2 = 0;
-    for (int i = 0; i < n1; ++i) {
-      p = decPair(br);
-      if (p & 2)
-        act2[n2++] = act1[i];
-      if (p & 1)
-        act2[n2++] = act1[i] + 2;
-    }
-    for (int i = 0; i < n2; ++i) {
-      p = decPair(br);
-      out[act2[i]] = (p & 2);
-      out[act2[i] + 1] = (p & 1);
-    }
+  // a pair's first half -> bit k, its second -> bit k + 1
+  ALPAKA_FN_ACC inline uint32_t pairBits(int p, int k) {
+    return uint32_t((p >> 1) & 1) << k | uint32_t(p & 1) << (k + 1);
   }
 
-  ALPAKA_FN_ACC inline void decodeHitmap(BitReader& br, bool hm[16]) {
-    for (int i = 0; i < 16; ++i)
-      hm[i] = false;
+  // decChunk(n=8): fixed 8 -> 4 -> 2 tree traversal, the pixels returned as bits 0-7
+  ALPAKA_FN_ACC inline uint32_t decChunk8(BitReader& br) {
+    const int halves = decPair(br);  // pixels 0-3 and 4-7
+    uint32_t quarters = 0;           // bit q: pixels 2q and 2q + 1
+    if (halves & 2)
+      quarters |= pairBits(decPair(br), 0);
+    if (halves & 1)
+      quarters |= pairBits(decPair(br), 2);
+    uint32_t pixels = 0;
+    for (int q = 0; q < 4; ++q)
+      if (quarters & (1u << q))
+        pixels |= pairBits(decPair(br), 2 * q);
+    return pixels;
+  }
+
+  // the 16-pixel hitmap as bits 0-15
+  ALPAKA_FN_ACC inline uint32_t decodeHitmap(BitReader& br) {
     const int p = decPair(br);
-    if (p & 2) {
-      bool row[8];
-      decChunk8(br, row);
-      for (int i = 0; i < 8; ++i)
-        hm[i] = row[i];
-    }
-    if (p & 1) {
-      bool row[8];
-      decChunk8(br, row);
-      for (int i = 0; i < 8; ++i)
-        hm[8 + i] = row[i];
-    }
+    uint32_t hm = 0;
+    if (p & 2)
+      hm |= decChunk8(br);
+    if (p & 1)
+      hm |= decChunk8(br) << 8;
+    return hm;
   }
 
-  // hitmap index + qcore address -> global row/col (getGlobalPixelCoordinate)
-  ALPAKA_FN_ACC inline void hitToRowCol(
-      int subtype, int chipId, int ccol, int qrow, int i, bool keepMode, int& row, int& col) {
+  // row and column of the chip's first pixel in its module (Phase2ITChip::chipOrigin)
+  ALPAKA_FN_ACC inline void chipOrigin(int subtype, int chipId, bool keepMode, int& rowOffset, int& colOffset) {
     // ChipModuleMap::CHIP_QUADRANT flattened; index 0 unused (subtype is 1..12)
     constexpr int8_t kQuadX[13][4] = {{0},
                                       {0, 0, 0, 0},
@@ -143,18 +130,22 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                                       {+1, -1, -1, +1},
                                       {+1, -1, -1, +1},
                                       {+1, -1, -1, +1}};
+    const int rowsPerChip = keepMode ? Phase2ITChip::kRowsPerChipKeep : Phase2ITChip::kRowsPerChip;
+    const int largePixelNRows = keepMode ? Phase2ITChip::kLargePixelNRowsKeep : Phase2ITChip::kLargePixelNRows;
+    const int colsPerChip = keepMode ? Phase2ITChip::kColsPerChipKeep : Phase2ITChip::kColsPerChip;
+    const int largePixelNCols = keepMode ? Phase2ITChip::kLargePixelNColsKeep : Phase2ITChip::kLargePixelNCols;
+    rowOffset = (kQuadX[subtype][chipId] > 0) ? (rowsPerChip + largePixelNRows) : 0;
+    colOffset = (kQuadY[subtype][chipId] > 0) ? (colsPerChip + largePixelNCols) : 0;
+  }
+
+  // hitmap index + qcore address -> row/col in the module, from the chip's origin (getGlobalPixelCoordinate)
+  ALPAKA_FN_ACC inline void hitToRowCol(int rowOffset, int colOffset, int ccol, int qrow, int i, int& row, int& col) {
     const int rocRow = i / 8;
     const int rocCol = i % 8;
     const int shifted = (rocRow * 2 + (rocCol % 2)) * HITMAP_COL + rocCol / 2;
     const int adjusted = (shifted + 8) % 16;
     const int localRow = adjusted / 4;
     const int localCol = adjusted % 4;
-    const int rowsPerChip = keepMode ? Phase2ITChip::kRowsPerChipKeep : Phase2ITChip::kRowsPerChip;
-    const int largePixelNRows = keepMode ? Phase2ITChip::kLargePixelNRowsKeep : Phase2ITChip::kLargePixelNRows;
-    const int colsPerChip = keepMode ? Phase2ITChip::kColsPerChipKeep : Phase2ITChip::kColsPerChip;
-    const int largePixelNCols = keepMode ? Phase2ITChip::kLargePixelNColsKeep : Phase2ITChip::kLargePixelNCols;
-    const int rowOffset = (kQuadX[subtype][chipId] > 0) ? (rowsPerChip + largePixelNRows) : 0;
-    const int colOffset = (kQuadY[subtype][chipId] > 0) ? (colsPerChip + largePixelNCols) : 0;
     row = rowOffset + qrow * HITMAP_COL + localRow;
     col = colOffset + ccol * HITMAP_ROW + localCol;
   }
@@ -224,8 +215,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
   // Decode one chip stream: calls hit(ccol, qrow, hitmapIndex, adc) per fired pixel.
   // Returns true if the stream ends inside a quarter core (malformed): that quarter core's hits are ignored.
-  template <typename THit>
-  ALPAKA_FN_ACC bool decodeChip(BitReader br, bool dropTot, THit&& hit) {
+  template <typename TAcc, typename THit>
+  ALPAKA_FN_ACC bool decodeChip(TAcc const& acc, BitReader br, bool dropTot, THit&& hit) {
     bool previousIsLast = true;
     uint32_t ccol = 0;
     int prevRow = -1;
@@ -236,18 +227,15 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       const bool isneighbor = br.nextOr0();
       const uint32_t qrow = isneighbor ? uint32_t(prevRow + 1) : br.bits(8);
 
-      bool hm[16];
-      decodeHitmap(br, hm);
+      const uint32_t hm = decodeHitmap(br);
       // the ToTs follow the hitmap: the quarter core is complete only if nothing so far ran past the end
       // and all its ToTs are still in the stream, which is checked before any of its hits is handed on
-      uint32_t nHits = 0;
-      for (int i = 0; i < HITMAP_SIZE; ++i)
-        nHits += hm[i];
+      const uint32_t nHits = alpaka::popcount(acc, hm);
       if (br.past || (!dropTot && br.pos + 4 * nHits > br.len))
         return true;
-      for (int i = 0; i < HITMAP_SIZE; ++i) {
-        if (!hm[i])
-          continue;
+      // the fired pixels in ascending hitmap index, as the ToTs are ordered
+      for (uint32_t m = hm; m != 0; m &= m - 1) {
+        const int i = alpaka::ffs(acc, static_cast<std::int32_t>(m)) - 1;
         const int adc = dropTot ? 0 : int(br.bits(4));
         hit(int(ccol), int(qrow), i, adc);
       }
@@ -374,20 +362,22 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       // the chip's slots: its bits divided by the fewest bits a hit takes
       const uint32_t begin = firstSlot(chip.payloadWord(), dropTot);
       const uint32_t end = begin + chip.bitLen() / minBitsPerHit(dropTot);
-      const int subtype = mod.subtype();
+      // the chip's place in its module, looked up once for all its hits
+      int rowOffset, colOffset;
+      chipOrigin(mod.subtype(), chipId, keepMode, rowOffset, colOffset);
       uint32_t n = 0;
       uint32_t lost = 0;
-      const bool cut = decodeChip(
-          BitReader{bytes + chip.payloadWord() * 4, chip.bitLen()}, dropTot, [&](int ccol, int qrow, int i, int adc) {
-            // complete quarter cores always fit their chip's slots; this is a safety net
-            if (begin + n >= end) {
-              ++lost;
-              return;
-            }
-            int row, col;
-            hitToRowCol(subtype, chipId, ccol, qrow, i, keepMode, row, col);
-            mediator[begin + n++] = DecodedHit{uint16_t(row), uint16_t(col), uint16_t(adc)};
-          });
+      auto store = [&](int ccol, int qrow, int i, int adc) {
+        // complete quarter cores always fit their chip's slots; this is a safety net
+        if (begin + n >= end) {
+          ++lost;
+          return;
+        }
+        int row, col;
+        hitToRowCol(rowOffset, colOffset, ccol, qrow, i, row, col);
+        mediator[begin + n++] = DecodedHit{uint16_t(row), uint16_t(col), uint16_t(adc)};
+      };
+      const bool cut = decodeChip(acc, BitReader{bytes + chip.payloadWord() * 4, chip.bitLen()}, dropTot, store);
       counts[c] = n;
       if (cut)
         alpaka::atomicAdd(acc, &stats[kTruncatedChips], 1u, alpaka::hierarchy::Blocks{});
