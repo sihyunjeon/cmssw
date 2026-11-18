@@ -262,44 +262,67 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   // Stage 1: raw FED bodies -> one row per module and kChipSlots per module for its chips,
   // locating their words in those bytes.
 
+  namespace {
+    // Rows of module m, module i of the nInFed modules of FED f
+    ALPAKA_FN_ACC inline void fillModuleRows(const uint8_t* bytes,
+                                             const ModuleMap& modMap,
+                                             int f,
+                                             int m,
+                                             int i,
+                                             int nInFed,
+                                             Phase2ITModuleStreamSoAView modules,
+                                             Phase2ITChipStreamSoAView chips) {
+      // word positions are relative to the whole buffer, so stage 2 needs no FED lookup
+      const int fedBase = modMap.fedWordBase[f];
+      const ModuleSpan span = moduleSpan(bytes + fedBase * 4, modMap.fedTrailerStart[f], nInFed, i);
+      auto r = modules[m];
+      r.detId() = modMap.modDetId[m];
+      r.wordBegin() = fedBase + span.start;
+      r.wordEnd() = fedBase + span.end;
+      r.moduleId() = modMap.modGeomIdx[m];
+      r.subtype() = modMap.modSubtype[m];
+      r.nChips() = modMap.modNChips[m];
+      r.badOffset() = span.badOffset ? 1 : 0;
+      for (uint32_t k = 0; k < kChipSlots; ++k) {
+        auto c = chips[m * kChipSlots + k];
+        c.payloadWord() = 0;
+        c.bitLen() = 0;
+        c.overrun() = 0;
+      }
+      const ModuleSpan words{fedBase + span.start, fedBase + span.end, span.badOffset};
+      const bool extra = forEachChip(
+          bytes, words, modMap.modNChips[m], [&](int chipId, int payloadWord, uint32_t bitLen, bool overrun) {
+            auto c = chips[m * kChipSlots + chipId];
+            c.payloadWord() = payloadWord;
+            c.bitLen() = bitLen;
+            c.overrun() = overrun ? 1 : 0;
+          });
+      r.extraChips() = extra ? 1 : 0;
+    }
+  }  // namespace
+
   struct ModuleChipTableKernel {
     ALPAKA_FN_ACC void operator()(Acc1D const& acc,
                                   const uint8_t* bytes,
                                   ModuleMap modMap,
                                   Phase2ITModuleStreamSoAView modules,
-                                  Phase2ITChipStreamSoAView chips) const {
-      // one block per FED, whose threads take its modules
-      for (auto f : cms::alpakatools::independent_groups(acc, modMap.nFeds)) {
-        const int firstModule = modMap.fedModStart[f];
-        const int nInFed = modMap.fedModStart[f + 1] - firstModule;
-        // word positions are relative to the whole buffer, so stage 2 needs no FED lookup
-        const int fedBase = modMap.fedWordBase[f];
-        for (auto i : cms::alpakatools::independent_group_elements(acc, nInFed)) {
-          const int m = firstModule + int(i);
-          const ModuleSpan span = moduleSpan(bytes + fedBase * 4, modMap.fedTrailerStart[f], nInFed, int(i));
-          auto r = modules[m];
-          r.detId() = modMap.modDetId[m];
-          r.wordBegin() = fedBase + span.start;
-          r.wordEnd() = fedBase + span.end;
-          r.moduleId() = modMap.modGeomIdx[m];
-          r.subtype() = modMap.modSubtype[m];
-          r.nChips() = modMap.modNChips[m];
-          r.badOffset() = span.badOffset ? 1 : 0;
-          for (uint32_t k = 0; k < kChipSlots; ++k) {
-            auto c = chips[m * kChipSlots + k];
-            c.payloadWord() = 0;
-            c.bitLen() = 0;
-            c.overrun() = 0;
-          }
-          const ModuleSpan words{fedBase + span.start, fedBase + span.end, span.badOffset};
-          const bool extra = forEachChip(
-              bytes, words, modMap.modNChips[m], [&](int chipId, int payloadWord, uint32_t bitLen, bool overrun) {
-                auto c = chips[m * kChipSlots + chipId];
-                c.payloadWord() = payloadWord;
-                c.bitLen() = bitLen;
-                c.overrun() = overrun ? 1 : 0;
-              });
-          r.extraChips() = extra ? 1 : 0;
+                                  Phase2ITChipStreamSoAView chips,
+                                  bool perFed) const {
+      if (perFed) {
+        // one block per FED, whose threads take its modules
+        for (auto f : cms::alpakatools::independent_groups(acc, modMap.nFeds)) {
+          const int firstModule = modMap.fedModStart[f];
+          const int nInFed = modMap.fedModStart[f + 1] - firstModule;
+          for (auto i : cms::alpakatools::independent_group_elements(acc, nInFed))
+            fillModuleRows(bytes, modMap, f, firstModule + int(i), int(i), nInFed, modules, chips);
+        }
+      } else {
+        // one thread per module, whichever block it falls in
+        for (auto m : cms::alpakatools::uniform_elements(acc, modMap.nModules)) {
+          const int f = modMap.modFedIdx[m];
+          const int firstModule = modMap.fedModStart[f];
+          const int nInFed = modMap.fedModStart[f + 1] - firstModule;
+          fillModuleRows(bytes, modMap, f, int(m), int(m) - firstModule, nInFed, modules, chips);
         }
       }
     }
@@ -310,10 +333,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                                 const ModuleMap& modMap,
                                 Phase2ITModuleStreamSoAView modules,
                                 Phase2ITChipStreamSoAView chips,
+                                bool perFed,
                                 uint32_t blockSize) {
-    // one block per FED
-    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(modMap.nFeds, blockSize);
-    alpaka::exec<Acc1D>(queue, wd, ModuleChipTableKernel{}, bytes, modMap, modules, chips);
+    // one block per FED, or enough blocks for one thread per module
+    const uint32_t blocks =
+        perFed ? uint32_t(modMap.nFeds) : uint32_t(cms::alpakatools::divide_up_by(modMap.nModules, blockSize));
+    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(blocks, blockSize);
+    alpaka::exec<Acc1D>(queue, wd, ModuleChipTableKernel{}, bytes, modMap, modules, chips, perFed);
   }
 
   // Stage 2: per-chip bit streams -> digis, decoding each chip in its own thread, or a module's chips in turn.

@@ -31,6 +31,10 @@ options.register('blockSize', 0,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
                  'Threads per block for both Alpaka stages; 0 keeps the producer default')
+options.register('tablePerFed', 1,
+                 VarParsing.VarParsing.multiplicity.singleton,
+                 VarParsing.VarParsing.varType.int,
+                 'One block per FED in the Alpaka stage-1 table kernel; 0 gives each module a thread with no FED grouping')
 options.register('decodePerChip', 1,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
@@ -100,6 +104,7 @@ process.RawToPixelProducer = cms.EDProducer('RawToPixelProducer',
 process.Phase2ITModuleMapESProducer = cms.ESProducer('Phase2ITModuleMapESProducer@alpaka')
 process.Phase2ITRawToBitStreamProducer = cms.EDProducer('Phase2ITRawToBitStreamProducer@alpaka',
     fedRawDataCollection=cms.InputTag('BitStreamToRawProducer'),
+    tablePerFed=cms.bool(bool(options.tablePerFed)),
 )
 process.Phase2ITBitStreamToPixelProducer = cms.EDProducer('Phase2ITBitStreamToPixelProducer@alpaka',
     phase2ItModuleStream=cms.InputTag('Phase2ITRawToBitStreamProducer'),

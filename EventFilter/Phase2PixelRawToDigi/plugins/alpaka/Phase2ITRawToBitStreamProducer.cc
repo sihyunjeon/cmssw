@@ -62,7 +62,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     // Module map, built per IOV by Phase2ITModuleMapESProducer
     const device::ESGetToken<Phase2ITModuleMapDevice, Phase2ITModuleMapRecord> mapToken_;
     const edm::ESGetToken<Phase2ITModuleMapHost, Phase2ITModuleMapRecord> mapHostToken_;
-    // Threads per block for the table kernel, which gives each FED a block.
+    // One block per FED in the table kernel, or one thread per module with no FED grouping.
+    const bool tablePerFed_;
+    // Threads per block for the table kernel.
     const uint32_t blockSize_;
   };
 
@@ -74,6 +76,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         bytesPutToken_(produces()),
         mapToken_(esConsumes()),
         mapHostToken_(esConsumes()),
+        tablePerFed_(iConfig.getParameter<bool>("tablePerFed")),
         blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
     Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITRawToBitStreamProducer");
   }
@@ -81,6 +84,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   void Phase2ITRawToBitStreamProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("fedRawDataCollection", edm::InputTag("BitStreamToRawProducer"));
+    desc.add<bool>("tablePerFed", true);
     desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
     descriptions.addWithDefaultLabel(desc);
   }
@@ -93,11 +97,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     return {fedWordBase,
             fedTrailerStart,
             feds.modStart().data(),
+            mods.fedIdx().data(),
             mods.detId().data(),
             mods.subtype().data(),
             mods.nChips().data(),
             mods.geomIdx().data(),
-            feds.metadata().size() - 1};  // trailing row closes the last range
+            feds.metadata().size() - 1,  // trailing row closes the last range
+            mods.metadata().size()};
   }
 
   void Phase2ITRawToBitStreamProducer::produce(device::Event& iEvent, device::EventSetup const& iSetup) {
@@ -167,6 +173,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         moduleMap(iSetup.getData(mapToken_), fedWordBaseD.data(), fedTrailerStartD.data()),
         modules.view(),
         chips.view(),
+        tablePerFed_,
         blockSize_);
 
     iEvent.emplace(modulePutToken_, std::move(modules));

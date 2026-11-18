@@ -13,11 +13,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     const int32_t* fedWordBase;      // [nFeds] word offset of each FED body
     const int32_t* fedTrailerStart;  // [nFeds] word of each FED's IT trailer, inside its body
     const int32_t* fedModStart;      // [nFeds+1] first module index of each FED
+    const uint16_t* modFedIdx;       // [nModules]
     const uint32_t* modDetId;        // [nModules]
     const uint8_t* modSubtype;       // [nModules]
     const uint8_t* modNChips;        // [nModules]
     const uint16_t* modGeomIdx;      // [nModules]
     int nFeds;
+    int nModules;
   };
 
   // Threads per block on GPU; elements per thread on the CPU backends
@@ -26,14 +28,15 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   // Chip-table rows per module: the most chips a subtype has
   inline constexpr uint32_t kChipSlots = 4;
 
-  // stage 1: one block per FED gives each of its modules a row, from the FED's offset block, and
-  // kChipSlots chip rows, from the module's chip headers; both tables are sized by the map, so
-  // they need no count first
+  // stage 1: one block per FED, or with perFed false one thread per module whatever its block, gives
+  // each module a row, from its FED's offset block, and kChipSlots chip rows, from the module's chip
+  // headers; both tables are sized by the map, so they need no count first
   void runModuleChipTableKernel(Queue& queue,
                                 const uint8_t* bytes,
                                 const ModuleMap& modMap,
                                 Phase2ITModuleStreamSoAView modules,
                                 Phase2ITChipStreamSoAView chips,
+                                bool perFed,
                                 uint32_t blockSize);
 
   // stage 2: decode each chip in its own thread into the mediator, then copy it into the digis
