@@ -39,6 +39,11 @@ options.register('decodePerChip', 1,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
                  'One thread per chip in the Alpaka decode; 0 gives each module\'s chips to one thread')
+options.register('decodeTwoPass', 0,
+                 VarParsing.VarParsing.multiplicity.singleton,
+                 VarParsing.VarParsing.varType.int,
+                 'Alpaka decode in two passes: the decode threads only record the quarter cores, then one thread '
+                 'per quarter core reads its ToTs and writes its digis')
 options.register('syncForTiming', 0,
                  VarParsing.VarParsing.multiplicity.singleton,
                  VarParsing.VarParsing.varType.int,
@@ -113,6 +118,7 @@ process.Phase2ITBitStreamToPixelProducer = cms.EDProducer('Phase2ITBitStreamToPi
     dropTot=cms.bool(dropTot),
     handleGapPixels=cms.string(options.gapMode),
     decodePerChip=cms.bool(bool(options.decodePerChip)),
+    decodeTwoPass=cms.bool(bool(options.decodeTwoPass)),
 )
 if options.blockSize:
     process.Phase2ITRawToBitStreamProducer.blockSize = cms.uint32(options.blockSize)

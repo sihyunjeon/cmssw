@@ -52,14 +52,20 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const bool keepMode_;
     // One thread per chip in the decode, or one per module taking its chips in turn.
     const bool decodePerChip_;
-    // Threads per block for the two kernels below: the decode gives each thread a chip, or a module,
-    // and the copy each block a module.
+    // Decode in two passes: those threads only record each quarter core, and one thread per quarter core
+    // then reads its ToTs and writes its hits into the digis, with no mediator or copy.
+    const bool decodeTwoPass_;
+    // Threads per block for the two kernels below: the decode, or the scan, gives each thread a chip, or a
+    // module, and the copy, or the quarter-core decode, each block a module.
     const uint32_t blockSize_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> countsD_, offsetsD_;
     // decoded hits waiting for their digi positions; grows with the raw data size
     std::optional<cms::alpakatools::device_buffer<Device, Phase2ITUnpacker::DecodedHit[]>> mediatorD_;
+    // the two-pass decode's quarter-core records, in the mediator's slots, and their number per chip
+    std::optional<cms::alpakatools::device_buffer<Device, Phase2ITUnpacker::QCoreRecord[]>> qcoresD_;
+    std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> qcountsD_;
     // malformed input found by the decode, indexed by Phase2ITUnpacker::DecodeStat
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> statsH_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> statsD_;
@@ -77,6 +83,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         keepMode_(::Phase2ITUnpacker::parseKeepMode(iConfig.getParameter<std::string>("handleGapPixels"),
                                                     "Phase2ITBitStreamToPixelProducer")),
         decodePerChip_(iConfig.getParameter<bool>("decodePerChip")),
+        decodeTwoPass_(iConfig.getParameter<bool>("decodeTwoPass")),
         blockSize_(iConfig.getParameter<uint32_t>("blockSize")) {
     Phase2ITUnpacker::checkBlockSize(blockSize_, "Phase2ITBitStreamToPixelProducer");
   }
@@ -89,6 +96,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     desc.add<bool>("dropTot", false);
     desc.add<std::string>("handleGapPixels", "DROP");
     desc.add<bool>("decodePerChip", true);
+    desc.add<bool>("decodeTwoPass", false);
     desc.add<uint32_t>("blockSize", Phase2ITUnpacker::kDefaultBlockSize);
     descriptions.addWithDefaultLabel(desc);
   }
@@ -108,26 +116,46 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       offsetsH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, nChipSlots_);
       countsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChipSlots_);
       offsetsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChipSlots_);
+      if (decodeTwoPass_)
+        qcountsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, nChipSlots_);
     }
     const uint32_t nSlots = Phase2ITUnpacker::mediatorSize(bytes.const_view().metadata().size(), dropTot_);
-    if (!mediatorD_ || alpaka::getExtentProduct(*mediatorD_) < nSlots)
+    if (decodeTwoPass_) {
+      if (!qcoresD_ || alpaka::getExtentProduct(*qcoresD_) < nSlots)
+        qcoresD_ = cms::alpakatools::make_device_buffer<Phase2ITUnpacker::QCoreRecord[]>(queue, nSlots);
+    } else if (!mediatorD_ || alpaka::getExtentProduct(*mediatorD_) < nSlots) {
       mediatorD_ = cms::alpakatools::make_device_buffer<Phase2ITUnpacker::DecodedHit[]>(queue, nSlots);
+    }
     if (!statsD_) {
       statsH_ = cms::alpakatools::make_host_buffer<uint32_t[]>(queue, Phase2ITUnpacker::kNumDecodeStats);
       statsD_ = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, Phase2ITUnpacker::kNumDecodeStats);
     }
     alpaka::memset(queue, *statsD_, 0);
-    Phase2ITUnpacker::runDigiDecodeKernel(queue,
-                                          bytes.const_view().byte().data(),
-                                          modules.const_view(),
-                                          chips.const_view(),
-                                          decodePerChip_,
-                                          dropTot_,
-                                          keepMode_,
-                                          mediatorD_->data(),
-                                          countsD_->data(),
-                                          statsD_->data(),
-                                          blockSize_);
+    if (decodeTwoPass_)
+      Phase2ITUnpacker::runQCoreScanKernel(queue,
+                                           bytes.const_view().byte().data(),
+                                           modules.const_view(),
+                                           chips.const_view(),
+                                           decodePerChip_,
+                                           dropTot_,
+                                           keepMode_,
+                                           qcoresD_->data(),
+                                           qcountsD_->data(),
+                                           countsD_->data(),
+                                           statsD_->data(),
+                                           blockSize_);
+    else
+      Phase2ITUnpacker::runDigiDecodeKernel(queue,
+                                            bytes.const_view().byte().data(),
+                                            modules.const_view(),
+                                            chips.const_view(),
+                                            decodePerChip_,
+                                            dropTot_,
+                                            keepMode_,
+                                            mediatorD_->data(),
+                                            countsD_->data(),
+                                            statsD_->data(),
+                                            blockSize_);
     alpaka::memcpy(queue, *countsH_, *countsD_);
     alpaka::memcpy(queue, *statsH_, *statsD_);
   }
@@ -170,15 +198,28 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           << " hits dropped: their modules' chip streams hold more hits than their length allows.";
 
     SiPixelDigisSoACollection digis(queue, total);
-    Phase2ITUnpacker::runDigiCopyKernel(queue,
-                                        modules.const_view(),
-                                        chips.const_view(),
-                                        dropTot_,
-                                        mediatorD_->data(),
-                                        countsD_->data(),
-                                        offsetsD_->data(),
-                                        digis.view(),
-                                        blockSize_);
+    if (decodeTwoPass_)
+      Phase2ITUnpacker::runQCoreDigiKernel(queue,
+                                           iEvent.get(bytesToken_).const_view().byte().data(),
+                                           modules.const_view(),
+                                           chips.const_view(),
+                                           dropTot_,
+                                           qcoresD_->data(),
+                                           qcountsD_->data(),
+                                           countsD_->data(),
+                                           offsetsD_->data(),
+                                           digis.view(),
+                                           blockSize_);
+    else
+      Phase2ITUnpacker::runDigiCopyKernel(queue,
+                                          modules.const_view(),
+                                          chips.const_view(),
+                                          dropTot_,
+                                          mediatorD_->data(),
+                                          countsD_->data(),
+                                          offsetsD_->data(),
+                                          digis.view(),
+                                          blockSize_);
     iEvent.emplace(digiPutToken_, std::move(digis));
   }
 

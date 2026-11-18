@@ -11,7 +11,8 @@
 #   GAP="DROP KEEP AGGREGATE" ./Phase2ITUnpackTest.sh
 #   GPU=gpu-amd BLOCK="64 128" ./Phase2ITUnpackTest.sh
 #   MODE="stage1fed_stage2chip stage1flat_stage2module" ./Phase2ITUnpackTest.sh
-#                                             GPU layouts: stage1fed or stage1flat, then stage2chip or stage2module
+#                                             GPU layouts: stage1fed or stage1flat, then stage2chip or stage2module,
+#                                             with 2pass appended for the two-pass decode, e.g. stage1fed_stage2chip2pass
 #   THREADS=8 ./Phase2ITUnpackTest.sh         framework threads; the GPU times are then launch times only
 #   IN=file:/path/a.root ./Phase2ITUnpackTest.sh   default: EOSDIR, the scan scripts' local copy, or xrootd
 set -u
@@ -28,9 +29,10 @@ THREADS=${THREADS:-1}
 case $N in '' | *[!0-9]*) echo "usage: $0 [events]"; exit 1 ;; esac
 case $BLOCKS in *[!0-9\ ]*) echo "BLOCK must be block sizes separated by spaces, e.g. BLOCK=\"64 128\""; exit 1 ;; esac
 for m in $MODES; do
-  case $m in
+  case ${m%2pass} in
     stage1fed_stage2chip | stage1fed_stage2module | stage1flat_stage2chip | stage1flat_stage2module) ;;
-    *) echo "MODE must be stage1fed or stage1flat, then _stage2chip or _stage2module, e.g. MODE=\"stage1fed_stage2chip\""; exit 1 ;;
+    *) echo "MODE must be stage1fed or stage1flat, then _stage2chip or _stage2module, optionally followed by 2pass," \
+         "e.g. MODE=\"stage1fed_stage2chip stage1fed_stage2chip2pass\""; exit 1 ;;
   esac
 done
 case $GPU in
@@ -71,10 +73,12 @@ for gap in $GAPS; do
     if [ $run = - ]; then
       job=cpu acc=cpu block=- extra= log=$OUT/cpu_$gap.log
     else
-      mode=${run%:*} b=${run#*:} perfed=1 perchip=1
+      mode=${run%:*} b=${run#*:} perfed=1 perchip=1 twopass=0
       [ ${mode%_*} = stage1flat ] && perfed=0
-      [ ${mode#*_} = stage2module ] && perchip=0
-      job=gpu acc=$GPU block="$b, $mode" extra="blockSize=$b tablePerFed=$perfed decodePerChip=$perchip $SYNC"
+      [ ${mode%2pass} != $mode ] && twopass=1
+      case ${mode#*_} in stage2module*) perchip=0 ;; esac
+      job=gpu acc=$GPU block="$b, $mode"
+      extra="blockSize=$b tablePerFed=$perfed decodePerChip=$perchip decodeTwoPass=$twopass $SYNC"
       log=$OUT/gpu_${gap}_${mode}_b$b.log
     fi
     if [ $job = gpu ] && [ $GPUOK = 0 ]; then

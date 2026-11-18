@@ -7,7 +7,8 @@
 //              the concatenated FED bodies. Stage 2 decodes each chip in its own
 //              thread into a mediator and copies it into the digis once their
 //              positions are known, since a kernel cannot grow its own output
-//              collection.
+//              collection. In two passes, it first records each chip's quarter
+//              cores, then decodes each quarter core into the digis.
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <type_traits>
@@ -66,6 +67,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     ALPAKA_FN_ACC bool atEnd() const { return pos >= len; }
     // nothing has run past the end and n more bits are left
     ALPAKA_FN_ACC bool has(uint32_t n) const { return !past && pos + n <= len; }
+    ALPAKA_FN_ACC uint32_t taken() const { return pos; }
+    // pass n bits known to be in the stream
+    ALPAKA_FN_ACC void advance(uint32_t n) { pos += n; }
   };
 
   // The same reads from a 64-bit register refilled one 32-bit word at a time. Nothing past the stream
@@ -113,6 +117,21 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     ALPAKA_FN_ACC uint32_t taken() const { return loaded * 32 - avail; }
     ALPAKA_FN_ACC bool atEnd() const { return taken() >= len; }
     ALPAKA_FN_ACC bool has(uint32_t n) const { return taken() + n <= len; }
+    // pass n bits known to be in the stream, loading only the word the next read starts in
+    ALPAKA_FN_ACC void advance(uint32_t n) {
+      if (n <= avail) {
+        skip(n);
+        return;
+      }
+      n -= avail;
+      win = 0;
+      avail = 0;
+      loaded += n / 32;
+      if (n % 32 != 0) {
+        need(n % 32);
+        skip(n % 32);
+      }
+    }
   };
 
   // a load per bit is cheap on a CPU, but on a GPU it costs far more than the window's shifts
@@ -202,16 +221,29 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     colOffset = (kQuadY[subtype][chipId] > 0) ? (colsPerChip + largePixelNCols) : 0;
   }
 
-  // hitmap index + qcore address -> row/col in the module, from the chip's origin (getGlobalPixelCoordinate)
-  ALPAKA_FN_ACC inline void hitToRowCol(int rowOffset, int colOffset, int ccol, int qrow, int i, int& row, int& col) {
+  // qcore address -> row/col of its first pixel in the module, from the chip's origin
+  ALPAKA_FN_ACC inline void qcoreOrigin(int rowOffset, int colOffset, int ccol, int qrow, int& row, int& col) {
+    row = rowOffset + qrow * HITMAP_COL;
+    col = colOffset + ccol * HITMAP_ROW;
+  }
+
+  // hitmap index -> row/col in the quarter core
+  ALPAKA_FN_ACC inline void pixelInQCore(int i, int& row, int& col) {
     const int rocRow = i / 8;
     const int rocCol = i % 8;
     const int shifted = (rocRow * 2 + (rocCol % 2)) * HITMAP_COL + rocCol / 2;
     const int adjusted = (shifted + 8) % 16;
-    const int localRow = adjusted / 4;
-    const int localCol = adjusted % 4;
-    row = rowOffset + qrow * HITMAP_COL + localRow;
-    col = colOffset + ccol * HITMAP_ROW + localCol;
+    row = adjusted / 4;
+    col = adjusted % 4;
+  }
+
+  // hitmap index + qcore address -> row/col in the module, from the chip's origin (getGlobalPixelCoordinate)
+  ALPAKA_FN_ACC inline void hitToRowCol(int rowOffset, int colOffset, int ccol, int qrow, int i, int& row, int& col) {
+    int qcoreRow, qcoreCol, localRow, localCol;
+    qcoreOrigin(rowOffset, colOffset, ccol, qrow, qcoreRow, qcoreCol);
+    pixelInQCore(i, localRow, localCol);
+    row = qcoreRow + localRow;
+    col = qcoreCol + localCol;
   }
 
   // Word span [start, end) of one module inside a FED body (processFED navigation)
@@ -277,10 +309,11 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     return false;
   }
 
-  // Decode one chip stream: calls hit(ccol, qrow, hitmapIndex, adc) per fired pixel.
-  // Returns true if the stream ends inside a quarter core (malformed): that quarter core's hits are ignored.
-  template <typename TAcc, typename TReader, typename THit>
-  ALPAKA_FN_ACC bool decodeChip(TAcc const& acc, TReader br, bool dropTot, THit&& hit) {
+  // Walk one chip stream: calls qcore(ccol, qrow, hitmap, nHits) per complete quarter core, with the reader at
+  // its ToTs, which qcore() reads or passes. Returns true if the stream ends inside a quarter core (malformed):
+  // that quarter core is ignored.
+  template <typename TAcc, typename TReader, typename TQCore>
+  ALPAKA_FN_ACC bool walkChip(TAcc const& acc, TReader& br, bool dropTot, TQCore&& qcore) {
     bool previousIsLast = true;
     uint32_t ccol = 0;
     int prevRow = -1;
@@ -297,16 +330,24 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       const uint32_t nHits = alpaka::popcount(acc, hm);
       if (!br.has(dropTot ? 0 : 4 * nHits))
         return true;
+      qcore(ccol, qrow, hm, nHits);
+      previousIsLast = islast;
+      prevRow = int(qrow);
+    }
+    return false;
+  }
+
+  // Decode one chip stream: calls hit(ccol, qrow, hitmapIndex, adc) per fired pixel, with walkChip's return value.
+  template <typename TAcc, typename TReader, typename THit>
+  ALPAKA_FN_ACC bool decodeChip(TAcc const& acc, TReader br, bool dropTot, THit&& hit) {
+    return walkChip(acc, br, dropTot, [&](uint32_t ccol, uint32_t qrow, uint32_t hm, uint32_t) {
       // the fired pixels in ascending hitmap index, as the ToTs are ordered
       for (uint32_t m = hm; m != 0; m &= m - 1) {
         const int i = alpaka::ffs(acc, static_cast<std::int32_t>(m)) - 1;
         const int adc = dropTot ? 0 : int(br.bits(4));
         hit(int(ccol), int(qrow), i, adc);
       }
-      previousIsLast = islast;
-      prevRow = int(qrow);
-    }
-    return false;
+    });
   }
 
   // ---- kernels ----
@@ -402,6 +443,18 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       return uint32_t(uint64_t(word) * BITS_PER_WORD / minBitsPerHit(dropTot));
     }
 
+    // What stage 1 found about a chip and its module; the module's flags are counted once, by its first chip
+    template <typename TModule, typename TChip>
+    ALPAKA_FN_ACC inline void countStage1Flags(
+        Acc1D const& acc, int chipId, TModule const& mod, TChip const& chip, uint32_t* stats) {
+      if (chipId == 0 && mod.badOffset() != 0)
+        alpaka::atomicAdd(acc, &stats[kBadOffsetModules], 1u, alpaka::hierarchy::Blocks{});
+      if (chipId == 0 && mod.extraChips() != 0)
+        alpaka::atomicAdd(acc, &stats[kExtraChipModules], 1u, alpaka::hierarchy::Blocks{});
+      if (chip.overrun() != 0)
+        alpaka::atomicAdd(acc, &stats[kOverrunChips], 1u, alpaka::hierarchy::Blocks{});
+    }
+
     // Decode chip row c into its mediator slots, with counts[c] its hit count
     ALPAKA_FN_ACC inline void decodeChipRow(Acc1D const& acc,
                                             uint32_t c,
@@ -416,13 +469,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       const auto mod = modules[c / kChipSlots];
       const int chipId = c % kChipSlots;
       const auto chip = chips[c];
-      // what stage 1 found about the module is counted once, by its first chip row
-      if (chipId == 0 && mod.badOffset() != 0)
-        alpaka::atomicAdd(acc, &stats[kBadOffsetModules], 1u, alpaka::hierarchy::Blocks{});
-      if (chipId == 0 && mod.extraChips() != 0)
-        alpaka::atomicAdd(acc, &stats[kExtraChipModules], 1u, alpaka::hierarchy::Blocks{});
-      if (chip.overrun() != 0)
-        alpaka::atomicAdd(acc, &stats[kOverrunChips], 1u, alpaka::hierarchy::Blocks{});
+      countStage1Flags(acc, chipId, mod, chip, stats);
       // the chip's slots: its bits divided by the fewest bits a hit takes
       const uint32_t begin = firstSlot(chip.payloadWord(), dropTot);
       const uint32_t end = begin + chip.bitLen() / minBitsPerHit(dropTot);
@@ -447,6 +494,81 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
         alpaka::atomicAdd(acc, &stats[kTruncatedChips], 1u, alpaka::hierarchy::Blocks{});
       if (lost != 0)
         alpaka::atomicAdd(acc, &stats[kDroppedHits], lost, alpaka::hierarchy::Blocks{});
+    }
+
+    // Two-pass decode, pass 1: record chip row c's complete quarter cores in its slots, passing over their ToTs,
+    // with qcounts[c] the records and counts[c] the hits kept, as decodeChipRow would keep them
+    ALPAKA_FN_ACC inline void scanChipRow(Acc1D const& acc,
+                                          uint32_t c,
+                                          const uint8_t* bytes,
+                                          Phase2ITModuleStreamSoAConstView modules,
+                                          Phase2ITChipStreamSoAConstView chips,
+                                          bool dropTot,
+                                          bool keepMode,
+                                          QCoreRecord* qcores,
+                                          uint32_t* qcounts,
+                                          uint32_t* counts,
+                                          uint32_t* stats) {
+      const auto mod = modules[c / kChipSlots];
+      const int chipId = c % kChipSlots;
+      const auto chip = chips[c];
+      countStage1Flags(acc, chipId, mod, chip, stats);
+      const uint32_t begin = firstSlot(chip.payloadWord(), dropTot);
+      const uint32_t slots = chip.bitLen() / minBitsPerHit(dropTot);
+      int rowOffset, colOffset;
+      chipOrigin(mod.subtype(), chipId, keepMode, rowOffset, colOffset);
+      uint32_t nq = 0;
+      uint32_t nh = 0;
+      ChipReader br{bytes + chip.payloadWord() * 4, chip.bitLen()};
+      const bool cut = walkChip(acc, br, dropTot, [&](uint32_t ccol, uint32_t qrow, uint32_t hm, uint32_t nHits) {
+        // a quarter core whose first hit is past the chip's slots has all its hits dropped; each record
+        // holds at least one hit, so the records fit the slots too
+        if (nh < slots) {
+          int row, col;
+          qcoreOrigin(rowOffset, colOffset, int(ccol), int(qrow), row, col);
+          qcores[begin + nq++] = QCoreRecord{hm | uint32_t(col) << 16, uint32_t(row), br.taken(), nh};
+        }
+        nh += nHits;
+        br.advance(dropTot ? 0 : 4 * nHits);
+      });
+      const uint32_t n = nh < slots ? nh : slots;
+      counts[c] = n;
+      qcounts[c] = nq;
+      if (cut)
+        alpaka::atomicAdd(acc, &stats[kTruncatedChips], 1u, alpaka::hierarchy::Blocks{});
+      if (nh != n)
+        alpaka::atomicAdd(acc, &stats[kDroppedHits], nh - n, alpaka::hierarchy::Blocks{});
+    }
+
+    // The collection carries one spare row past the digis; zero it once.
+    ALPAKA_FN_ACC inline void clearSpareRow(SiPixelDigisSoAView digis) {
+      const int last = digis.metadata().size() - 1;
+      digis[last].clus() = ::pixelClustering::invalidClusterId;
+      digis[last].pdigi() = 0;
+      digis[last].rawIdArr() = 0;
+      digis[last].adc() = 0;
+      digis[last].xx() = 0;
+      digis[last].yy() = 0;
+      digis[last].moduleId() = 0;
+      digis[last].rawADC() = 0;
+    }
+
+    // digi d from hit h of module mod
+    template <typename TDigi, typename TModule>
+    ALPAKA_FN_ACC inline void fillDigi(TDigi d, TModule const& mod, DecodedHit h) {
+      constexpr int kRowShift = PixelChannelIdentifier::thePacking.row_shift;
+      constexpr int kColShift = PixelChannelIdentifier::thePacking.column_shift;
+      constexpr int kAdcShift = PixelChannelIdentifier::thePacking.adc_shift;
+      // not yet clustered; 0 is a valid cluster id, so use the sentinel
+      d.clus() = ::pixelClustering::invalidClusterId;
+      d.pdigi() = (uint32_t(h.row) << kRowShift) | (uint32_t(h.col) << kColShift) | (uint32_t(h.adc) << kAdcShift);
+      d.rawIdArr() = mod.detId();
+      d.adc() = h.adc;
+      d.xx() = h.row;
+      d.yy() = h.col;
+      d.moduleId() = mod.moduleId();
+      // the adc before the clusterizer calibrates it, as the Run-3 unpacker fills it
+      d.rawADC() = uint8_t(h.adc);
     }
   }  // namespace
 
@@ -481,21 +603,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                                   const uint32_t* counts,
                                   const uint32_t* offsets,
                                   SiPixelDigisSoAView digis) const {
-      constexpr int kRowShift = PixelChannelIdentifier::thePacking.row_shift;
-      constexpr int kColShift = PixelChannelIdentifier::thePacking.column_shift;
-      constexpr int kAdcShift = PixelChannelIdentifier::thePacking.adc_shift;
-      // The collection carries one spare row past the digis; zero it once.
-      if (cms::alpakatools::once_per_grid(acc)) {
-        const int last = digis.metadata().size() - 1;
-        digis[last].clus() = ::pixelClustering::invalidClusterId;
-        digis[last].pdigi() = 0;
-        digis[last].rawIdArr() = 0;
-        digis[last].adc() = 0;
-        digis[last].xx() = 0;
-        digis[last].yy() = 0;
-        digis[last].moduleId() = 0;
-        digis[last].rawADC() = 0;
-      }
+      if (cms::alpakatools::once_per_grid(acc))
+        clearSpareRow(digis);
       // one block per module, whose threads copy each of its chips' hits side by side;
       // offsets[] gives each chip a private output range, so no atomics are needed
       for (auto m : cms::alpakatools::independent_groups(acc, modules.metadata().size())) {
@@ -505,18 +614,80 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
           const DecodedHit* hits = mediator + firstSlot(chips[c].payloadWord(), dropTot);
           for (auto j : cms::alpakatools::independent_group_elements(acc, counts[c])) {
             const DecodedHit h = hits[j];
-            auto d = digis[first + j];
-            // not yet clustered; 0 is a valid cluster id, so use the sentinel
-            d.clus() = ::pixelClustering::invalidClusterId;
-            d.pdigi() =
-                (uint32_t(h.row) << kRowShift) | (uint32_t(h.col) << kColShift) | (uint32_t(h.adc) << kAdcShift);
-            d.rawIdArr() = mod.detId();
-            d.adc() = h.adc;
-            d.xx() = h.row;
-            d.yy() = h.col;
-            d.moduleId() = mod.moduleId();
-            // the adc before the clusterizer calibrates it, as the Run-3 unpacker fills it
-            d.rawADC() = uint8_t(h.adc);
+            fillDigi(digis[first + j], mod, h);
+          }
+        }
+      }
+    }
+  };
+
+  struct QCoreScanKernel {
+    ALPAKA_FN_ACC void operator()(Acc1D const& acc,
+                                  const uint8_t* bytes,
+                                  Phase2ITModuleStreamSoAConstView modules,
+                                  Phase2ITChipStreamSoAConstView chips,
+                                  bool perChip,
+                                  bool dropTot,
+                                  bool keepMode,
+                                  QCoreRecord* qcores,
+                                  uint32_t* qcounts,
+                                  uint32_t* counts,
+                                  uint32_t* stats) const {
+      if (perChip) {
+        for (auto c : cms::alpakatools::uniform_elements(acc, chips.metadata().size()))
+          scanChipRow(acc, c, bytes, modules, chips, dropTot, keepMode, qcores, qcounts, counts, stats);
+      } else {
+        for (auto m : cms::alpakatools::uniform_elements(acc, modules.metadata().size()))
+          for (uint32_t c = m * kChipSlots; c < (m + 1) * kChipSlots; ++c)
+            scanChipRow(acc, c, bytes, modules, chips, dropTot, keepMode, qcores, qcounts, counts, stats);
+      }
+    }
+  };
+
+  struct QCoreDigiKernel {
+    ALPAKA_FN_ACC void operator()(Acc1D const& acc,
+                                  const uint8_t* bytes,
+                                  Phase2ITModuleStreamSoAConstView modules,
+                                  Phase2ITChipStreamSoAConstView chips,
+                                  bool dropTot,
+                                  const QCoreRecord* qcores,
+                                  const uint32_t* qcounts,
+                                  const uint32_t* counts,
+                                  const uint32_t* offsets,
+                                  SiPixelDigisSoAView digis) const {
+      static_assert(kChipSlots == 4);
+      if (cms::alpakatools::once_per_grid(acc))
+        clearSpareRow(digis);
+      // one block per module, whose threads take its chips' quarter cores side by side, chip after chip
+      for (auto m : cms::alpakatools::independent_groups(acc, modules.metadata().size())) {
+        const auto mod = modules[m];
+        const uint32_t c0 = m * kChipSlots;
+        // the quarter cores of chips 0..k end at qk
+        const uint32_t q0 = qcounts[c0];
+        const uint32_t q1 = q0 + qcounts[c0 + 1];
+        const uint32_t q2 = q1 + qcounts[c0 + 2];
+        const uint32_t q3 = q2 + qcounts[c0 + 3];
+        for (auto j : cms::alpakatools::independent_group_elements(acc, q3)) {
+          const int k = (j >= q0) + (j >= q1) + (j >= q2);
+          const uint32_t c = c0 + k;
+          const uint32_t before = k == 3 ? q2 : k == 2 ? q1 : k == 1 ? q0 : 0;
+          const auto chip = chips[c];
+          const QCoreRecord r = qcores[firstSlot(chip.payloadWord(), dropTot) + j - before];
+          ChipReader br{bytes + chip.payloadWord() * 4, chip.bitLen()};
+          if (!dropTot)
+            br.advance(r.totBit);
+          const uint32_t first = offsets[c];
+          const uint32_t n = counts[c];
+          // the chip's hits past its slots were dropped by the scan
+          uint32_t slot = r.hitBase;
+          for (uint32_t hm = r.hitmapCol & 0xFFFF; hm != 0 && slot < n; hm &= hm - 1, ++slot) {
+            const int i = alpaka::ffs(acc, static_cast<std::int32_t>(hm)) - 1;
+            const int adc = dropTot ? 0 : int(br.bits(4));
+            int localRow, localCol;
+            pixelInQCore(i, localRow, localCol);
+            const int row = int(r.row) + localRow;
+            const int col = int(r.hitmapCol >> 16) + localCol;
+            fillDigi(digis[first + slot], mod, DecodedHit{uint16_t(row), uint16_t(col), uint16_t(adc)});
           }
         }
       }
@@ -553,6 +724,42 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     // one block per module
     const auto wd = cms::alpakatools::make_workdiv<Acc1D>(n, blockSize);
     alpaka::exec<Acc1D>(queue, wd, DigiCopyKernel{}, modules, chips, dropTot, mediator, counts, offsets, digis);
+  }
+
+  void runQCoreScanKernel(Queue& queue,
+                          const uint8_t* bytes,
+                          Phase2ITModuleStreamSoAConstView modules,
+                          Phase2ITChipStreamSoAConstView chips,
+                          bool perChip,
+                          bool dropTot,
+                          bool keepMode,
+                          QCoreRecord* qcores,
+                          uint32_t* qcounts,
+                          uint32_t* counts,
+                          uint32_t* stats,
+                          uint32_t blockSize) {
+    const int n = perChip ? chips.metadata().size() : modules.metadata().size();
+    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(cms::alpakatools::divide_up_by(n, blockSize), blockSize);
+    alpaka::exec<Acc1D>(
+        queue, wd, QCoreScanKernel{}, bytes, modules, chips, perChip, dropTot, keepMode, qcores, qcounts, counts, stats);
+  }
+
+  void runQCoreDigiKernel(Queue& queue,
+                          const uint8_t* bytes,
+                          Phase2ITModuleStreamSoAConstView modules,
+                          Phase2ITChipStreamSoAConstView chips,
+                          bool dropTot,
+                          const QCoreRecord* qcores,
+                          const uint32_t* qcounts,
+                          const uint32_t* counts,
+                          const uint32_t* offsets,
+                          SiPixelDigisSoAView digis,
+                          uint32_t blockSize) {
+    const int n = modules.metadata().size();
+    // one block per module
+    const auto wd = cms::alpakatools::make_workdiv<Acc1D>(n, blockSize);
+    alpaka::exec<Acc1D>(
+        queue, wd, QCoreDigiKernel{}, bytes, modules, chips, dropTot, qcores, qcounts, counts, offsets, digis);
   }
 
   void checkBlockSize(uint32_t blockSize, const char* who) {

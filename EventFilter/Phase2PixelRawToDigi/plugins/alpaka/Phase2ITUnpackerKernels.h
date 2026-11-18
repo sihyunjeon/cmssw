@@ -46,6 +46,14 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     uint16_t adc;
   };
 
+  // the two-pass decode's record of one complete quarter core, kept in the mediator's slots of its chip
+  struct alignas(16) QCoreRecord {
+    uint32_t hitmapCol;  // hitmap in bits 0-15, the column of its first pixel in the module from bit 16
+    uint32_t row;        // the row of its first pixel in the module
+    uint32_t totBit;     // its first ToT in the chip's stream
+    uint32_t hitBase;    // the chip's hits before it
+  };
+
   // A hit takes at least 6 stream bits (2 without ToT): a QCore with k hits spends
   // >= 2 header bits, >= 2k - 2 hitmap bits and 4k ToT bits. A chip's mediator slots
   // start at its first bit divided by this, so chips never share a slot.
@@ -89,6 +97,35 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                          const uint32_t* offsets,
                          SiPixelDigisSoAView digis,
                          uint32_t blockSize);
+
+  // The two-pass decode. Pass 1, with the threads of runDigiDecodeKernel: each chip's quarter-core headers and
+  // hitmaps, passing over the ToTs, give a record per quarter core in the chip's slots of qcores; qcounts[c] is
+  // the chip's records and counts[c] its hit count.
+  void runQCoreScanKernel(Queue& queue,
+                          const uint8_t* bytes,
+                          Phase2ITModuleStreamSoAConstView modules,
+                          Phase2ITChipStreamSoAConstView chips,
+                          bool perChip,
+                          bool dropTot,
+                          bool keepMode,
+                          QCoreRecord* qcores,
+                          uint32_t* qcounts,
+                          uint32_t* counts,
+                          uint32_t* stats,
+                          uint32_t blockSize);
+  // Pass 2, in place of runDigiCopyKernel: one block per module, one thread per quarter core, which reads its
+  // ToTs and writes its hits into the digis, chip c from row offsets[c] on.
+  void runQCoreDigiKernel(Queue& queue,
+                          const uint8_t* bytes,
+                          Phase2ITModuleStreamSoAConstView modules,
+                          Phase2ITChipStreamSoAConstView chips,
+                          bool dropTot,
+                          const QCoreRecord* qcores,
+                          const uint32_t* qcounts,
+                          const uint32_t* counts,
+                          const uint32_t* offsets,
+                          SiPixelDigisSoAView digis,
+                          uint32_t blockSize);
 
   // Throws if the device cannot launch that block size; 'who' names the module
   void checkBlockSize(uint32_t blockSize, const char* who);
