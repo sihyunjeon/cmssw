@@ -18,8 +18,7 @@ using Phase2ITModuleStreamSoA = Phase2ITModuleStreamLayout<>;
 using Phase2ITModuleStreamSoAView = Phase2ITModuleStreamSoA::View;
 using Phase2ITModuleStreamSoAConstView = Phase2ITModuleStreamSoA::ConstView;
 
-// Four rows per module, row 4m + k for chip k of module m: where each chip's stream sits in the flat byte
-// buffer, found from the chip headers. A row without a chip has zero bits.
+// Row 4m + k for chip k of module m: where its stream sits in the flat byte buffer, or zero bits without a chip
 GENERATE_SOA_LAYOUT(Phase2ITChipStreamLayout,
                     SOA_COLUMN(uint32_t, payloadWord),  // first payload word, after the chip header
                     SOA_COLUMN(uint32_t, bitLen),

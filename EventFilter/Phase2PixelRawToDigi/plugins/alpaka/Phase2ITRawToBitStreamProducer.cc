@@ -1,9 +1,7 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITRawToBitStreamProducer
-// Description: Portable counterpart of RawToBitStreamProducer. Copies the IT
-//              bodies of the FEDs into one byte buffer and writes one row per
-//              module and per chip locating their words there, for the next step.
+// Description: Alpaka unpacker stage 1: locates each module's and chip's words in the FED bodies
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <cstring>

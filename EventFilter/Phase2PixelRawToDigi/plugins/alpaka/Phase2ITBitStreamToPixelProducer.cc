@@ -1,8 +1,7 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITBitStreamToPixelProducer
-// Description: Portable counterpart of BitStreamToPixelProducer.
-//              Decodes each chip's bitstream in its own thread into SiPixelDigis
+// Description: Alpaka unpacker stage 2: decodes each chip's bitstream into SiPixelDigis
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <optional>
@@ -52,18 +51,16 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     const bool keepMode_;
     // One thread per chip in the decode, or one per module taking its chips in turn.
     const bool decodePerChip_;
-    // Decode in two passes: those threads only record each quarter core, and one thread per quarter core
-    // then reads its ToTs and writes its hits into the digis, with no mediator or copy.
+    // Decode in two passes: record each quarter core, then one thread per quarter core writes its digis
     const bool decodeTwoPass_;
-    // Threads per block for the two kernels below: the decode, or the scan, gives each thread a chip, or a
-    // module, and the copy, or the quarter-core decode, each block a module.
+    // Threads per block for the decode or scan kernel, and for the copy or quarter-core kernel
     const uint32_t blockSize_;
 
     std::optional<cms::alpakatools::host_buffer<uint32_t[]>> countsH_, offsetsH_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> countsD_, offsetsD_;
     // decoded hits waiting for their digi positions; grows with the raw data size
     std::optional<cms::alpakatools::device_buffer<Device, Phase2ITUnpacker::DecodedHit[]>> mediatorD_;
-    // the two-pass decode's quarter-core records, in the mediator's slots, and their number per chip
+    // the two-pass decode's quarter-core records, and their number per chip
     std::optional<cms::alpakatools::device_buffer<Device, Phase2ITUnpacker::QCoreRecord[]>> qcoresD_;
     std::optional<cms::alpakatools::device_buffer<Device, uint32_t[]>> qcountsD_;
     // malformed input found by the decode, indexed by Phase2ITUnpacker::DecodeStat
@@ -181,9 +178,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       total += countsH_->data()[c];
     }
     alpaka::memcpy(queue, *offsetsD_, *offsetsH_);
-    // Without these the kernels drop malformed modules, chips and hits silently, which
-    // makes corrupt input indistinguishable from an empty detector. The same counts and
-    // wording as RawToPixelProducer.
+    // malformed input, with the same counts and wording as RawToPixelProducer
     const uint32_t* stats = statsH_->data();
     ::Phase2ITUnpacker::MalformedCounts bad;
     bad.badOffsetModules = stats[Phase2ITUnpacker::kBadOffsetModules];
@@ -191,7 +186,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     bad.overrunChips = stats[Phase2ITUnpacker::kOverrunChips];
     bad.truncatedChips = stats[Phase2ITUnpacker::kTruncatedChips];
     ::Phase2ITUnpacker::reportMalformed("Phase2ITBitStreamToPixelProducer", bad, nModules_);
-    // complete quarter cores inside their module always fit its slots, so this is a safety net
+    // complete quarter cores always fit their chip's slots, so this is a safety net
     if (stats[Phase2ITUnpacker::kDroppedHits] != 0)
       edm::LogWarning("Phase2ITBitStreamToPixelProducer")
           << stats[Phase2ITUnpacker::kDroppedHits]

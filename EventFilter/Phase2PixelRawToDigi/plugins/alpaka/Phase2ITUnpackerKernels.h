@@ -28,9 +28,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
   // Chip-table rows per module: the most chips a subtype has
   inline constexpr uint32_t kChipSlots = 4;
 
-  // stage 1: one block per FED, or with perFed false one thread per module whatever its block, gives
-  // each module a row, from its FED's offset block, and kChipSlots chip rows, from the module's chip
-  // headers; both tables are sized by the map, so they need no count first
+  // Stage 1: a row per module and kChipSlots chip rows; one block per FED, or one thread per module
   void runModuleChipTableKernel(Queue& queue,
                                 const uint8_t* bytes,
                                 const ModuleMap& modMap,
@@ -39,14 +37,14 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                                 bool perFed,
                                 uint32_t blockSize);
 
-  // stage 2: decode each chip in its own thread into the mediator, then copy it into the digis
+  // Stage 2: a decoded hit, kept in the mediator until its digi position is known
   struct DecodedHit {
     uint16_t row;
     uint16_t col;
     uint16_t adc;
   };
 
-  // the two-pass decode's record of one complete quarter core, kept in the mediator's slots of its chip
+  // Two-pass decode: one complete quarter core, in its chip's slots
   struct alignas(16) QCoreRecord {
     uint32_t hitmapCol;  // hitmap in bits 0-15, the column of its first pixel in the module from bit 16
     uint32_t row;        // the row of its first pixel in the module
@@ -54,16 +52,14 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     uint32_t hitBase;    // the chip's hits before it
   };
 
-  // A hit takes at least 6 stream bits (2 without ToT): a QCore with k hits spends
-  // >= 2 header bits, >= 2k - 2 hitmap bits and 4k ToT bits. A chip's mediator slots
-  // start at its first bit divided by this, so chips never share a slot.
+  // A hit takes at least 6 stream bits (2 without ToT): a quarter core with k hits has >= 2 header, >= 2k - 2 hitmap
+  // and 4k ToT bits. A chip's slots start at its first bit divided by this, so chips never share a slot.
   ALPAKA_FN_HOST_ACC inline constexpr uint32_t minBitsPerHit(bool dropTot) { return dropTot ? 2u : 6u; }
   inline uint32_t mediatorSize(uint32_t nBytes, bool dropTot) {
     return uint32_t(uint64_t(nBytes) * 8 / minBitsPerHit(dropTot)) + 1;
   }
 
-  // Malformed input found while decoding, summed over the event in stats[]; the first four are
-  // ::Phase2ITUnpacker::MalformedCounts, which the CPU unpacker counts the same way
+  // Malformed input summed over the event in stats[]; the first four as in ::Phase2ITUnpacker::MalformedCounts
   enum DecodeStat : uint32_t {
     kBadOffsetModules,
     kExtraChipModules,
@@ -73,8 +69,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     kNumDecodeStats
   };
 
-  // One thread per chip row, or with perChip false one thread per module taking its chip rows in turn,
-  // decodes each chip into its mediator slots; counts[c] is the chip's hit count.
+  // Decode each chip row into its mediator slots, a thread per chip or per module; counts[c] is chip c's hits
   void runDigiDecodeKernel(Queue& queue,
                            const uint8_t* bytes,
                            Phase2ITModuleStreamSoAConstView modules,
@@ -86,8 +81,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                            uint32_t* counts,
                            uint32_t* stats,
                            uint32_t blockSize);
-  // One block per module copies its chips' hits from the mediator into the
-  // digis, chip c from row offsets[c] on.
+  // One block per module copies its chips' hits from the mediator into the digis, chip c from row offsets[c] on
   void runDigiCopyKernel(Queue& queue,
                          Phase2ITModuleStreamSoAConstView modules,
                          Phase2ITChipStreamSoAConstView chips,
@@ -98,9 +92,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                          SiPixelDigisSoAView digis,
                          uint32_t blockSize);
 
-  // The two-pass decode. Pass 1, with the threads of runDigiDecodeKernel: each chip's quarter-core headers and
-  // hitmaps, passing over the ToTs, give a record per quarter core in the chip's slots of qcores; qcounts[c] is
-  // the chip's records and counts[c] its hit count.
+  // Two-pass decode, pass 1: a record per quarter core; qcounts[c] and counts[c] are chip c's records and hits
   void runQCoreScanKernel(Queue& queue,
                           const uint8_t* bytes,
                           Phase2ITModuleStreamSoAConstView modules,
@@ -113,8 +105,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                           uint32_t* counts,
                           uint32_t* stats,
                           uint32_t blockSize);
-  // Pass 2, in place of runDigiCopyKernel: one block per module, one thread per quarter core, which reads its
-  // ToTs and writes its hits into the digis, chip c from row offsets[c] on.
+  // Pass 2, in place of the copy: a block per module and a thread per quarter core, chip c from row offsets[c] on
   void runQCoreDigiKernel(Queue& queue,
                           const uint8_t* bytes,
                           Phase2ITModuleStreamSoAConstView modules,

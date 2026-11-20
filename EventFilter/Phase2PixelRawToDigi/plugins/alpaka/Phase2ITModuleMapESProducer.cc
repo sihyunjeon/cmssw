@@ -1,8 +1,7 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITModuleMapESProducer
-// Description: Flatten the cabling map and tracker geometry into the tables the
-//              unpacking kernels index, once per IOV
+// Description: Flattens the cabling map and tracker geometry into the unpacking kernels' tables, once per IOV
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <optional>
@@ -32,9 +31,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     // Module_SubType values the chip-quadrant table in ChipModuleMap covers.
     constexpr int kMinSubtype = 1;
     constexpr int kMaxSubtype = 12;
-    // The clusterizer allocates SiPixelClustersSoA with this many entries and indexes
-    // it by moduleId (SiPixelPhase2DigiToCluster.cc), so this is the real bound -- not
-    // pixelClustering::maxNumModules, which is an upper limit across topologies.
+    // SiPixelClustersSoA's size, which the clusterizer indexes by moduleId (SiPixelPhase2DigiToCluster.cc)
     constexpr int kMaxModuleId = pixelTopology::Phase2::numberOfModules;
   }  // namespace
 
@@ -72,17 +69,14 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           const auto* det = geom->idToDetUnit(DetId(detId));
           if (det == nullptr)
             throw cms::Exception("Phase2ITModuleMapESProducer") << "No GeomDetUnit for detId " << detId;
-          // The kernels use these two as array indices with no device-side bound
-          // check (an ALPAKA_ASSERT_ACC compiles out in a release build), so validate
-          // here, where it is cheap and the exception is catchable.
+          // the kernels use these two as array indices without bound checks
           const int subtype = static_cast<int>(cabling->getModuleInfo(detId).subtype);
           if (subtype < kMinSubtype || subtype > kMaxSubtype)
             throw cms::Exception("Phase2ITModuleMapESProducer")
                 << "Module_SubType " << subtype << " for detId " << detId << " is outside the supported range "
                 << kMinSubtype << ".." << kMaxSubtype
                 << "; it indexes the chip-quadrant table in the unpacking kernels.";
-          // Checked before the narrowing cast: afterwards a truncated value is
-          // indistinguishable from a valid one.
+          // checked before the narrowing cast
           const int geomIdx = det->index();
           if (geomIdx < 0 || geomIdx >= static_cast<int>(kMaxModuleId))
             throw cms::Exception("Phase2ITModuleMapESProducer")

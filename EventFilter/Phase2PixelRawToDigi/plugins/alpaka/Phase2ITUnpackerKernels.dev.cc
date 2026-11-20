@@ -1,14 +1,7 @@
 // -*- C++ -*-
 // Package:    EventFilter/Phase2PixelRawToDigi
 // Class:      Phase2ITUnpackerKernels
-// Description: The device side of the unpacker: the decode primitives and the
-//              kernels of the two unpacking stages. Stage 1, one block per FED,
-//              writes one row per module and per chip, locating their words in
-//              the concatenated FED bodies. Stage 2 decodes each chip in its own
-//              thread into a mediator and copies it into the digis once their
-//              positions are known, since a kernel cannot grow its own output
-//              collection. In two passes, it first records each chip's quarter
-//              cores, then decodes each quarter core into the digis.
+// Description: Device code of the two Alpaka unpacker stages
 // Maintainer: Si Hyun Jeon, shjeon@cern.ch
 
 #include <type_traits>
@@ -28,8 +21,6 @@
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
 
-  // ---- decode primitives ----
-
   using namespace Phase2DAQFormatSpecification;
 
   ALPAKA_FN_ACC inline uint32_t readWord(const uint8_t* bytes, int wordIdx) {
@@ -37,10 +28,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
   }
 
-  // MSB-first reader over a byte buffer, mirroring Phase2ITBitReader.
-  // next() is the unchecked primitive: it does NOT test pos against len, so callers
-  // use the checked nextOr0()/bits() wrappers below. A read past the end gives 0 and
-  // marks the stream as cut short (past).
+  // MSB-first reader over a byte buffer, as Phase2ITBitReader; a read past the end gives 0 and sets past
   struct BitReader {
     const uint8_t* bytes;
     uint32_t len;
@@ -72,8 +60,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     ALPAKA_FN_ACC void advance(uint32_t n) { pos += n; }
   };
 
-  // The same reads from a 64-bit register refilled one 32-bit word at a time. Nothing past the stream
-  // is loaded and its bits read as 0, as above.
+  // The same reads from a 64-bit window refilled one 32-bit word at a time, loading nothing past the stream
   struct WindowReader {
     const uint32_t* words;
     uint32_t len;
@@ -246,23 +233,20 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     col = qcoreCol + localCol;
   }
 
-  // Word span [start, end) of one module inside a FED body (processFED navigation)
+  // Word span [start, end) of one module inside a FED body
   struct ModuleSpan {
     int start;       // first word of the module
     int end;         // one past its last word: where the next module starts, or the IT trailer
     bool badOffset;  // offset outside the data block, so the module was dropped
   };
 
-  // Same rules as the CPU forEachModule: a module starts inside the data block and ends where the next one
-  // starts, or at the IT trailer; offsets are checked before they are added, so a corrupt one cannot overflow.
+  // Same rules as the CPU forEachModule
   ALPAKA_FN_ACC inline ModuleSpan moduleSpan(const uint8_t* fedBytes, int trailerStart, int numModules, int idxInFed) {
     const int offsetStart = HEADER_TRAILER_LINES;
     const int offsetBits = numModules * BITS_PER_WORD;
     const int padWords = ((BITS_PER_CHUNK - (offsetBits % BITS_PER_CHUNK)) % BITS_PER_CHUNK) / BITS_PER_WORD;
     const int dataBlockStart = offsetStart + numModules + padWords;
-    // A malformed offset drops the module. The flag is carried out so the producer
-    // can report it: device code has nothing to log to, and a silently dropped
-    // module is indistinguishable from an empty one.
+    // a malformed offset drops the module, flagged for the producer to report
     ModuleSpan s{0, 0, true};
     // the offset block itself has to end before the trailer
     if (dataBlockStart > trailerStart)
@@ -284,9 +268,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     return s;
   }
 
-  // Walk the chips of one module by the same rules as the CPU forEachChip: calls chip(chipId,
-  // firstPayloadWord, bitLen, overrun). A chip's ID is its place in the module, so the walk stops after
-  // maxChips chips; returns true if a further chip header follows them.
+  // Same rules as the CPU forEachChip: calls chip(chipId, firstPayloadWord, bitLen, overrun) for the first maxChips
+  // chips; returns true if a further chip header follows them.
   template <typename TChip>
   ALPAKA_FN_ACC bool forEachChip(const uint8_t* bytes, ModuleSpan span, int maxChips, TChip&& chip) {
     int cursor = span.start;
@@ -309,9 +292,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     return false;
   }
 
-  // Walk one chip stream: calls qcore(ccol, qrow, hitmap, nHits) per complete quarter core, with the reader at
-  // its ToTs, which qcore() reads or passes. Returns true if the stream ends inside a quarter core (malformed):
-  // that quarter core is ignored.
+  // Walk one chip stream: calls qcore(ccol, qrow, hitmap, nHits) per complete quarter core, the reader at its ToTs.
+  // Returns true if the stream ends inside a quarter core (malformed): that quarter core is ignored.
   template <typename TAcc, typename TReader, typename TQCore>
   ALPAKA_FN_ACC bool walkChip(TAcc const& acc, TReader& br, bool dropTot, TQCore&& qcore) {
     bool previousIsLast = true;
@@ -325,8 +307,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       const uint32_t qrow = isneighbor ? uint32_t(prevRow + 1) : br.bits(8);
 
       const uint32_t hm = decodeHitmap(br);
-      // the ToTs follow the hitmap: the quarter core is complete only if nothing so far ran past the end
-      // and all its ToTs are still in the stream, which is checked before any of its hits is handed on
+      // complete only if no read ran past the end and all its ToTs are still in the stream
       const uint32_t nHits = alpaka::popcount(acc, hm);
       if (!br.has(dropTot ? 0 : 4 * nHits))
         return true;
@@ -350,10 +331,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
     });
   }
 
-  // ---- kernels ----
-
-  // Stage 1: raw FED bodies -> one row per module and kChipSlots per module for its chips,
-  // locating their words in those bytes.
+  // Stage 1: raw FED bodies -> a row per module and kChipSlots chip rows, locating their words in those bytes
 
   namespace {
     // Rows of module m, module i of the nInFed modules of FED f
@@ -470,7 +448,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       const int chipId = c % kChipSlots;
       const auto chip = chips[c];
       countStage1Flags(acc, chipId, mod, chip, stats);
-      // the chip's slots: its bits divided by the fewest bits a hit takes
       const uint32_t begin = firstSlot(chip.payloadWord(), dropTot);
       const uint32_t end = begin + chip.bitLen() / minBitsPerHit(dropTot);
       // the chip's place in its module, looked up once for all its hits
@@ -496,8 +473,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
         alpaka::atomicAdd(acc, &stats[kDroppedHits], lost, alpaka::hierarchy::Blocks{});
     }
 
-    // Two-pass decode, pass 1: record chip row c's complete quarter cores in its slots, passing over their ToTs,
-    // with qcounts[c] the records and counts[c] the hits kept, as decodeChipRow would keep them
+    // Two-pass decode, pass 1: record chip row c's complete quarter cores, keeping the hits decodeChipRow would keep
     ALPAKA_FN_ACC inline void scanChipRow(Acc1D const& acc,
                                           uint32_t c,
                                           const uint8_t* bytes,
@@ -521,8 +497,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
       uint32_t nh = 0;
       ChipReader br{bytes + chip.payloadWord() * 4, chip.bitLen()};
       const bool cut = walkChip(acc, br, dropTot, [&](uint32_t ccol, uint32_t qrow, uint32_t hm, uint32_t nHits) {
-        // a quarter core whose first hit is past the chip's slots has all its hits dropped; each record
-        // holds at least one hit, so the records fit the slots too
+        // a quarter core starting past the chip's slots loses all its hits; with a hit each, the records fit too
         if (nh < slots) {
           int row, col;
           qcoreOrigin(rowOffset, colOffset, int(ccol), int(qrow), row, col);
@@ -540,7 +515,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
         alpaka::atomicAdd(acc, &stats[kDroppedHits], nh - n, alpaka::hierarchy::Blocks{});
     }
 
-    // The collection carries one spare row past the digis; zero it once.
+    // the spare row past the digis (nDigis() + 1 rows), as an unclustered empty digi
     ALPAKA_FN_ACC inline void clearSpareRow(SiPixelDigisSoAView digis) {
       const int last = digis.metadata().size() - 1;
       digis[last].clus() = ::pixelClustering::invalidClusterId;
@@ -605,8 +580,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE::Phase2ITUnpacker {
                                   SiPixelDigisSoAView digis) const {
       if (cms::alpakatools::once_per_grid(acc))
         clearSpareRow(digis);
-      // one block per module, whose threads copy each of its chips' hits side by side;
-      // offsets[] gives each chip a private output range, so no atomics are needed
+      // one block per module; offsets[] gives each chip rows of its own, so no atomics are needed
       for (auto m : cms::alpakatools::independent_groups(acc, modules.metadata().size())) {
         const auto mod = modules[m];
         for (uint32_t c = m * kChipSlots; c < (m + 1) * kChipSlots; ++c) {
