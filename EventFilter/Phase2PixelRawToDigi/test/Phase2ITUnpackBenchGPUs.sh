@@ -7,12 +7,23 @@
 #   STREAMS=8 ./Phase2ITUnpackBenchGPUs.sh    streams on the GPU, default 1; the CPU flows keep one per thread
 #   EVENTS=5000 ./Phase2ITUnpackBenchGPUs.sh  events per measurement; the benchmark's other options (FLOW, THREADS,
 #                                             IN, ...) come from the environment as usual
+#   INDIR=/path ./Phase2ITUnpackBenchGPUs.sh  input: the .root files in that directory, default the 20_1_0_pre4 TTbar
+#                                             skim in /nfs/cms/tracktrigger/sjeon_1, of which the benchmark packs the
+#                                             first PACK events (100); INDIR= for the benchmark's own input instead
 # A GPU in use when its turn comes (GPU-Util above 5%, more than 500 MiB used, or a process on it) is left out.
 set -u
 [ -n "${CMSSW_BASE:-}" ] || { echo "run cmsenv first"; exit 1; }
 BENCH=$CMSSW_BASE/src/EventFilter/Phase2PixelRawToDigi/test/Phase2ITUnpackBench.sh
 [ -x "$BENCH" ] || { echo "no $BENCH: pull the branch"; exit 1; }
 command -v nvidia-smi > /dev/null || { echo "nvidia-smi not found"; exit 1; }
+INDIR=${INDIR-/nfs/cms/tracktrigger/sjeon_1/skimmed_GEN-SIM-DIGI-RAW/CMSSW_20_1_0_pre4/RelValTTbar_14TeV/GEN-SIM-DIGI-RAW/PU_200X_mcRun4_realistic_v1_SpecialRV311_Run4D112_RAW-v1}
+if [ -z "${IN:-}" ] && [ -n "$INDIR" ]; then
+  [ -d "$INDIR" ] || { echo "no directory $INDIR"; exit 1; }
+  files=$(ls "$INDIR"/*.root 2> /dev/null | sort)
+  [ -n "$files" ] || { echo "no .root files in $INDIR"; exit 1; }
+  echo "input: $(echo "$files" | wc -l) files in $INDIR"
+  export IN=$(echo "$files" | sed 's|^|file:|' | paste -sd, -)
+fi
 if [ -z "${IN:-}" ]; then
   voms-proxy-info -exists -valid 2:00 > /dev/null 2>&1 ||
     { echo "the input is read over xrootd and the proxy has under 2 hours left: voms-proxy-init --voms cms"; exit 1; }
