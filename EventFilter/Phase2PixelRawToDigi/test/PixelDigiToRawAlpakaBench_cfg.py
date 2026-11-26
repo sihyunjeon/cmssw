@@ -1,7 +1,8 @@
 # PixelDigiToRawAlpakaProducer_cfg.py cut down for Phase2ITUnpackBench.sh. The benchmark imports a cfg without its
 # arguments, so the cfg's options come from BENCH_OPTS, and the part to run from:
 #   BENCH_PACK=<file>  the packer only, which writes its raw data to <file> uncompressed
-#   BENCH_FLOW         otherwise cpu, alpaka or input (reading the raw data only), on BENCH_INPUT read BENCH_PASSES times
+#   BENCH_FLOW         otherwise cpu, alpaka or input (reading the raw data only), on BENCH_INPUT read BENCH_PASSES
+#                      times, or with BENCH_CACHE=<n> on its n events held in memory and repeated
 import os
 import sys
 
@@ -24,8 +25,15 @@ if os.environ.get('BENCH_PACK'):
 else:
     # the raw data was written by a process of the same name
     process.setName_('BENCH')
-    process.source.fileNames = cms.untracked.vstring([os.environ['BENCH_INPUT']] * int(os.environ.get('BENCH_PASSES', '1')))
-    process.source.duplicateCheckMode = cms.untracked.string('noDuplicateCheck')
+    if os.environ.get('BENCH_CACHE'):
+        process.source = cms.Source('RepeatingCachedRootSource',
+            fileName=cms.untracked.string(os.environ['BENCH_INPUT']),
+            repeatNEvents=cms.untracked.uint32(int(os.environ['BENCH_CACHE'])),
+        )
+    else:
+        process.source.fileNames = cms.untracked.vstring(
+            [os.environ['BENCH_INPUT']] * int(os.environ.get('BENCH_PASSES', '1')))
+        process.source.duplicateCheckMode = cms.untracked.string('noDuplicateCheck')
     flow = os.environ.get('BENCH_FLOW', 'alpaka')
     if flow == 'cpu':
         process.p = cms.Path(process.RawToPixelProducer)

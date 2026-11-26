@@ -16,6 +16,8 @@
 #                                             passes, at blockSize 64
 #   REPEATS=5 PACK=100 ./Phase2ITUnpackBench.sh  measurements per point, and the events packed
 #   IN=file:/path/a.root ./Phase2ITUnpackBench.sh  the input to pack, as for the test script
+#   SOURCE=memory ./Phase2ITUnpackBench.sh   the packed events held in memory and repeated, so that reading costs
+#                                             nothing and can't cap the gpu flow; default file, read from disk each time
 #   PATATRACK=/path/patatrack-scripts         a checkout of the benchmark; default $CMSSW_BASE/patatrack-scripts at the
 #                                             timing server's commit, cloned if missing
 #   ./Phase2ITUnpackBench.sh clone            only check the options and get that checkout, e.g. before a batch job
@@ -34,6 +36,7 @@ THREADS=${THREADS:-8}
 STREAMS=${STREAMS:-1 2 4 8}
 REPEATS=${REPEATS:-3}
 PACK=${PACK:-100}
+SOURCE=${SOURCE:-file}
 
 case $EV in clone) ;; '' | *[!0-9]* | 0) echo "usage: $0 [events per measurement | clone]"; exit 1 ;; esac
 for v in THREADS REPEATS PACK; do
@@ -51,6 +54,7 @@ for m in $MODES; do
   esac
 done
 case $GAP in DROP | KEEP | AGGREGATE) ;; *) echo "GAP must be DROP, KEEP or AGGREGATE"; exit 1 ;; esac
+case $SOURCE in file | memory) ;; *) echo "SOURCE must be file or memory"; exit 1 ;; esac
 case $GPU in
   gpu-nvidia) PROBE=cudaIsEnabled ;;
   gpu-amd) PROBE=rocmIsEnabled ;;
@@ -101,12 +105,21 @@ N=$(grep -c '^Begin processing the' "$OUT/pack.log")
 [ "$N" -gt 0 ] || { echo "no events packed: $OUT/pack.log"; exit 1; }
 PASSES=$(( (EV + N - 1) / N + 1 ))
 SKIP=$(( EV / 20 ))
+CACHE=
+if [ $SOURCE = memory ]; then
+  # the in-memory source takes the events of one lumi section only
+  LUMIS=$(edmFileUtil file:$RAW 2> /dev/null | sed -n 's/.*(\([0-9]*\) runs, \([0-9]*\) lumis,.*/\1 \2/p')
+  [ "$LUMIS" = "1 1" ] || { echo "SOURCE=memory needs the packed events in one run and lumi section, not" \
+    "${LUMIS:-?} (runs, lumis): pack fewer with PACK, or use SOURCE=file"; exit 1; }
+  CACHE=$N
+fi
 
 : > "$OUT/runs.tsv"
 run() {
   local name=$1 flow=$2 what=$3 part=$4 s=$5 opts=$6
   echo "=== $name: $THREADS threads, $s streams, $opts"
   (cd "$OUT" && BENCH_FLOW=$part BENCH_OPTS="gapMode=$GAP $opts" BENCH_INPUT=file:$RAW BENCH_PASSES=$PASSES \
+    BENCH_CACHE=$CACHE \
     python3 "$PATATRACK/benchmark" "$CFG" -j 1 -t $THREADS -s $s -e $EV --event-skip $SKIP -r $REPEATS \
     --no-input-benchmark --no-cpu-affinity --no-gpu-affinity --tmpdir "$OUT/tmp" -l "logs/$name" --csv "$name.csv" \
     > "$name.log" 2>&1)
@@ -140,10 +153,10 @@ done
 rm -f "$RAW"
 nvidia-smi > "$OUT/gpu_end.txt" 2>&1
 
-python3 - "$OUT" "$EV" "$SKIP" "$THREADS" "$REPEATS" "$N" "$SRC" "$GAP" "$CPUNAME" "$GPUNAME" << 'EOF'
+python3 - "$OUT" "$EV" "$SKIP" "$THREADS" "$REPEATS" "$N" "$SRC" "$GAP" "$CPUNAME" "$GPUNAME" "$SOURCE" << 'EOF'
 import csv, os, statistics, sys
 
-out, ev, skip, threads, repeats, packed, src, gap, cpuname, gpuname = sys.argv[1:]
+out, ev, skip, threads, repeats, packed, src, gap, cpuname, gpuname, source = sys.argv[1:]
 repeats = int(repeats)
 
 rows = []
@@ -179,7 +192,8 @@ for flow, what, streams, rate, spread, note in rows:
 print()
 print('IT unpacker benchmark: %s events per measurement, the first %s left out, %s threads, %d measurements each'
       % (ev, skip, threads, repeats))
-print('  raw data: %s events of %s, gapMode %s; CPU %s%s' % (packed, src, gap, cpuname, '; GPU ' + gpuname if gpuname else ''))
+print('  raw data: %s events of %s, gapMode %s, %s; CPU %s%s' % (packed, src, gap,
+      'held in memory' if source == 'memory' else 'read from disk', cpuname, '; GPU ' + gpuname if gpuname else ''))
 head = ['flow', 'what', 'streams', 'ev/s', 'spread', 'vs cpu', 'note']
 width = [max(len(str(x)) for x in col) for col in zip(head, *table)]
 for row in [head] + table:
