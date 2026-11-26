@@ -1,18 +1,23 @@
 #!/bin/bash
 # Runs Phase2ITUnpackTest.sh, then an Nsight Systems profile of the one-pass and the two-pass decode, in a CERN batch
-# job that gets a GPU from HTCondor. Submit from lxplus after cmsenv and voms-proxy-init --voms cms; the CMSSW area
-# must be on AFS, where the job reads it.
+# job that gets a GPU from HTCondor; with BENCH=1, the throughput benchmark Phase2ITUnpackBench.sh instead. Submit from
+# lxplus after cmsenv and voms-proxy-init --voms cms; the CMSSW area must be on AFS, where the job reads it.
 #
 #   ./Phase2ITUnpackBatch.sh                  a T4 (compute capability 7.5), 100 events
 #   ./Phase2ITUnpackBatch.sh 20               fewer events
 #   GPUCAP=8.0 ./Phase2ITUnpackBatch.sh       another GPU model by its capability; GPUCAP= takes any GPU
 #   MODE=... BLOCK=... ./Phase2ITUnpackBatch.sh   passed to the test script, default both decodes in both layouts at 32 and 64
 #   FLAVOUR=nextweek ./Phase2ITUnpackBatch.sh     job flavour, default longlunch (2 hours)
+#   BENCH=1 ./Phase2ITUnpackBatch.sh          the benchmark, 20000 events per measurement, on 8 cores (CPUS=...) with as
+#                                             many threads; MODE, BLOCK, FLOW, THREADS, STREAMS, REPEATS, PACK and GAP
+#                                             are passed to it, with its own defaults
 #
 # The job's files come back to unpackbatch/ in the current directory:
 #   job<id>.out    the GPU's state at the start, the test table, and the kernel tables of the two profiles
-#   job<id>/       the test logs, the nsys reports, and nvidia-smi at the start, every 5 s (dmon.txt) and at the end
-# The proxy is copied to ~/private, where HTCondor can pick it up for the job.
+#                  (or the benchmark table)
+#   job<id>/       the logs, the nsys reports, and nvidia-smi at the start, every 5 s (dmon.txt) and at the end
+# The proxy is copied to ~/private, where HTCondor can pick it up for the job. The benchmark job reads patatrack-scripts
+# from $CMSSW_BASE/patatrack-scripts (or PATATRACK, on AFS too), cloned there at submission if missing.
 set -u
 
 if [ "${1:-}" = run ]; then
@@ -42,6 +47,13 @@ EOF
   fi
   export IN
 
+  if [ "${BENCH:-0}" = 1 ]; then
+    "$TEST/Phase2ITUnpackBench.sh" "$EVENTS"
+    mv unpackbench_* "$res/"
+    { date; nvidia-smi; } > "$res/end.txt" 2>&1
+    exit 0
+  fi
+
   "$TEST/Phase2ITUnpackTest.sh" "$EVENTS"
   mv unpacktest_* "$res/"
 
@@ -63,12 +75,18 @@ EOF
   exit 0
 fi
 
-EVENTS=${1:-100}
+BENCH=${BENCH:-0}
 GPUCAP=${GPUCAP-7.5}
-MODE=${MODE:-stage1fed_stage2chip stage1fed_stage2chip2pass stage1fed_stage2module stage1fed_stage2module2pass}
-BLOCK=${BLOCK:-32 64}
 FLAVOUR=${FLAVOUR:-longlunch}
+case $BENCH in
+  0) EVENTS=${1:-100} CPUS=2
+     MODE=${MODE:-stage1fed_stage2chip stage1fed_stage2chip2pass stage1fed_stage2module stage1fed_stage2module2pass}
+     BLOCK=${BLOCK:-32 64} ;;
+  1) EVENTS=${1:-20000} CPUS=${CPUS:-8} MODE=${MODE:-} BLOCK=${BLOCK:-} ;;
+  *) echo "BENCH must be 0 or 1"; exit 1 ;;
+esac
 case $EVENTS in '' | *[!0-9]*) echo "usage: $0 [events]"; exit 1 ;; esac
+case $CPUS in '' | *[!0-9]* | 0) echo "CPUS must be a number of cores"; exit 1 ;; esac
 command -v condor_submit > /dev/null || { echo "condor_submit not found: submit from lxplus"; exit 1; }
 [ -n "${CMSSW_BASE:-}" ] || { echo "run cmsenv first"; exit 1; }
 case $CMSSW_BASE in /afs/*) ;; *) echo "the job reads the CMSSW area, so it must be on AFS: $CMSSW_BASE"; exit 1 ;; esac
@@ -79,12 +97,23 @@ PROXY=$HOME/private/x509up_phase2itunpack
 install -m 600 "${X509_USER_PROXY:-/tmp/x509up_u$(id -u)}" "$PROXY" || exit 1
 
 SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+JOBENV=
+if [ $BENCH = 1 ]; then
+  # checks the benchmark's options, and clones patatrack-scripts here: a batch node may not reach GitHub
+  "$(dirname "$SELF")/Phase2ITUnpackBench.sh" clone || exit 1
+  PT=${PATATRACK:-$CMSSW_BASE/patatrack-scripts}
+  case $PT in /afs/*) ;; *) echo "the job reads patatrack-scripts, so it must be on AFS: $PT"; exit 1 ;; esac
+  JOBENV=" BENCH=1 PATATRACK=$PT THREADS=${THREADS:-$CPUS}"
+  for v in FLOW STREAMS REPEATS PACK GAP; do
+    [ -n "${!v:-}" ] && JOBENV="$JOBENV $v='${!v}'"
+  done
+fi
 DIR=$PWD/unpackbatch
 mkdir -p "$DIR"
 cat > "$DIR/job.sub" << EOF
 executable              = $SELF
 arguments               = run \$(ClusterId)
-environment             = "CMSSW_BASE=$CMSSW_BASE EVENTS=$EVENTS MODE='$MODE' BLOCK='$BLOCK' PROXY=$(basename "$PROXY")"
+environment             = "CMSSW_BASE=$CMSSW_BASE EVENTS=$EVENTS MODE='$MODE' BLOCK='$BLOCK' PROXY=$(basename "$PROXY")$JOBENV"
 transfer_input_files    = $PROXY
 should_transfer_files   = YES
 when_to_transfer_output = ON_EXIT
@@ -94,7 +123,7 @@ error                   = job\$(ClusterId).err
 log                     = job\$(ClusterId).log
 request_gpus            = 1
 $([ -n "$GPUCAP" ] && printf 'gpus_minimum_capability = %s\ngpus_maximum_capability = %s' "$GPUCAP" "$GPUCAP")
-request_cpus            = 2
+request_cpus            = $CPUS
 MY.WantOS               = "el9"
 +JobFlavour             = "$FLAVOUR"
 queue
